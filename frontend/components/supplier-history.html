@@ -1,0 +1,147 @@
+<div class="card card-table" id="supplierHistoryPanel">
+
+  <!-- ================= HEADER : TABS ================= -->
+  <div class="card-header">
+    <div class="flex items-center gap-2">
+
+      <button class="tab-btn active" data-history-tab="contacts">
+        <i class="bi bi-person-lines-fill"></i>
+        รายชื่อผู้ติดต่อ
+      </button>
+
+      <button class="tab-btn" data-history-tab="products">
+        <i class="bi bi-box-seam"></i>
+        ประวัติสินค้าที่ดูแล
+      </button>
+
+      <button class="tab-btn" data-history-tab="terms">
+        <i class="bi bi-shield-check"></i>
+        ประวัติเงื่อนไขพิเศษ
+      </button>
+
+    </div>
+  </div>
+
+  <!-- ================= BODY ================= -->
+  <div class="card-body">
+
+    <!-- =====================================================
+         TAB : CONTACTS
+         ===================================================== -->
+    <div class="history-pane active" id="history-contacts">
+
+      <!-- 👉 ย้ายตารางผู้ติดต่อเดิมของคุณมาใส่ตรงนี้ -->
+      <div class="text-gray-500 text-sm">
+        เลือกแท็บเพื่อดูประวัติการบันทึกข้อมูล
+      </div>
+
+    </div>
+
+    <!-- =====================================================
+         TAB : PRODUCT HISTORY (GRID)
+         ===================================================== -->
+    <div class="history-pane hidden" id="history-products">
+
+      <!-- Header -->
+      <div class="grid grid-cols-11 gap-2 text-xs font-semibold text-gray-500 border-b pb-2">
+        <div class="col-span-2">วันที่บันทึก</div>
+        <div class="col-span-4">สินค้า / รายละเอียด</div>
+        <div class="col-span-2">กลุ่ม</div>
+        <div class="col-span-2">SKU</div>
+        <div class="col-span-1">ผู้บันทึก</div>
+      </div>
+
+      <!-- Rows -->
+      <div id="productHistoryGrid" class="divide-y">
+
+        <!-- ROW SAMPLE -->
+        <div class="grid grid-cols-11 gap-2 items-center py-2 text-sm">
+
+          <div class="col-span-2">
+            <div class="font-medium">12/01/2569</div>
+            <div class="text-xs text-gray-400">14:32</div>
+          </div>
+
+          <div class="col-span-4">
+            <div class="font-medium text-gray-800">
+              กระจก | บางกอกกลาส
+            </div>
+            <div class="text-xs text-gray-500">
+              เพิ่มสินค้าใหม่
+            </div>
+          </div>
+
+          <div class="col-span-2">
+            <span class="badge bg-blue-100 text-blue-700">
+              กระจกเงา
+            </span>
+          </div>
+
+          <div class="col-span-2">
+            GL-001
+          </div>
+
+          <div class="col-span-1 text-xs text-gray-600">
+            admin01
+          </div>
+
+          <div class="col-span-1 text-center">
+            <button class="btn btn-sm btn-outline-secondary">
+              ดู
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+    <!-- =====================================================
+         TAB : SPECIAL TERMS HISTORY (GRID)
+         ===================================================== -->
+    <div class="history-pane hidden" id="history-terms">
+
+      <!-- Header -->
+      <div class="grid grid-cols-11 gap-2 text-xs font-semibold text-gray-500 border-b pb-2">
+        <div class="col-span-2">วันที่บันทึก</div>
+        <div class="col-span-6">รายละเอียดเงื่อนไข</div>
+        <div class="col-span-2">ประเภท</div>
+        <div class="col-span-1">ผู้บันทึก</div>
+      </div>
+
+      <!-- Rows -->
+      <div id="termsHistoryGrid" class="divide-y">
+
+        <!-- ROW SAMPLE -->
+        <div class="grid grid-cols-11 gap-2 items-center py-2 text-sm">
+
+          <div class="col-span-2">
+            <div class="font-medium">12/01/2569</div>
+            <div class="text-xs text-gray-400">15:10</div>
+          </div>
+
+          <div class="col-span-6">
+            <div class="font-medium">
+              Credit 30 วัน / วงเงิน 500,000 บาท
+            </div>
+            <div class="text-xs text-gray-500">
+              วางบิลสิ้นเดือน
+            </div>
+          </div>
+
+          <div class="col-span-2">
+            <span class="badge bg-green-100 text-green-700">
+              เครดิต
+            </span>
+          </div>
+
+          <div class="col-span-1 text-xs text-gray-600">
+            admin01
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
