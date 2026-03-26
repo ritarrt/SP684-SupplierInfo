@@ -164,7 +164,7 @@ function renderProductHistory(list) {
             <div class="text-xs text-gray-500">
               ${[
                 it.brand_name || it.brand,
-                it.subGroup
+                it.SUBGROUP_NAME || it.subGroup
               ].filter(Boolean).join(" / ")}
             </div>
           </div>

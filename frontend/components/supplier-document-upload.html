@@ -11,7 +11,7 @@
       <!-- upload -->
       <div class="col-span-12 md:col-span-2">
         <label class="form-label">เลือกไฟล์เอกสาร</label>
-        <input type="file" class="form-control" id="supplierDocFile">
+        <input type="file" class="supplierDocFile form-control">
       </div>
 
       <!-- description -->
@@ -30,7 +30,7 @@
         <button
           type="button"
           class="btn btn-outline-primary w-full"
-          onclick="saveSupplierDocument()"
+         onclick="saveSupplierDocument(this)"
         >
           <i class="bi bi-upload"></i> บันทึกเอกสาร
         </button>

@@ -56,6 +56,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // ⭐⭐⭐ เพิ่มบรรทัดนี้เท่านั้น ⭐⭐⭐
   loadSupplierHistory(supplierNo);
 
+  loadVisibleSupplierDocument();
+  loadSupplierDocuments(supplierNo);
+
   // ===============================
   // GLOBAL CLICK HANDLER
   // ===============================
@@ -330,28 +333,23 @@ function removePaymentRow(btn) {
 //     document.getElementById("supplierDocumentContainer").innerHTML = html;
 //   });
 
-  function loadVisibleSupplierDocument() {
-  const containers = document.querySelectorAll("#supplierDocumentContainer");
+ function loadVisibleSupplierDocument() {
 
-  containers.forEach(container => {
-    // หา tab-pane แม่
-    const pane = container.closest(".tab-pane");
-    if (!pane) return;
+  fetch("/components/supplier-document-upload.html")
+    .then(res => res.text())
+    .then(html => {
 
-    // ถ้า tab นี้ยังไม่ active → ข้าม
-    if (!pane.classList.contains("active")) return;
+      const container = document.getElementById("supplierDocumentContainer");
 
-    // กันโหลดซ้ำ
-    if (container.dataset.loaded === "1") return;
+      if (!container) {
+        console.error("❌ ไม่พบ supplierDocumentContainer");
+        return;
+      }
 
-    fetch("/components/supplier-document-upload.html")
-      .then(res => res.text())
-      .then(html => {
-        container.innerHTML = html;
-        container.dataset.loaded = "1";
-        console.log("✅ document loaded for", pane.id);
-      });
-  });
+      container.innerHTML = html;
+
+      console.log("✅ document component loaded");
+    });
 }
 
 document.addEventListener("click", (e) => {

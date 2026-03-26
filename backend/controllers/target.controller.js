@@ -25,6 +25,7 @@ const prefix = `PT-${month}${day}`;
   d.provider_contact_id || null
 )
       .input("target_name", sql.NVarChar, d.target_name)
+      .input("parent_target_ref", sql.NVarChar, d.parent_target_ref ?? null)
       .input("status", sql.NVarChar, "OPEN")
       .input("region", sql.NVarChar, d.region)
       .input("province", sql.NVarChar, d.province)
@@ -98,6 +99,7 @@ INSERT INTO supplier_targets (
   target_type,
   target_qty,
   target_unit,
+  parent_target_ref,
   start_date,
   end_date
 )
@@ -125,6 +127,7 @@ VALUES (
   @target_type,
   @target_qty,
   @target_unit,
+  @parent_target_ref,
   @start_date,
   @end_date
 );
@@ -162,6 +165,9 @@ SET t.status = 'CLOSED',
     t.updated_at = GETDATE()
 FROM supplier_targets t
 
+/* =========================
+   BRAND NO
+========================= */
 OUTER APPLY (
     SELECT
         CASE t.category
@@ -173,109 +179,205 @@ OUTER APPLY (
             WHEN 'Accessories' THEN (SELECT BRAND_NO FROM Accessory_BRAND WHERE BRAND_ID = t.brand_code)
         END AS brand_no
 ) b
+
+/* =========================
+   ACTUAL DATA
+========================= */
 OUTER APPLY (
     SELECT 
         SUM(r.Quantity) AS actual_qty,
-        SUM(r.Total_Cost) AS actual_amount
+        SUM(r.Total_Cost) AS actual_amount,
+        SUM(ISNULL(r.Gross_Weight,0)) AS actual_weight
     FROM RE_Detail_WithCost r
     WHERE r.Posting_Date >= t.start_date
       AND r.Posting_Date < DATEADD(DAY,1,t.end_date)
-      
 
       AND (
-    (
-        /* 🔥 pattern */
-        (t.category = 'Accessories'
-            AND r.SKU LIKE CONCAT(
-                'E',
-                b.brand_no,
-                RIGHT('00' + t.product_group_code, 2),
-                RIGHT('000' + t.sub_group_code, 3),
-                '%'
+        (
+            (t.category = 'Accessories'
+                AND r.SKU LIKE CONCAT(
+                    'E',
+                    b.brand_no,
+                    RIGHT('00' + t.product_group_code, 2),
+                    RIGHT('000' + t.sub_group_code, 3),
+                    '%'
+                )
+            )
+            OR
+            (t.category <> 'Accessories'
+                AND r.SKU LIKE CONCAT(
+                    CASE t.category
+                      WHEN 'Glass' THEN 'G'
+                      WHEN 'Aluminum' THEN 'A'
+                      WHEN 'Sealant' THEN 'S'
+                      WHEN 'Gypsum' THEN 'Y'
+                      WHEN 'C-Line' THEN 'C'
+                    END,
+                    RIGHT('00' + b.brand_no, 2),
+                    RIGHT('00' + t.product_group_code, 2),
+                    RIGHT('000' + t.sub_group_code, 3),
+                    '%'
+                )
             )
         )
         OR
-        (t.category <> 'Accessories'
-            AND r.SKU LIKE CONCAT(
-                CASE t.category
-                  WHEN 'Glass' THEN 'G'
-                  WHEN 'Aluminum' THEN 'A'
-                  WHEN 'Sealant' THEN 'S'
-                  WHEN 'Gypsum' THEN 'Y'
-                  WHEN 'C-Line' THEN 'C'
-                END,
-                RIGHT('00' + b.brand_no, 2),
-                RIGHT('00' + t.product_group_code, 2),
-                RIGHT('000' + t.sub_group_code, 3),
-                '%'
+        (
+            t.sku IS NOT NULL
+            AND t.sku <> ''
+            AND EXISTS (
+                SELECT 1
+                FROM STRING_SPLIT(t.sku, ',') s
+                WHERE LTRIM(RTRIM(s.value)) <> ''
+                  AND r.SKU = LTRIM(RTRIM(s.value))
             )
         )
-    )
-
-    OR
-
-    (
-        /* 🔥 SKU */
-        t.sku IS NOT NULL
-        AND t.sku <> ''
-        AND EXISTS (
-    SELECT 1
-    FROM STRING_SPLIT(t.sku, ',') s
-    WHERE LTRIM(RTRIM(s.value)) <> ''
-      AND r.SKU = LTRIM(RTRIM(s.value))
-)
-    )
-)
-
-/* 🔥 ต้องอยู่ข้างนอก */
-AND (
-    @color IS NULL
-    OR @color = ''
-    OR (
-        CASE 
-            WHEN t.category = 'Gypsum'
-                THEN SUBSTRING(r.SKU, 9, 3)
-            ELSE SUBSTRING(r.SKU, 9, 2)
-        END
-    ) = @color
-)
-
-AND (
-    t.thickness IS NULL
-    OR t.thickness = ''
-    OR (
-        CASE 
-            WHEN t.category = 'Gypsum'
-                THEN SUBSTRING(r.SKU, 12, 2)
-            ELSE SUBSTRING(r.SKU, 11, 2)
-        END
-    ) = RIGHT('00' + t.thickness, 2)
-)
-
-      AND (
-          t.branch IS NULL
-          OR r.Branch IN (
-              SELECT LTRIM(RTRIM(value))
-              FROM STRING_SPLIT(t.branch, ',')
-          )
       )
 ) a
-WHERE t.supplier_code = @supplier_code
-  AND t.status = 'OPEN'
-  AND (
-        (
-          CASE
-            WHEN t.target_unit IN ('ชิ้น','ชิ้นงาน','pcs')
-              THEN ISNULL(a.actual_qty,0)
-            ELSE ISNULL(a.actual_amount,0)
-          END
-        ) >= ISNULL(t.target_qty,0)
 
-        OR
+OUTER APPLY (
+    SELECT 
+        SUM(a2.actual_qty) AS sum_qty,
+        SUM(a2.actual_amount) AS sum_amount,
+        SUM(a2.actual_weight) AS sum_weight
+    FROM supplier_targets t2
 
-        GETDATE() > DATEADD(DAY,1,t.end_date)
-      );
+    OUTER APPLY (
+        SELECT 
+            SUM(r.Quantity) AS actual_qty,
+            SUM(r.Total_Cost) AS actual_amount,
+            SUM(ISNULL(r.Gross_Weight,0)) AS actual_weight
+        FROM RE_Detail_WithCost r
 
+        OUTER APPLY (
+            SELECT
+                CASE t2.category
+                    WHEN 'Gypsum' THEN (SELECT BRAND_NO FROM BRAND_Gypsum WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'Glass' THEN (SELECT BRAND_NO FROM BRAND_Glass WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'Aluminum' THEN (SELECT BRAND_NO FROM BRAND_Aluminium WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'C-Line' THEN (SELECT BRAND_NO FROM BRAND_CLine WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'Sealant' THEN (SELECT BRAND_NO FROM BRAND_Sealant WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'Accessories' THEN (SELECT BRAND_NO FROM Accessory_BRAND WHERE BRAND_ID = t2.brand_code)
+                END AS brand_no
+        ) b2
+
+        WHERE r.Posting_Date >= t2.start_date
+          AND r.Posting_Date < DATEADD(DAY,1,t2.end_date)
+
+          AND (
+            (
+                (t2.category = 'Accessories'
+                    AND r.SKU LIKE CONCAT(
+                        'E',
+                        b2.brand_no,
+                        RIGHT('00' + t2.product_group_code, 2),
+                        RIGHT('000' + t2.sub_group_code, 3),
+                        '%'
+                    )
+                )
+                OR
+                (t2.category <> 'Accessories'
+                    AND r.SKU LIKE CONCAT(
+                        CASE t2.category
+                          WHEN 'Glass' THEN 'G'
+                          WHEN 'Aluminum' THEN 'A'
+                          WHEN 'Sealant' THEN 'S'
+                          WHEN 'Gypsum' THEN 'Y'
+                          WHEN 'C-Line' THEN 'C'
+                        END,
+                        RIGHT('00' + b2.brand_no, 2),
+                        RIGHT('00' + t2.product_group_code, 2),
+                        RIGHT('000' + t2.sub_group_code, 3),
+                        '%'
+                    )
+                )
+            )
+            OR
+            (
+                t2.sku IS NOT NULL
+                AND t2.sku <> ''
+                AND EXISTS (
+                    SELECT 1
+                    FROM STRING_SPLIT(t2.sku, ',') s
+                    WHERE LTRIM(RTRIM(s.value)) <> ''
+                      AND r.SKU = LTRIM(RTRIM(s.value))
+                )
+            )
+          )
+    ) a2
+
+    /* 🔥 logic split */
+    WHERE 
+    (
+        t.parent_target_ref IS NULL
+        AND t2.target_ref = t.target_ref
+    )
+    OR
+    (
+        t.parent_target_ref IS NOT NULL
+        AND COALESCE(t2.parent_target_ref, t2.target_ref) = t.parent_target_ref
+    )
+) g
+
+OUTER APPLY (
+    SELECT SUM(target_qty) AS total_target
+    FROM supplier_targets t3
+    WHERE 
+    (
+        t.parent_target_ref IS NULL
+        AND t3.target_ref = t.target_ref
+    )
+    OR
+    (
+        t.parent_target_ref IS NOT NULL
+        AND COALESCE(t3.parent_target_ref, t3.target_ref) = t.parent_target_ref
+    )
+) tg
+
+/* =========================
+   🔥 CORE LOGIC (ตัวเดียว)
+========================= */
+OUTER APPLY (
+    SELECT
+        CASE
+          WHEN LOWER(LTRIM(RTRIM(t.target_unit))) IN (N'ชิ้น','pcs')
+            THEN 
+                CASE 
+                    WHEN t.parent_target_ref IS NULL 
+                        THEN ISNULL(a.actual_qty,0)
+                    ELSE ISNULL(g.sum_qty,0)
+                END
+
+          WHEN LOWER(LTRIM(RTRIM(t.target_unit))) = N'บาท'
+            THEN 
+                CASE 
+                    WHEN t.parent_target_ref IS NULL 
+                        THEN ISNULL(a.actual_amount,0)
+                    ELSE ISNULL(g.sum_amount,0)
+                END
+
+          WHEN LOWER(LTRIM(RTRIM(t.target_unit))) IN (N'ตัน','ton')
+            THEN 
+                CASE 
+                    WHEN t.parent_target_ref IS NULL 
+                        THEN ISNULL(a.actual_weight,0) / 1000.0
+                    ELSE ISNULL(g.sum_weight,0) / 1000.0
+                END
+        END AS actual_value
+) v
+
+/* =========================
+   CONDITION
+========================= */
+WHERE t.status = 'OPEN'
+AND (
+    v.actual_value >= 
+        CASE 
+            WHEN t.parent_target_ref IS NULL 
+                THEN ISNULL(t.target_qty,0)
+            ELSE ISNULL(tg.total_target,0)
+        END
+    OR GETDATE() > DATEADD(DAY,1,t.end_date)
+)
 
 /* ============================================================
    2️⃣ SELECT DATA
@@ -285,7 +387,7 @@ SELECT
     t.*,
 
     /* =========================
-       🔥 ADD: map name
+       BRAND NAME
     ========================= */
     CASE 
         WHEN t.category = 'Aluminum' THEN ba.BRAND_NAME
@@ -298,88 +400,79 @@ SELECT
 
     accg.GroupName AS group_name,
 
+    /* =========================
+       RAW DATA
+    ========================= */
     ISNULL(a.actual_qty,0) AS actual_qty,
     ISNULL(a.actual_amount,0) AS actual_amount,
+    ISNULL(a.actual_weight,0) AS actual_weight,
 
-    CASE
-      WHEN t.target_unit IN ('ชิ้น','ชิ้นงาน','pcs')
-        THEN ISNULL(a.actual_qty,0)
-      ELSE ISNULL(a.actual_amount,0)
-    END AS actual_value,
+    /* =========================
+       🔥 CORE (ใช้ตัวเดียว)
+    ========================= */
+    v.actual_value,
+    v.achievement_percent,
 
-    /* % ความสำเร็จ */
-    CASE
-      WHEN ISNULL(t.target_qty,0)=0 THEN NULL
-      ELSE
-        (
-          CASE
-            WHEN t.target_unit IN ('ชิ้น','ชิ้นงาน','pcs')
-              THEN ISNULL(a.actual_qty,0)
-            ELSE ISNULL(a.actual_amount,0)
-          END
-        ) * 100.0 / t.target_qty
-    END AS achievement_percent,
+    /* =========================
+   STATUS
+========================= */
+CASE
+  WHEN GETDATE() < t.start_date
+    THEN N'ยังไม่เริ่ม'
 
-    /* สถานะเป้า */
-    CASE
-      WHEN GETDATE() < t.start_date
-        THEN N'ยังไม่เริ่ม'
+  WHEN GETDATE() > DATEADD(DAY,1,t.end_date)
+       AND v.actual_value >= 
+            CASE 
+                WHEN t.parent_target_ref IS NULL 
+                    THEN ISNULL(t.target_qty,0)
+                ELSE ISNULL(tg.total_target,0)
+            END
+    THEN N'บรรลุแล้ว (หมดอายุ)'
 
-      WHEN GETDATE() > DATEADD(DAY,1,t.end_date)
-           AND (
-             CASE
-               WHEN t.target_unit IN ('ชิ้น','ชิ้นงาน','pcs')
-                 THEN ISNULL(a.actual_qty,0)
-               ELSE ISNULL(a.actual_amount,0)
-             END
-           ) >= ISNULL(t.target_qty,0)
-        THEN N'บรรลุแล้ว (หมดอายุ)'
+  WHEN GETDATE() > DATEADD(DAY,1,t.end_date)
+       AND v.actual_value < 
+            CASE 
+                WHEN t.parent_target_ref IS NULL 
+                    THEN ISNULL(t.target_qty,0)
+                ELSE ISNULL(tg.total_target,0)
+            END
+    THEN N'ไม่ถึงเป้า (หมดอายุ)'
 
-      WHEN GETDATE() > DATEADD(DAY,1,t.end_date)
-           AND ISNULL(t.target_qty,0) > 0
-           AND (
-             CASE
-               WHEN t.target_unit IN ('ชิ้น','ชิ้นงาน','pcs')
-                 THEN ISNULL(a.actual_qty,0)
-               ELSE ISNULL(a.actual_amount,0)
-             END
-           ) < ISNULL(t.target_qty,0)
-        THEN N'ไม่ถึงเป้า (หมดอายุ)'
+  WHEN v.actual_value >= 
+        CASE 
+            WHEN t.parent_target_ref IS NULL 
+                THEN ISNULL(t.target_qty,0)
+            ELSE ISNULL(tg.total_target,0)
+        END
+    THEN N'บรรลุเป้า'
 
-      WHEN GETDATE() > DATEADD(DAY,1,t.end_date)
-        THEN N'หมดอายุแล้ว'
-
-      WHEN (
-             CASE
-               WHEN t.target_unit IN ('ชิ้น','ชิ้นงาน','pcs')
-                 THEN ISNULL(a.actual_qty,0)
-               ELSE ISNULL(a.actual_amount,0)
-             END
-           ) >= ISNULL(t.target_qty,0)
-        THEN N'บรรลุเป้า'
-
-      ELSE N'ยังไม่ถึงเป้า'
-    END AS target_state,
-
-    CASE
-      WHEN (
-             CASE
-               WHEN t.target_unit IN ('ชิ้น','ชิ้นงาน','pcs')
-                 THEN ISNULL(a.actual_qty,0)
-               ELSE ISNULL(a.actual_amount,0)
-             END
-           ) >= ISNULL(t.target_qty,0)
-           AND ISNULL(t.target_qty,0) > 0
-        THEN 1
-      ELSE 0
-    END AS is_achieved
-
-FROM supplier_targets t
+  ELSE N'ยังไม่ถึงเป้า'
+END AS target_state,
 
 /* =========================
-   ✅ คำนวณก่อน (สำคัญมาก)
+   IS ACHIEVED
 ========================= */
+CASE
+  WHEN v.actual_value >= 
+        CASE 
+            WHEN t.parent_target_ref IS NULL 
+                THEN ISNULL(t.target_qty,0)
+            ELSE ISNULL(tg.total_target,0)
+        END
+       AND 
+       CASE 
+            WHEN t.parent_target_ref IS NULL 
+                THEN ISNULL(t.target_qty,0)
+            ELSE ISNULL(tg.total_target,0)
+        END > 0
+  THEN 1
+  ELSE 0
+END AS is_achieved
+FROM supplier_targets t   -- 🔥 ต้องมีบรรทัดนี้
 
+/* =========================
+   BRAND NO
+========================= */
 OUTER APPLY (
     SELECT
         CASE t.category
@@ -392,97 +485,226 @@ OUTER APPLY (
         END AS brand_no
 ) b
 
+/* =========================
+   CALC RAW
+========================= */
 OUTER APPLY (
   SELECT 
       SUM(r.Quantity) AS actual_qty,
-      SUM(r.Total_Cost) AS actual_amount
+      SUM(r.Total_Cost) AS actual_amount,
+      SUM(ISNULL(r.Gross_Weight,0)) AS actual_weight
   FROM RE_Detail_WithCost r
   WHERE r.Posting_Date >= t.start_date
     AND r.Posting_Date < DATEADD(DAY,1,t.end_date)
 
     AND (
-    (
-        /* 🔥 pattern */
-        (t.category = 'Accessories'
-            AND r.SKU LIKE CONCAT(
-                'E',
-                b.brand_no,
-                RIGHT('00' + t.product_group_code, 2),
-                RIGHT('000' + t.sub_group_code, 3),
-                '%'
+        (
+            (t.category = 'Accessories'
+                AND r.SKU LIKE CONCAT(
+                    'E',
+                    b.brand_no,
+                    RIGHT('00' + t.product_group_code, 2),
+                    RIGHT('000' + t.sub_group_code, 3),
+                    '%'
+                )
+            )
+            OR
+            (t.category <> 'Accessories'
+                AND r.SKU LIKE CONCAT(
+                    CASE t.category
+                      WHEN 'Glass' THEN 'G'
+                      WHEN 'Aluminum' THEN 'A'
+                      WHEN 'Sealant' THEN 'S'
+                      WHEN 'Gypsum' THEN 'Y'
+                      WHEN 'C-Line' THEN 'C'
+                    END,
+                    RIGHT('00' + b.brand_no, 2),
+                    RIGHT('00' + t.product_group_code, 2),
+                    RIGHT('000' + t.sub_group_code, 3),
+                    '%'
+                )
             )
         )
         OR
-        (t.category <> 'Accessories'
-            AND r.SKU LIKE CONCAT(
-                CASE t.category
-                  WHEN 'Glass' THEN 'G'
-                  WHEN 'Aluminum' THEN 'A'
-                  WHEN 'Sealant' THEN 'S'
-                  WHEN 'Gypsum' THEN 'Y'
-                  WHEN 'C-Line' THEN 'C'
-                END,
-                RIGHT('00' + b.brand_no, 2),
-                RIGHT('00' + t.product_group_code, 2),
-                RIGHT('000' + t.sub_group_code, 3),
-                '%'
+        (
+            t.sku IS NOT NULL
+            AND t.sku <> ''
+            AND EXISTS (
+                SELECT 1
+                FROM STRING_SPLIT(t.sku, ',') s
+                WHERE LTRIM(RTRIM(s.value)) <> ''
+                  AND r.SKU = LTRIM(RTRIM(s.value))
             )
         )
     )
 
-    OR
-
-    (
-        /* 🔥 SKU */
-        t.sku IS NOT NULL
-        AND t.sku <> ''
-        AND EXISTS (
-            SELECT 1
-            FROM STRING_SPLIT(t.sku, ',') s
-            WHERE LTRIM(RTRIM(s.value)) <> ''
-              AND r.SKU = LTRIM(RTRIM(s.value))
-        )
+    /* FILTER */
+    AND (
+        @color IS NULL OR @color = ''
+        OR (
+            CASE 
+                WHEN t.category = 'Gypsum'
+                    THEN SUBSTRING(r.SKU, 9, 3)
+                ELSE SUBSTRING(r.SKU, 9, 2)
+            END
+        ) = @color
     )
-)
-
-/* 🔥 ต้องอยู่ข้างนอก */
-AND (
-    @color IS NULL
-    OR @color = ''
-    OR (
-        CASE 
-            WHEN t.category = 'Gypsum'
-                THEN SUBSTRING(r.SKU, 9, 3)
-            ELSE SUBSTRING(r.SKU, 9, 2)
-        END
-    ) = @color
-)
-
-AND (
-    t.thickness IS NULL
-    OR t.thickness = ''
-    OR (
-        CASE 
-            WHEN t.category = 'Gypsum'
-                THEN SUBSTRING(r.SKU, 12, 2)
-            ELSE SUBSTRING(r.SKU, 11, 2)
-        END
-    ) = RIGHT('00' + t.thickness, 2)
-)
 
     AND (
-      NULLIF(t.branch,'') IS NULL
-      OR r.Branch IN (
-        SELECT TRIM(value)
-        FROM STRING_SPLIT(REPLACE(t.branch,' ',''), ',')
-      )
+        t.thickness IS NULL OR t.thickness = ''
+        OR (
+            CASE 
+                WHEN t.category = 'Gypsum'
+                    THEN SUBSTRING(r.SKU, 12, 2)
+                ELSE SUBSTRING(r.SKU, 11, 2)
+            END
+        ) = RIGHT('00' + t.thickness, 2)
     )
+
+    AND (
+  NULLIF(t.branch,'') IS NULL
+  OR UPPER(LTRIM(RTRIM(r.Branch))) IN (
+    SELECT UPPER(TRIM(value))
+    FROM STRING_SPLIT(REPLACE(t.branch,' ',''), ',')
+  )
+)
 ) a
 
-/* =========================
-   🔥 JOIN ทีหลัง
-========================= */
+OUTER APPLY (
+    SELECT 
+        SUM(a2.actual_qty) AS sum_qty,
+        SUM(a2.actual_amount) AS sum_amount,
+        SUM(a2.actual_weight) AS sum_weight
+    FROM supplier_targets t2
 
+    OUTER APPLY (
+        SELECT 
+            SUM(r.Quantity) AS actual_qty,
+            SUM(r.Total_Cost) AS actual_amount,
+            SUM(ISNULL(r.Gross_Weight,0)) AS actual_weight
+        FROM RE_Detail_WithCost r
+
+        OUTER APPLY (
+            SELECT
+                CASE t2.category
+                    WHEN 'Gypsum' THEN (SELECT BRAND_NO FROM BRAND_Gypsum WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'Glass' THEN (SELECT BRAND_NO FROM BRAND_Glass WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'Aluminum' THEN (SELECT BRAND_NO FROM BRAND_Aluminium WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'C-Line' THEN (SELECT BRAND_NO FROM BRAND_CLine WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'Sealant' THEN (SELECT BRAND_NO FROM BRAND_Sealant WHERE BRAND_ID = t2.brand_code)
+                    WHEN 'Accessories' THEN (SELECT BRAND_NO FROM Accessory_BRAND WHERE BRAND_ID = t2.brand_code)
+                END AS brand_no
+        ) b2
+
+        WHERE r.Posting_Date >= t2.start_date
+          AND r.Posting_Date < DATEADD(DAY,1,t2.end_date)
+    ) a2
+
+    WHERE 
+    (
+        t.parent_target_ref IS NULL
+        AND t2.target_ref = t.target_ref
+    )
+    OR
+    (
+        t.parent_target_ref IS NOT NULL
+        AND COALESCE(t2.parent_target_ref, t2.target_ref) = t.parent_target_ref
+    )
+) g
+
+OUTER APPLY (
+    SELECT SUM(target_qty) AS total_target
+    FROM supplier_targets t3
+    WHERE 
+    (
+        t.parent_target_ref IS NULL
+        AND t3.target_ref = t.target_ref
+    )
+    OR
+    (
+        t.parent_target_ref IS NOT NULL
+        AND COALESCE(t3.parent_target_ref, t3.target_ref) = t.parent_target_ref
+    )
+) tg
+
+/* =========================
+   🔥 CORE LOGIC
+========================= */
+OUTER APPLY (
+    SELECT
+        CASE
+          WHEN LOWER(LTRIM(RTRIM(t.target_unit))) IN (N'ชิ้น','pcs')
+            THEN 
+                CASE 
+                    WHEN t.parent_target_ref IS NULL 
+                        THEN ISNULL(a.actual_qty,0)
+                    ELSE ISNULL(g.sum_qty,0)
+                END
+
+          WHEN LOWER(LTRIM(RTRIM(t.target_unit))) = N'บาท'
+            THEN 
+                CASE 
+                    WHEN t.parent_target_ref IS NULL 
+                        THEN ISNULL(a.actual_amount,0)
+                    ELSE ISNULL(g.sum_amount,0)
+                END
+
+          WHEN LOWER(LTRIM(RTRIM(t.target_unit))) IN (N'ตัน','ton')
+            THEN 
+                CASE 
+                    WHEN t.parent_target_ref IS NULL 
+                        THEN ISNULL(a.actual_weight,0) / 1000.0
+                    ELSE ISNULL(g.sum_weight,0) / 1000.0
+                END
+        END AS actual_value,
+
+        CASE
+          WHEN 
+            CASE 
+                WHEN t.parent_target_ref IS NULL 
+                    THEN ISNULL(t.target_qty,0)
+                ELSE ISNULL(tg.total_target,0)
+            END = 0 
+          THEN NULL
+          ELSE
+            (
+                CASE
+                  WHEN LOWER(LTRIM(RTRIM(t.target_unit))) IN (N'ชิ้น','pcs')
+                    THEN 
+                        CASE 
+                            WHEN t.parent_target_ref IS NULL 
+                                THEN ISNULL(a.actual_qty,0)
+                            ELSE ISNULL(g.sum_qty,0)
+                        END
+
+                  WHEN LOWER(LTRIM(RTRIM(t.target_unit))) = N'บาท'
+                    THEN 
+                        CASE 
+                            WHEN t.parent_target_ref IS NULL 
+                                THEN ISNULL(a.actual_amount,0)
+                            ELSE ISNULL(g.sum_amount,0)
+                        END
+
+                  WHEN LOWER(LTRIM(RTRIM(t.target_unit))) IN (N'ตัน','ton')
+                    THEN 
+                        CASE 
+                            WHEN t.parent_target_ref IS NULL 
+                                THEN ISNULL(a.actual_weight,0) / 1000.0
+                            ELSE ISNULL(g.sum_weight,0) / 1000.0
+                        END
+                END
+            ) * 100.0 /
+            CASE 
+                WHEN t.parent_target_ref IS NULL 
+                    THEN ISNULL(t.target_qty,0)
+                ELSE ISNULL(tg.total_target,0)
+            END
+        END AS achievement_percent
+) v
+
+/* =========================
+   JOIN
+========================= */
 LEFT JOIN BRAND_Aluminium ba
   ON ba.BRAND_NO = RIGHT('00' + t.brand_code, 2)
  AND t.category = 'Aluminum'
@@ -511,7 +733,7 @@ LEFT JOIN Accessory_GROUP accg
   ON accg.Group_ID = RIGHT('00' + t.product_group_code, 2)
 
 WHERE t.supplier_code = @supplier_code
-ORDER BY t.created_at DESC`);
+ORDER BY t.created_at DESC;`);
 
     res.json(result.recordset);
 

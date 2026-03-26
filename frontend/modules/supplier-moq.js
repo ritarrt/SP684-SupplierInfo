@@ -1,43 +1,220 @@
+import { loadCoverageToForm } from "./coverage-helper.js";
+import { loadColors, loadThickness } from "./master-helper.js";
+import { loadGroups, loadSubGroups } from "./coverage-helper.js";
+
 console.log("supplier-moq.js loaded");
+
 let moqData = [];
 let currentCancelMoqId = null;
 
+function loadBrands(category, selectId) {
 
+  const select = document.getElementById(selectId);
+  if (!select) return;
 
-document.addEventListener("DOMContentLoaded", () => {
- const supplierNo = window.supplierNo;
+  select.innerHTML = `<option value="">- เลือก -</option>`;
 
-if (!supplierNo) return;
+  const data = window.COVERAGE_DATA || [];
 
+  const seen = new Set();
 
-  // โหลดรายการ MOQ ตอนเปิดหน้า
-  loadMoqList(supplierNo);
+  data
+    .filter(x => !category || x.category === category)
+    .forEach(d => {
 
-  // ผูกปุ่มบันทึก
-  const btn = document.getElementById("submitMoqBtn");
-  if (!btn) {
-    console.warn("❌ submitMoqBtn not found");
+      if (!d.brand || !d.brand_name) return;
+      if (seen.has(d.brand)) return;
+
+      seen.add(d.brand);
+
+      const opt = document.createElement("option");
+      opt.value = d.brand;
+      opt.textContent = d.brand_name;
+
+      select.appendChild(opt);
+    });
+}
+
+function renderMoqRegionDropdown() {
+
+  const el = document.getElementById("moqRegionDropdown");
+
+  if (!window.branchData) {
+    console.warn("❌ branchData ยังไม่มา");
     return;
   }
 
+  const regions = [...new Set(window.branchData.map(b => b.region))];
+
+  el.innerHTML = regions.map(r => `
+    <label class="flex items-center gap-2">
+      <input type="checkbox" value="${r}" onchange="onMoqRegionChange()">
+      ${r}
+    </label>
+  `).join("");
+
+  console.log("✅ MOQ region loaded:", regions);
+}
+
+function renderMoqBranchDropdown() {
+
+  const el = document.getElementById("moqBranchDropdown");
+
+  const selectedRegions = getCheckedValues("moqRegionDropdown");
+
+const filtered = (window.branchData || []).filter(b =>
+  selectedRegions.length === 0 ||
+  selectedRegions.includes((b.region || "").trim())
+);
+
+console.log("selectedRegions:", selectedRegions);
+console.log("branchData:", window.branchData);
+
+  el.innerHTML = filtered.map(b => `
+    <label class="flex items-center gap-2">
+      <input type="checkbox" value="${b.branchCode}">
+      ${b.branchCode} - ${b.branchName}
+    </label>
+  `).join("");
+}
+
+function getCheckedValues(dropdownId) {
+  return Array.from(
+    document.querySelectorAll(`#${dropdownId} input:checked`)
+  ).map(el => el.value);
+}
+
+function onMoqRegionChange() {
+  renderMoqBranchDropdown();
+  updateText("moqRegionDropdown", "moqRegionText");
+}
+
+function updateText(dropdownId, textId) {
+  const values = getCheckedValues(dropdownId);
+
+document.getElementById(textId).innerText =
+  values.length ? values.join(", ") : "- เลือก -";
+}
+
+/* ===============================
+   🔥 SHARED PRODUCT FILTER
+================================ */
+function initProductFilter(prefix, supplierNo) {
+
+  loadCoverageToForm(supplierNo, {
+    category: `${prefix}Cat`,
+    brand: `${prefix}Brand`,
+    group: `${prefix}Group`,
+    sub: `${prefix}Sub`,
+    color: `${prefix}Color`,
+    thickness: `${prefix}Thick`,
+    sku: `${prefix}Sku`
+  });
+
+  const catEl = document.getElementById(`${prefix}Cat`);
+  const brandEl = document.getElementById(`${prefix}Brand`);
+  const groupEl = document.getElementById(`${prefix}Group`);
+
+// 🔥 1. category → brand
+catEl?.addEventListener("change", () => {
+  loadBrands(catEl.value, `${prefix}Brand`);
+
+  groupEl.innerHTML = `<option value="">- เลือก -</option>`;
+  document.getElementById(`${prefix}Sub`).innerHTML = `<option value="">- เลือก -</option>`;
+});
+
+// 🔥 2. brand → group
+brandEl?.addEventListener("change", () => {
+  loadGroups(catEl.value, brandEl.value, `${prefix}Group`);
+
+  document.getElementById(`${prefix}Sub`).innerHTML = `<option value="">- เลือก -</option>`;
+});
+
+// 🔥 3. group → sub
+groupEl?.addEventListener("change", () => {
+  loadSubGroups(catEl.value, brandEl.value, groupEl.value, `${prefix}Sub`);
+});
+
+  // 🔥 ของเดิม (ถูกแล้ว)
+  catEl?.addEventListener("change", (e) => {
+    loadColors(e.target.value, `${prefix}Color`);
+    loadThickness(e.target.value, `${prefix}Thick`);
+  });
+}
+
+
+function onMoqBranchChange() {
+  updateText("moqBranchDropdown", "moqBranchText");
+}
+
+window.onMoqBranchChange = onMoqBranchChange;
+/* ===============================
+   🔥 MULTI SELECT HELPER
+================================ */
+function getMulti(id) {
+  const el = document.getElementById(id);
+  if (!el) return "";
+  return Array.from(el.selectedOptions).map(o => o.value).join(",");
+}
+
+/* ===============================
+   INIT
+================================ */
+document.addEventListener("DOMContentLoaded", async () => {
+  const supplierNo = new URLSearchParams(window.location.search).get("id");
+
+  if (!supplierNo) return;
+
+  console.log("🔥 MOQ supplierNo =", supplierNo);
+
+  // 🔥 ใช้ shared logic
+  initProductFilter("moq", supplierNo);
+
+  setTimeout(() => {
+  document.getElementById("moqCat")?.dispatchEvent(new Event("change"));
+}, 100);
+
+
+  loadMoqList(supplierNo);
+await loadBranchData();
+
+renderMoqRegionDropdown();
+renderMoqBranchDropdown();
+
+  const btn = document.getElementById("submitMoqBtn");
+  if (!btn) return;
+
   btn.addEventListener("click", async () => {
-    console.log("🟢 CLICK submitMoqBtn");
 
     const payload = {
       moq_name: document.getElementById("moqName")?.value,
-      region: document.getElementById("moqRegion")?.value,
-      branch: document.getElementById("moqBranch")?.value,
+
+      // 🔥 FIX multi-select
+      region: getCheckedValues("moqRegionDropdown").join(","),
+branch: getCheckedValues("moqBranchDropdown").join(","),
+
       category: document.getElementById("moqCat")?.value,
-      brand: document.getElementById("moqBrand")?.value,
-      product_group: document.getElementById("moqGroup")?.value,
-      sub_group: document.getElementById("moqSub")?.value,
+
+      // 🔥 FIX normalize
+      brand: document.getElementById("moqBrand")?.selectedOptions[0]?.text,
+      brand_code: document.getElementById("moqBrand")?.value,
+
+      product_group: document.getElementById("moqGroup")?.selectedOptions[0]?.text,
+      product_group_code: document.getElementById("moqGroup")?.value,
+
+      sub_group: document.getElementById("moqSub")?.selectedOptions[0]?.text,
+      sub_group_code: document.getElementById("moqSub")?.value,
+
       color: document.getElementById("moqColor")?.value,
       mold: document.getElementById("moqMold")?.value,
       thickness: document.getElementById("moqThick")?.value,
+
       sku: document.getElementById("moqSku")?.value,
+
       moq_type: document.getElementById("moqType")?.value,
       vehicle_type: document.getElementById("moqVehicle")?.value,
       measure_type: document.getElementById("moqMeasure")?.value,
+
       moq_qty: Number(document.getElementById("moqQty")?.value || 0),
       moq_unit: document.getElementById("moqUnit")?.value,
     };
@@ -56,10 +233,7 @@ if (!supplierNo) return;
 
       showSaveMessage("บันทึก MOQ สำเร็จ");
 
-      // รีโหลดหน้าเพื่อแสดงผลล่าสุด
-      setTimeout(() => {
-        window.location.reload();
-      }, 800);
+      setTimeout(() => window.location.reload(), 800);
 
     } catch (err) {
       console.error("❌ MOQ save error", err);
@@ -67,30 +241,31 @@ if (!supplierNo) return;
     }
   });
 
-  // ===== Modal Buttons =====
-const modal = document.getElementById("cancelMoqModal");
-const btnNo = document.getElementById("cancelMoqNoBtn");
-const btnYes = document.getElementById("cancelMoqYesBtn");
+  setupModalEvents();
+});
 
-if (btnNo) {
-  btnNo.addEventListener("click", () => {
+/* ===============================
+   MODAL
+================================ */
+function setupModalEvents() {
+  const modal = document.getElementById("cancelMoqModal");
+  const btnNo = document.getElementById("cancelMoqNoBtn");
+  const btnYes = document.getElementById("cancelMoqYesBtn");
+
+  btnNo?.addEventListener("click", () => {
     modal.classList.add("hidden");
     modal.classList.remove("flex");
     currentCancelMoqId = null;
   });
-}
 
-if (btnYes) {
-  btnYes.addEventListener("click", async () => {
-
+  btnYes?.addEventListener("click", async () => {
     const supplierNo = new URLSearchParams(window.location.search).get("id");
 
     try {
       const res = await fetch(
-  `${API_BASE}/api/suppliers/${supplierNo}/moq/${currentCancelMoqId}/toggle`,
-  { method: "PUT" }
-);
-
+        `${API_BASE}/api/suppliers/${supplierNo}/moq/${currentCancelMoqId}/toggle`,
+        { method: "PUT" }
+      );
 
       if (!res.ok) throw new Error(await res.text());
 
@@ -108,57 +283,44 @@ if (btnYes) {
   });
 }
 
-});
-
-
 /* ===============================
-   LOAD MOQ LIST
+   LOAD
 ================================ */
 async function loadMoqList(supplierNo) {
   try {
-    console.log("📡 Load MOQ for", supplierNo);
-
     const res = await fetch(
       `${API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/moq`
     );
 
     if (!res.ok) throw new Error(await res.text());
 
-   moqData = await res.json();
-console.log("✅ MOQ rows", moqData);
+    moqData = await res.json();
 
-renderMoqTable();
+    renderMoqTable();
 
   } catch (err) {
     console.error("❌ Load MOQ error", err);
   }
 }
 
-
 /* ===============================
-   RENDER TABLE
+   TABLE
 ================================ */
 function renderMoqTable() {
   const tbody = document.getElementById("moqTableBody");
   const countEl = document.getElementById("moqRecordCount");
 
-  if (!tbody) {
-    console.warn("❌ moqTableBody not found");
-    return;
-  }
+  let rows = [...moqData];
 
   const filterValue =
     document.querySelector("input[name='moqFilter']:checked")?.value;
 
-  // ✅ filter จาก moqData เสมอ
-  let rows = [...moqData];
-
   if (filterValue === "active") {
-    rows = moqData.filter(r => r.status === "OPEN");
+    rows = rows.filter(r => r.status === "OPEN");
   }
 
   if (filterValue === "cancelled") {
-    rows = moqData.filter(r => r.status === "CANCELLED");
+    rows = rows.filter(r => r.status === "CANCELLED");
   }
 
   tbody.innerHTML = "";
@@ -168,118 +330,102 @@ function renderMoqTable() {
 
     tr.innerHTML = `
       <td>${idx + 1}</td>
-
       <td>
-        <span
-          class="badge ${r.status === "OPEN" ? "bg-success" : "bg-danger"}"
-          style="cursor:pointer"
-          onclick="toggleMoqStatus(${r.moq_id}, '${r.status}')"
-        >
+        <span class="badge ${r.status === "OPEN" ? "bg-success" : "bg-danger"}"
+          onclick="toggleMoqStatus(${r.moq_id}, '${r.status}')">
           ${r.status}
         </span>
       </td>
-
-      <td>
-        <div class="fw-bold">${r.moq_name || "-"}</div>
-      </td>
-
+      <td>${r.moq_name || "-"}</td>
       <td class="small">
         ${r.region || "-"} / ${r.branch || "-"}<br>
-        ${r.category || "-"} / ${r.brand || "-"} / ${r.product_group || "-"}<br>
-        ${r.sub_group || "-"} / ${r.color || "-"} / ${r.thickness || "-"}<br>
-        Mold: ${r.mold || "-"} / SKU: ${r.sku || "-"}
+        ${r.category || "-"} / ${r.brand || "-"} / ${r.product_group || "-"}
       </td>
+      <td><b>${r.moq_qty} ${r.moq_unit}</b></td>
+      <td>${formatThaiDateTime(r.updated_at || r.created_at)}</td>
 
-      <td class="small">
-        ประเภท: ${r.moq_type || "-"}<br>
-        รถ: ${r.vehicle_type || "-"}<br>
-        ตัววัด: ${r.measure_type || "-"}<br>
-        <strong>${r.moq_qty || 0} ${r.moq_unit || ""}</strong>
-      </td>
-
-      <td class="small">
-  ${formatThaiDateTime(r.updated_at || r.created_at)}
-</td>
-
-
-      </td>
-
-      <td class="text-center">
-        <button
-          class="btn btn-sm btn-outline-primary"
-          onclick='editMoq(${JSON.stringify(r)})'
-        >
-          แก้ไข
-        </button>
-      </td>
     `;
 
     tbody.appendChild(tr);
   });
 
-  if (countEl) {
-    countEl.textContent = `${rows.length} รายการ`;
-  }
+  countEl.textContent = `${rows.length} รายการ`;
 }
-
-
 
 /* ===============================
-   EDIT MOQ
+   EDIT
 ================================ */
 function editMoq(row) {
-  console.log("✏️ Edit MOQ", row);
 
-  // ====== ข้อมูลพื้นฐาน ======
-  document.getElementById("moqCode").value = row.moq_id;
-  document.getElementById("moqStatus").value = row.status;
-  document.getElementById("moqStatusText").textContent = row.status;
   document.getElementById("moqName").value = row.moq_name || "";
 
-  // ====== Scope ======
-  document.getElementById("moqRegion").value = row.region || "-";
-  document.getElementById("moqBranch").value = row.branch || "";
-  document.getElementById("moqCat").value = row.category || "-";
-  document.getElementById("moqBrand").value = row.brand || "-";
-  document.getElementById("moqGroup").value = row.product_group || "-";
-  document.getElementById("moqSub").value = row.sub_group || "-";
-  document.getElementById("moqColor").value = row.color || "-";
-  document.getElementById("moqMold").value = row.mold || "-";
-  document.getElementById("moqThick").value = row.thickness || "-";
+  // 🔥 FIX ใช้ code
+  document.getElementById("moqCat").value = row.category || "";
+  document.getElementById("moqBrand").value = row.brand_code || "";
+  document.getElementById("moqGroup").value = row.product_group_code || "";
+  document.getElementById("moqSub").value = row.sub_group_code || "";
+
+  document.getElementById("moqColor").value = row.color || "";
+  document.getElementById("moqThick").value = row.thickness || "";
   document.getElementById("moqSku").value = row.sku || "";
 
-  // ====== เงื่อนไขการสั่ง ======
-  document.getElementById("moqType").value = row.moq_type || "";
-  document.getElementById("moqVehicle").value = row.vehicle_type || "-";
-  document.getElementById("moqMeasure").value = row.measure_type || "";
   document.getElementById("moqQty").value = row.moq_qty || 0;
   document.getElementById("moqUnit").value = row.moq_unit || "";
-
-  document.getElementById("submitMoqBtn").textContent = "บันทึกการแก้ไข";
 }
 
-function toggleMoqStatus(moqId, currentStatus) {
-
+/* ===============================
+   STATUS
+================================ */
+function toggleMoqStatus(moqId, status) {
   currentCancelMoqId = moqId;
 
   const modal = document.getElementById("cancelMoqModal");
-
-  // เปลี่ยนข้อความตามสถานะ
-  const messageEl = modal.querySelector("p");
-
-  if (currentStatus === "OPEN") {
-    messageEl.innerHTML =
-      "คุณกำลังจะยกเลิก MOQ นี้<br>ต้องการดำเนินการต่อหรือไม่?";
-  } else {
-    messageEl.innerHTML =
-      "คุณต้องการเปิดใช้งาน MOQ นี้อีกครั้งหรือไม่?";
-  }
-
   modal.classList.remove("hidden");
   modal.classList.add("flex");
 }
 
-
 function formatThaiDateTime(dateStr) {
-  return dateStr || "-";
+  if (!dateStr) return "-";
+
+  const clean = dateStr.replace("T", " ").substring(0, 19);
+
+  const [datePart, timePart] = clean.split(" ");
+  if (!datePart || !timePart) return "-";
+
+  let [year, month, day] = datePart.split("-");
+  const [hour, minute, second] = timePart.split(":");
+
+  // 🔥 logic เดียวกับ Target
+  if (parseInt(year) > 2400) {
+    year = parseInt(year);
+  } else {
+    year = parseInt(year) + 543;
+  }
+
+  return `
+    <div class="leading-tight">
+      <div class="font-medium">
+        ${day}/${month}/${year}
+      </div>
+      <div class="text-xs text-gray-400">
+        ${hour}:${minute}:${second}
+      </div>
+    </div>
+  `;
 }
+
+async function loadBranchData() {
+  try {
+    const res = await fetch(`${API_BASE}/api/master/branches`);
+    const data = await res.json();
+
+    console.log("🔥 branch loaded:", data);
+
+    window.branchData = data;
+
+  } catch (err) {
+    console.error("❌ load branch error", err);
+  }
+}
+
+window.onMoqRegionChange = onMoqRegionChange;

@@ -19,6 +19,10 @@ export async function loadCoverageToForm(supplierNo, mapping) {
   populate(mapping.color, data, "color_name");
   populate(mapping.thickness, data, "thickness_name");
   populateSku(mapping.sku, data);
+
+  // 🔥 ADD THIS
+  window.COVERAGE_DATA = data;
+  window.renderContactDropdowns?.();
 }
 
 function populate(selectId, dataArray, field) {

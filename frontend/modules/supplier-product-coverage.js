@@ -62,8 +62,25 @@ function resetRow(row) {
   if (brandText) brandText.textContent = "- เลือกแบรนด์ -";
   if (groupText) groupText.textContent = "- เลือกกลุ่มสินค้า -";
 
-  const sub = row.querySelector(".subgroup-select");
-  if (sub) sub.value = "";
+  // ===== RESET SUBGROUP DISPLAY =====
+const subText = row.querySelector(".subgroup-display span");
+if (subText) subText.textContent = "- เลือก -";
+  // ===== RESET SUBGROUP =====
+const subSel = row.querySelector(".subgroup-select");
+if (subSel) {
+  subSel.value = "";
+  subSel.innerHTML = `<option value="">- เลือก -</option>`;
+}
+
+// ===== RESET SUBGROUP DROPDOWN =====
+const subDD = row.querySelector(".subgroup-dropdown");
+if (subDD) {
+  subDD.innerHTML = "";
+  subDD.classList.add("hidden");
+}
+
+// ===== RESET DATA =====
+row.dataset.subGroup = "";
 
   const sku = row.querySelector(".sku-input");
   if (sku) sku.value = "";
@@ -160,6 +177,10 @@ function addProductRow() {
   const groupText = newRow.querySelector(".group-display span");
   if (groupText) groupText.textContent = "- เลือกกลุ่มสินค้า -";
 
+  // ===== RESET SUBGROUP DISPLAY =====
+const subText = newRow.querySelector(".subgroup-display span");
+if (subText) subText.textContent = "- เลือก -";
+
   // =========================
   // reset dropdown content
   // =========================
@@ -181,11 +202,22 @@ function addProductRow() {
     groupDD.classList.add("hidden");
   }
 
-  // =========================
-  // reset inputs (❗ ห้ามใช้ ?.value = )
-  // =========================
-  const subSel = newRow.querySelector(".subgroup-select");
-  if (subSel) subSel.value = "";
+// ===== RESET SUBGROUP =====
+const subSel = newRow.querySelector(".subgroup-select");
+if (subSel) {
+  subSel.value = "";
+  subSel.innerHTML = `<option value="">- เลือก -</option>`;
+}
+
+// ===== RESET SUBGROUP DROPDOWN =====
+const subDD = newRow.querySelector(".subgroup-dropdown");
+if (subDD) {
+  subDD.innerHTML = "";
+  subDD.classList.add("hidden");
+}
+
+// ===== RESET DATA =====
+newRow.dataset.subGroup = "";
 
   const skuIn = newRow.querySelector(".sku-input");
 if (skuIn) {
@@ -485,6 +517,8 @@ function collectProductCoverage() {
       row.querySelector(".group-display span")?.textContent || null,
 
     subGroup: row.dataset.subGroup || null,
+SUBGROUP_NAME:
+  row.querySelector(".subgroup-display span")?.textContent || null,
     sku: row.querySelector(".sku-input")?.value || null
   }));
 }
@@ -587,9 +621,12 @@ if (item.subGroup) {
   if (input) {
     row.querySelector(".subgroup-display span").textContent =
       input.parentElement.textContent.trim();
+  } else if (item.subGroup_name) {
+    // ⭐ fallback
+    row.querySelector(".subgroup-display span").textContent =
+      item.subGroup_name;
   }
 }
-
   // =========================
   // SKU
   // =========================

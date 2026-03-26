@@ -169,3 +169,39 @@ export async function updateSupplierByNo(req, res) {
     res.status(500).json({ message: "Failed to update supplier" });
   }
 }
+
+export async function getSupplierCoverage(req, res) {
+  try {
+    const supplierNo = req.params.supplierNo;
+    const pool = await getPool();
+
+    const result = await pool
+      .request()
+      .input("supplierNo", sql.VarChar, supplierNo)
+      .query(`
+        SELECT TOP 1 PayloadJson
+        FROM Supplier_ProductCoverage_History
+        WHERE SupplierNo = @supplierNo
+        ORDER BY CreatedAt DESC
+      `);
+
+    if (!result.recordset.length) {
+      return res.json([]); // ไม่มีข้อมูล
+    }
+
+    const json = result.recordset[0].PayloadJson;
+
+    let parsed = [];
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      parsed = [];
+    }
+
+    res.json(parsed);
+
+  } catch (err) {
+    console.error("getSupplierCoverage error:", err);
+    res.status(500).json({ message: "Failed to fetch coverage" });
+  }
+}

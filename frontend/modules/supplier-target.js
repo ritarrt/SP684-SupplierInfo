@@ -160,10 +160,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         region: getSelectedValues("regionDropdown").join(",") || null,
 province: getSelectedValues("provinceDropdown").join(",") || null,
 branch: getSelectedValues("branchDropdown").join(",") || null,
+parent_target_ref: document.getElementById("tgRef")?.value || null,
         category: category,
 
         brand: brand,
         group: productGroup,
+      
 
         sub_group_name: document.getElementById("tgSub")?.selectedOptions[0]?.text || "",
         sub_group_code: document.getElementById("tgSub")?.value || "",
@@ -330,17 +332,24 @@ const data = await res.json();
     tbody.innerHTML = "";
 
     const selectedFilter =
-      document.querySelector('input[name="tgFilter"]:checked')?.value || "NORMAL";
+  document.querySelector('input[name="tgFilter"]:checked')?.value || "OPEN";
 
     const filtered = data.filter(item => {
-      if (selectedFilter === "NORMAL") {
-        return item.status !== "CANCELLED";
-      }
-      if (selectedFilter === "CANCELLED") {
-        return item.status === "CANCELLED";
-      }
-      return true;
-    });
+
+  if (selectedFilter === "OPEN") {
+    return item.status === "OPEN";
+  }
+
+  if (selectedFilter === "CLOSED") {
+    return item.status === "CLOSED";
+  }
+
+  if (selectedFilter === "CANCELLED") {
+    return item.status === "CANCELLED";
+  }
+
+  return true;
+});
 
     const countEl = document.getElementById("tgRecordCount");
     if (countEl) {
@@ -399,7 +408,14 @@ const data = await res.json();
         <tr>
           <td>${index + 1}</td>
           <td>${statusBadge}</td>
-          <td>${item.target_name || "-"}</td>
+          <td>
+  <div style="font-weight:600;">
+    ${item.target_ref || "-"}
+  </div>
+  <div style="font-size:12px; color:#6c757d;">
+    ${item.target_name || "-"}
+  </div>
+</td>
 
           <td class="small">
             ${item.region || "-"} / ${item.province || "-"} / ${item.branch || "-"}<br>
@@ -423,10 +439,17 @@ ${item.color || "-"} / ${item.thickness || "-"}
 <div style="font-size:14px; margin-top:4px;">
 
   ${
-    item.target_unit === "ชิ้น" || item.target_unit === "pcs"
-      ? `${Number(item.actual_qty || 0).toLocaleString()} ชิ้น`
-      : `${Number(item.actual_amount || 0).toLocaleString()} บาท`
-  }
+  item.target_unit === "ชิ้น" || item.target_unit === "pcs"
+    ? `${Number(item.actual_qty || 0).toLocaleString()} ชิ้น`
+
+    : item.target_unit === "บาท"
+    ? `${Number(item.actual_amount || 0).toLocaleString()} บาท`
+
+    : item.target_unit === "ตัน" || item.target_unit === "ton"
+    ? `${Number((item.actual_weight || 0) / 1000).toLocaleString()} ตัน`
+
+    : "-"
+}
 
   ${
     item.achievement_percent
@@ -612,9 +635,6 @@ async function loadContactDropdown() {
   }
 }
 
-// ===================================================
-// UPDATE LAST MODIFIED TIME
-// ===================================================
 // ===================================================
 // UPDATE LAST MODIFIED TIME
 // ===================================================

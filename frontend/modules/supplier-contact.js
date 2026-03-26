@@ -24,9 +24,9 @@ function mapRegionToDB(region) {
 }
 
 // ===============================
-// RENDER PROVINCE
+// RENDER PROVINCE DROPDOWN
 // ===============================
-function renderProvinceDropdown(region = null) {
+function renderProvinceDropdown(region = null, selectedValue = null) {
   const select = document.getElementById("ctProvince");
   if (!select) return;
 
@@ -40,32 +40,36 @@ function renderProvinceDropdown(region = null) {
       const opt = document.createElement("option");
       opt.value = p.provinceCode;
       opt.textContent = p.provinceName;
+
+      if (selectedValue && selectedValue === p.provinceCode) {
+        opt.selected = true;
+      }
+
       select.appendChild(opt);
     });
 }
 
 // ===============================
-// GET COVERAGE DATA (SAFE)
+// GET COVERAGE DATA
 // ===============================
 function getCoverageData() {
-  const rows = document.querySelectorAll(".product-row");
-
-  // 🔥 debug สำคัญ
-  console.log("FOUND product-row:", rows.length);
-
-  if (!rows.length) {
-    return { brands: [], groups: [] };
-  }
-
   const brands = new Set();
   const groups = new Set();
 
-  rows.forEach(row => {
-    const brand = row.querySelector(".brand-display span")?.textContent?.trim();
-    const group = row.querySelector(".group-display span")?.textContent?.trim();
+  const data = window.COVERAGE_DATA || [];
 
-    if (brand && !brand.includes("เลือก")) brands.add(brand);
-    if (group && !group.includes("เลือก")) groups.add(group);
+  data.forEach(item => {
+    // 🔥 ปรับ field ตามของจริง (ลอง log ดูถ้าไม่ตรง)
+    const brand = item.brand_name || item.brand || item.brandName;
+    const group = item.group_name || item.group || item.groupName;
+
+    if (brand) {
+      brands.add(brand);
+    }
+
+    if (group) {
+      groups.add(group);
+    }
   });
 
   return {
@@ -75,40 +79,46 @@ function getCoverageData() {
 }
 
 // ===============================
-// RENDER DROPDOWN (SAFE)
+// RENDER BRAND + GROUP (🔥 FIX)
 // ===============================
 function renderContactDropdowns() {
   const { brands, groups } = getCoverageData();
 
-  console.log("RENDER:", brands, groups);
-
   const brandSelect = document.getElementById("ctBrand");
   const groupSelect = document.getElementById("ctGroup");
 
-  if (brandSelect) {
-    const current = brandSelect.value;
+  // 🔥 จำค่าปัจจุบันก่อน render
+  const currentBrand = brandSelect?.value;
+  const currentGroup = groupSelect?.value;
 
+  if (brandSelect) {
     brandSelect.innerHTML = `<option value="">- เลือก -</option>`;
 
     brands.forEach(b => {
       const opt = document.createElement("option");
       opt.value = b;
       opt.textContent = b;
-      if (b === current) opt.selected = true;
+
+      if (currentBrand === b) {
+        opt.selected = true;
+      }
+
       brandSelect.appendChild(opt);
     });
   }
 
   if (groupSelect) {
-    const current = groupSelect.value;
-
     groupSelect.innerHTML = `<option value="">- เลือก -</option>`;
 
     groups.forEach(g => {
       const opt = document.createElement("option");
       opt.value = g;
       opt.textContent = g;
-      if (g === current) opt.selected = true;
+
+      if (currentGroup === g) {
+        opt.selected = true;
+      }
+
       groupSelect.appendChild(opt);
     });
   }
@@ -122,28 +132,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadProvinceMaster();
   renderProvinceDropdown();
 
+  renderContactDropdowns();
+
   const regionEl = document.getElementById("ctRegion");
 
   if (regionEl) {
     regionEl.addEventListener("change", (e) => {
+      const selectedProvince = document.getElementById("ctProvince").value;
+
       document.getElementById("ctProvince").value = "";
-      renderProvinceDropdown(e.target.value);
+      renderProvinceDropdown(e.target.value, selectedProvince);
     });
   }
-
-  // 🔥 IMPORTANT: รอ product-row มาก่อน
-  const interval = setInterval(() => {
-    const rows = document.querySelectorAll(".product-row");
-
-    if (rows.length > 0) {
-      console.log("✅ FOUND PRODUCT → render dropdown");
-      renderContactDropdowns();
-      clearInterval(interval);
-    }
-  }, 300);
 });
 
-// ❌ ลบ click listener ทิ้งไปเลย
+// ❌ ลบ AUTO CLICK UPDATE ทิ้งไปเลย
 
 // ===============================
 // SAVE CONTACT
@@ -160,10 +163,7 @@ async function saveSupplierContact() {
     contactType: document.querySelector('input[name="ctType"]:checked')?.value || null,
     name: document.getElementById("ctName")?.value || null,
     position: document.getElementById("ctPosition")?.value || null,
-
-    // 🔥 FIX REGION
-    region: mapRegionToDB(document.getElementById("ctRegion")?.value) || null,
-
+    region: document.getElementById("ctRegion")?.value || null,
     province: document.getElementById("ctProvince")?.value || null,
     brand: document.getElementById("ctBrand")?.value || null,
     productGroup: document.getElementById("ctGroup")?.value || null,
@@ -205,4 +205,6 @@ function collectPhones() {
     .join(", ");
 }
 
+// expose
 window.saveSupplierContact = saveSupplierContact;
+window.renderContactDropdowns = renderContactDropdowns;
