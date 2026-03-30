@@ -63,28 +63,33 @@ export async function uploadSupplierDocument(req, res) {
 /* =====================================================
    GET ACTIVE SUPPLIER DOCUMENTS
 ===================================================== */
-export const getSupplierDocuments = async (req, res) => {
+export async function getSupplierDocuments(req, res) {
   try {
-    const supplierNo = req.params.supplierNo;
+    const { supplierNo } = req.params;
     const pool = await getPool();
 
     const result = await pool.request()
-      .input("supplier_no", sql.NVarChar, supplierNo)
+      .input("supplierNo", supplierNo)
       .query(`
-        SELECT *
+        SELECT 
+          id,
+          supplier_no,
+          file_name,
+          file_path,
+          description,
+          created_at
         FROM supplier_documents
-        WHERE supplier_no = @supplier_no
-        AND is_active = 1
-        ORDER BY uploaded_at DESC
+        WHERE supplier_no = @supplierNo
+        ORDER BY created_at DESC
       `);
 
     res.json(result.recordset);
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "โหลดเอกสารไม่สำเร็จ" });
+    console.error("❌ getSupplierDocuments error:", err);
+    res.status(500).json({ error: "server error" });
   }
-};
+}
 
 
 /* =====================================================
