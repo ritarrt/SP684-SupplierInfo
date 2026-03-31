@@ -16,7 +16,7 @@ export async function uploadSupplierDocument(req, res) {
     }
 
     // 🔥 สร้าง path ให้เปิดผ่าน browser ได้
-    const publicPath = `/uploads/supplier_docs/${file.filename}`;
+    const publicPath = `uploads/supplier_docs/${file.filename}`;
 
 
     await pool.request()
@@ -113,18 +113,7 @@ export async function softDeleteSupplierDocument(req, res) {
         WHERE id = @id
       `);
 
-res.json({
-  success: true,
-  file: {
-    file_name: file.originalname,
-    file_path: publicPath,
-    description
-  }
-});
-
-if (!supplierNo) {
-  return res.status(400).json({ error: "supplierNo required" });
-}
+res.json({ success: true });
 
   } catch (err) {
     console.error("softDeleteSupplierDocument error:", err);

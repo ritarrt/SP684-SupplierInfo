@@ -80,9 +80,16 @@ import {
  * MULTER (FILE UPLOAD)
  * ==============================
  */
-const upload = multer({
-  dest: "uploads/supplier_docs/",
+const storage = multer.diskStorage({
+  destination: "uploads/supplier_docs/",
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = file.originalname.split(".").pop();
+    cb(null, file.fieldname + "-" + uniqueSuffix + "." + ext);
+  },
 });
+
+const upload = multer({ storage });
 
 /**
  * ==============================

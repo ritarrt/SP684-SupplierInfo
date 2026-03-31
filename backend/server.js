@@ -22,6 +22,7 @@ const __dirname = path.dirname(__filename);
 
 // serve uploads
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/uploads/supplier_docs", express.static(path.join(process.cwd(), "uploads/supplier_docs")));
 
 // ✅ API FIRST
 app.use("/api/suppliers", supplierRoutes);
@@ -30,28 +31,7 @@ app.use("/api/targets", targetRoutes);
 // ✅ THEN static
 app.use(express.static(path.join(__dirname, "../frontend")));
 
-const PORT = Number(process.env.PORT || 3003);
+const PORT = Number(process.env.PORT || 3000);
 app.listen(PORT, () => {
   console.log(`Supplier API running on port ${PORT}`);
-});
-
-app.get("/api/me", async (req, res) => {
-  try {
-    const r = await fetch("http://192.192.0.37:52683/auth/profile", {
-      headers: {
-        cookie: req.headers.cookie   // 🔥 ส่ง cookie จาก DX ต่อไป
-      }
-    });
-
-    const data = await r.json();
-
-    if (!data?.user) {
-      return res.status(401).json({ user: null });
-    }
-
-    res.json({ user: data.user });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
