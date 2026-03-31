@@ -69,20 +69,23 @@ export async function getSupplierDocuments(req, res) {
     const pool = await getPool();
 
     const result = await pool.request()
-      .input("supplierNo", supplierNo)
-      .query(`
-        SELECT 
-          id,
-          supplier_no,
-          file_name,
-          file_path,
-          description,
-          created_at
-        FROM supplier_documents
-        WHERE supplier_no = @supplierNo
-        ORDER BY created_at DESC
-      `);
+  .input("supplierNo", sql.NVarChar(20), supplierNo)
+  .query(`
+    SELECT 
+      id,
+      supplier_no,
+      file_name,
+      file_path,
+      description,
+      uploaded_at
 
+    FROM dbo.supplier_documents
+
+    WHERE supplier_no = @supplierNo
+      AND ISNULL(is_active,1) = 1
+
+    ORDER BY uploaded_at DESC
+  `);
     res.json(result.recordset);
 
   } catch (err) {
@@ -110,7 +113,18 @@ export async function softDeleteSupplierDocument(req, res) {
         WHERE id = @id
       `);
 
-    res.json({ success: true });
+res.json({
+  success: true,
+  file: {
+    file_name: file.originalname,
+    file_path: publicPath,
+    description
+  }
+});
+
+if (!supplierNo) {
+  return res.status(400).json({ error: "supplierNo required" });
+}
 
   } catch (err) {
     console.error("softDeleteSupplierDocument error:", err);
