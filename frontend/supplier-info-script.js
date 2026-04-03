@@ -5,14 +5,7 @@ window.supplierNo =
 if (!window.supplierNo) {
   console.warn("❌ supplierNo not found in URL");
 }
-
-
 console.log("supplier-info-script.js loaded");
-
-// ===================================================
-// CONFIG
-// ===================================================
-//const API_BASE = "http://localhost:3000";
 
 // ===================================================
 // TABS
@@ -56,27 +49,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // ⭐⭐⭐ เพิ่มบรรทัดนี้เท่านั้น ⭐⭐⭐
   loadSupplierHistory(supplierNo);
 
-  loadVisibleSupplierDocument();
-  loadSupplierDocuments(supplierNo);
-
+  loadSupplierDocuments(supplierNo, "basic");
+  loadSupplierDocuments(supplierNo, "document");
   // ===============================
   // GLOBAL CLICK HANDLER
   // ===============================
-  document.addEventListener("click", (e) => {
-
-    if (
-      e.target.closest(".category-display") ||
-      e.target.closest(".brand-display") ||
-      e.target.closest(".group-display") ||
-      e.target.closest(".category-dropdown") ||
-      e.target.closest(".brand-dropdown") ||
-      e.target.closest(".group-dropdown")
-    ) {
-      return;
-    }
-
-    closeAllRowDropdowns();
-  });
   
 });
 
@@ -215,6 +192,9 @@ function showSaveMessage(text, isError = false) {
   }, 2500);
 }
 
+// Make showSaveMessage globally available for modules
+window.showSaveMessage = showSaveMessage;
+
 function addPaymentRow() {
   const container = document.getElementById("paymentMethodContainer");
   if (!container) {
@@ -327,39 +307,6 @@ function removePaymentRow(btn) {
     });
 }
 
-// fetch("/components/supplier-document-upload.html")
-//   .then(res => res.text())
-//   .then(html => {
-//     document.getElementById("supplierDocumentContainer").innerHTML = html;
-//   });
-
- function loadVisibleSupplierDocument() {
-
-  fetch("/components/supplier-document-upload.html")
-    .then(res => res.text())
-    .then(html => {
-
-      const container = document.getElementById("supplierDocumentContainer");
-
-      if (!container) {
-        console.error("❌ ไม่พบ supplierDocumentContainer");
-        return;
-      }
-
-      container.innerHTML = html;
-
-      console.log("✅ document component loaded");
-    });
-}
-
-document.addEventListener("click", (e) => {
-  if (e.target.closest("[data-tab]")) {
-    // รอให้ tab toggle เสร็จก่อน
-    setTimeout(loadVisibleSupplierDocument, 0);
-  }
-});
-
-
 function toggleDealSpecialMode() {
   const mode = document.getElementById("dealSpecialMode").value;
   const stepBox = document.getElementById("dealSpecialStepContainer");
@@ -433,12 +380,4 @@ document
   ?.addEventListener("click", () => {
     window.saveProductAndSpecialTerms();
   });
-
-//   document.addEventListener("DOMContentLoaded", () => {
-//   const supplierNo = getSupplierNoFromURL();
-//   if (supplierNo) {
-//     loadSupplierDocuments(supplierNo);
-//   }
-// }
-// );
 

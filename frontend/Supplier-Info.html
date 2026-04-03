@@ -439,7 +439,6 @@
       </div>
 
     </div>
-    <!-- <div id="supplierDocumentContainer" class="mt-3"></div> -->
 
     <!-- ===============================
          Uploaded Document List
@@ -449,10 +448,7 @@
       <div class="text-sm font-semibold text-gray-600 mb-2">
         เอกสารที่อัปโหลดแล้ว
       </div>
-
-      <div id="supplierDocumentList_basic" class="space-y-2">
-        <!-- รายการเอกสารจะถูก append ที่นี่ -->
-      </div>
+      <div id="supplierDocumentContainer"></div>
 
     </div>
 
@@ -604,26 +600,68 @@
 
     <div class="grid grid-cols-12 gap-3">
   <div class="col-span-12 md:col-span-4">
-    <label class="form-label">รูปแบบการวางบิล</label>
-    <select class="form-select" id="spBillingCycle">
-      <option value="monthly">วางบิลสิ้นเดือน</option>
-      <option value="biweekly">วางบิลทุก 15 วัน</option>
-      <option value="per_order">วางบิลต่อใบสั่ง</option>
-    </select>
-  </div>
+  <label class="form-label">รูปแบบการวางบิล</label>
+  <select class="form-select" id="spBillingCycle">
+
+    <!-- 📅 วางบิลตามรอบ -->
+    <option value="bill_10_days">วางบิลทุก 10 วัน</option>
+    <option value="bill_15_days">วางบิลทุก 15 วัน</option>
+    <option value="bill_30_days">วางบิลทุก 30 วัน</option>
+    <option value="bill_25_fixed">ตัดบิลและวางบิลวันที่ 25</option>
+    <option value="bill_end_month">วางบิลสิ้นเดือน</option>
+
+    <!-- 📦 รวมบิล -->
+    <option value="summary_7_days">รวมบิล 7 วัน</option>
+    <option value="summary_15_days">รวมบิล 15 วัน</option>
+    <option value="summary_30_days">รวมบิล 30 วัน</option>
+
+    <!-- 💳 เงื่อนไขพิเศษ -->
+    <option value="deduct_debt">หักหนี้</option>
+    <option value="count_from_bill">นับจากบิล</option>
+    <option value="delivery_collect_check">ส่งของรับเช็ค</option>
+    <option value="delivery_next_trip_check">ส่งของเที่ยวนี้ รับเช็คเที่ยวหน้า</option>
+    <option value="delivery_with_billing">ส่งของวางบิล</option>
+
+    <!-- 📄 ต่อใบ -->
+    <option value="per_order">วางบิลต่อใบสั่ง</option>
+
+  </select>
+</div>
 
   <div class="col-span-12 md:col-span-4">
-    <label class="form-label">เงื่อนไขเครดิต</label>
-    <select class="form-select" id="spCreditTerm">
-      <option value="cash">เงินสด</option>
-      <option value="7">Credit 7 วัน</option>
-      <option value="15">Credit 15 วัน</option>
-      <option value="30">Credit 30 วัน</option>
-      <option value="45">Credit 45 วัน</option>
-      <option value="60">Credit 60 วัน</option>
-      <option value="L/C">Letter of Credit</option>
-    </select>
-  </div>
+  <label class="form-label">เงื่อนไขเครดิต</label>
+  <select class="form-select" id="spCreditTerm">
+
+    <!-- 💵 เงินสด -->
+    <option value="cash">เงินสด</option>
+
+    <!-- 📆 เครดิตตรง -->
+    <option value="1">เครดิต 1 วัน</option>
+    <option value="3">เครดิต 3 วัน</option>
+    <option value="7">เครดิต 7 วัน</option>
+    <option value="15">เครดิต 15 วัน</option>
+    <option value="25">เครดิต 25 วัน</option>
+    <option value="30">เครดิต 30 วัน</option>
+    <option value="45">เครดิต 45 วัน</option>
+    <option value="60">เครดิต 60 วัน</option>
+    <option value="75">เครดิต 75 วัน</option>
+    <option value="90">เครดิต 90 วัน</option>
+
+    <!-- 📄 นับจากบิล -->
+    <option value="bill_7">นับจากบิล เครดิต 7 วัน</option>
+    <option value="bill_15">นับจากบิล เครดิต 15 วัน</option>
+    <option value="bill_30">นับจากบิล เครดิต 30 วัน</option>
+    <option value="bill_60">นับจากบิล เครดิต 60 วัน</option>
+    <option value="bill_60_deduct">นับจากบิล เครดิต 60 วัน (หักหนี้)</option>
+    <option value="bill_75">นับจากบิล เครดิต 75 วัน</option>
+    <option value="bill_90">นับจากบิล เครดิต 90 วัน</option>
+    <option value="bill_mix">นับจากบิล เครดิต 1/7/30</option>
+
+    <!-- 🌍 ต่างประเทศ -->
+    <option value="lc">Letter of Credit (L/C)</option>
+
+  </select>
+</div>
 
   <div class="col-span-12 md:col-span-4">
   <label class="form-label">
@@ -1032,7 +1070,7 @@
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ประเภทสินค้า<span class="text-red-600">*</span></label>
                   <select class="form-select" id="tgCat">
-                    <option value=" ">- เลือก -</option>
+                    <option value="">- เลือก -</option>
                     </select>
                 </div>
 
@@ -1113,6 +1151,7 @@
                     <option value="รายเดือน">น้ำหนัก</option>
                     <option value="รายไตรมาส">มูลค่ารวมในการซื้อ</option>
                     <option value="รายปี">จำนวน</option>
+                    <option value="เป้าพื้นที่">เป้าพื้นที่</option>
                   </select>
                 </div>
 
@@ -1261,12 +1300,19 @@
   <label class="form-label">
     ชื่อเงื่อนไข <span class="text-red-600">*</span>
   </label>
+
   <input
     type="text"
     class="form-control"
     id="moqName"
     placeholder="เช่น MOQ กระจกภาคเหนือ"
+    required
   >
+
+  <!-- 🔥 error message -->
+  <p id="moqNameError" class="text-red-500 text-sm mt-1 hidden">
+    กรุณากรอกชื่อเงื่อนไข
+  </p>
 </div>
 
               </div>
@@ -1394,9 +1440,10 @@
                   <label class="form-label">ประเภทรถ</label>
                   <select class="form-select" id="moqVehicle">
                     <option value="-">-</option>
-                    <option value="เทรลเลอร์">เทรลเลอร์</option>
-                    <option value="6 ล้อ">6 ล้อ</option>
                     <option value="กระบะ">กระบะ</option>
+                    <option value="หกล้อ">หกล้อ</option>
+                    <option value="สิบล้อ">สิบล้อ</option>
+                    <option value="เทรลเลอร์">เทรลเลอร์</option>
                   </select>
                 </div>
 
@@ -1509,6 +1556,11 @@
                   <label class="form-label">ชื่อดีลราคา <span class="text-red-600">*</span></label>
                   <input type="text" class="form-control" id="dealName" required placeholder="เช่น ราคากระจกพิเศษ Q1">
                 </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">Project No. <span class="text-muted small">(กรณีดีลราคาโปรเจค)</span></label>
+                  <input type="text" class="form-control" id="dealProjectNo" placeholder="พิมพ์เพื่อค้นหา">
+                </div>
               </div>
 
               <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขต (Scope)</div>
@@ -1516,54 +1568,73 @@
               <div class="grid grid-cols-12 gap-3">
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ภาค<span class="text-red-600">*</span></label>
-                  <select class="form-select" id="dealRegion">
-                    <option value="-">- เลือก -</option>
-                    <option value="BKK">กรุงเทพฯและปริมณฑล</option>
-                    <option value="North">เหนือ</option>
-                    <option value="Central">กลาง</option>
-                    <option value="NE">อีสาน</option>
-                    <option value="South">ใต้</option>
-                  </select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealRegionDropdown')">
+                      <span id="dealRegionText"
+                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+                        - เลือก -
+                      </span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealRegionDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">จังหวัด<span class="text-red-600">*</span></label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealProvinceDropdown')">
+                      <span id="dealProvinceText"
+                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+                        - เลือก -
+                      </span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealProvinceDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">สาขา<span class="text-red-600">*</span></label>
-                  <input class="form-control" list="sharedBranchList" id="dealBranch" placeholder="พิมพ์เพื่อค้นหา...">
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealBranchDropdown')">
+                      <span id="dealBranchText"
+                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+                        - เลือก -
+                      </span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealBranchDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ประเภทสินค้า<span class="text-red-600">*</span></label>
                   <select class="form-select" id="dealCat">
-                    <option value="-">- เลือก -</option>
-                    <option value="Glass">กระจก</option>
-                    <option value="Aluminum">อลูมิเนียม</option>
-                    <option value="Gypsum">ยิปซั่ม</option>
-                    <option value="C-Line">ซีลาย</option>
-                    <option value="Glue">กาว</option>
-                    <option value="Accessories">อุปกรณ์</option>
+                    <option value="">- เลือก -</option>
                   </select>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">แบรนด์<span class="text-red-600">*</span></label>
                   <select class="form-select" id="dealBrand">
-                    <option value="-">- เลือก -</option>
-                    <option value="DIAMOND-Glas">DIAMOND-Glas</option>
-                    <option value="ALU-Pro">ALU-Pro</option>
-                    <option value="GYP-Tech">GYP-Tech</option>
-                    <option value="THAI-Seal">THAI-Seal</option>
+                    <option value="">- เลือก -</option>
                   </select>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">กลุ่มสินค้า<span class="text-red-600">*</span></label>
+                  <label class="form-label">กลุ่มสินค้า</label>
                   <select class="form-select" id="dealGroup">
                     <option value="-">- เลือก -</option>
-                    <option value="Clear Glass">กระจกใส</option>
-                    <option value="Frosted Glass">กระจกฝ้า</option>
-                    <option value="Mirror">กระจกเงา</option>
-                    <option value="Profile">เส้นหน้าตัด</option>
-                    <option value="Sheet">แผ่นเรียบ</option>
                   </select>
                 </div>
 
@@ -1571,40 +1642,31 @@
                   <label class="form-label">กลุ่มย่อย</label>
                   <select class="form-select" id="dealSub">
                     <option value="-">- เลือก -</option>
-                    <option value="Standard">ธรรมดา</option>
-                    <option value="Tempered">อบเทมเปอร์</option>
-                    <option value="Laminated">ลามิเนต</option>
                   </select>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">สีของสินค้า</label>
                   <select class="form-select" id="dealColor">
-                    <option value="-">- เลือก -</option>
-                    <option value="Clear">ใส (Clear)</option>
-                    <option value="Green">เขียว (Green)</option>
-                    <option value="Tea">ชา (Tea)</option>
-                    <option value="Black">ดำ (Black)</option>
-                    <option value="White">อบขาว (White)</option>
-                    <option value="Anodize">ธรรมชาติ (Anodize)</option>
+                    <option value="">- เลือก -</option>
                   </select>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ความหนา</label>
                   <select class="form-select" id="dealThick">
-                    <option value="-">- เลือก -</option>
-                    <option value="3mm">3mm</option>
-                    <option value="5mm">5mm</option>
-                    <option value="6mm">6mm</option>
-                    <option value="10mm">10mm</option>
-                    <option value="1.2mm">1.2mm (Alum)</option>
+                    <option value="">- เลือก -</option>
                   </select>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">รหัสแม่พิมพ์</label>
-                  <input type="text" class="form-control" id="dealMold" placeholder="ระบุ Mold ID">
+                  <select class="form-select" id="dealMold">
+                    <option value="-">- เลือก -</option>
+                    <option value="M-001">M-001</option>
+                    <option value="M-002">M-002</option>
+                    <option value="A-101">A-101</option>
+                  </select>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
@@ -1637,67 +1699,81 @@
                   </select>
                 </div>
 
+
+
                 <div class="col-span-12 md:col-span-3">
-                  <label class="form-label">ราคา / หน่วย <span class="text-red-600">*</span></label>
-                  <div class="flex">
-                    <input type="number" class="form-control" id="dealPrice" placeholder="0.00" style="border-radius:4px 0 0 4px;">
-                    <select class="form-select" id="dealUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;">
-                      <option value="บาท">บาท</option>
-                      <option value="%">%</option>
-                      <option value="บาท/ชิ้น">บาท/ชิ้น</option>
-                      <option value="บาท/กก.">บาท/กก.</option>
-                    </select>
-                  </div>
+                  <label class="form-label text-muted">วันที่เริ่มใช้ราคา <span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="dealStart" required>
                 </div>
 
                 <div class="col-span-12 md:col-span-3">
-                  <label class="form-label text-muted">วันที่เริ่มใช้ราคา (ถ้ามี)</label>
-                  <input type="date" class="form-control" id="dealStart">
-                </div>
-
-                <div class="col-span-12 md:col-span-3">
-                  <label class="form-label text-muted">วันที่สิ้นสุด (ถ้ามี)</label>
-                  <input type="date" class="form-control" id="dealEnd">
+                  <label class="form-label text-muted">วันที่สิ้นสุด <span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="dealEnd" required>
                 </div>
               </div>
 
               <div class="grid grid-cols-12 gap-3 items-end">
-                <div class="col-span-12 md:col-span-4">
+                <div class="col-span-12 md:col-span-6">
   <label class="form-label">
-    กรอบเงื่อนไขพิเศษ (จำกัดสินค้าที่ได้ราคาพิเศษ)
+    กรอบเงื่อนไข <span class="text-red-600">*</span>
   </label>
 
-  <!-- GRID ซ้อน -->
-  <div class="grid grid-cols-12 gap-2">
+  <!-- MODE SELECT -->
+  <div class="mb-3">
+    <select class="form-select" id="dealConditionMode" onchange="toggleDealConditionMode()">
+      <option value="normal">ราคาปกติ</option>
+      <option value="limited">จำกัดจำนวน</option>
+      <option value="stepped">ขั้นบันได</option>
+    </select>
+  </div>
 
-    <!-- MODE -->
+  <!-- NORMAL PRICE MODE -->
+  <div id="dealNormalMode">
+    <label class="form-label text-muted text-xs mb-1">ราคา / หน่วย</label>
+    <div class="flex">
+      <input type="number" class="form-control" id="dealPrice" placeholder="0.00" style="border-radius:4px 0 0 4px;">
+      <select class="form-select" id="dealUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;">
+        <option value="บาท">บาท</option>
+        <option value="%">%</option>
+        <option value="บาท/ชิ้น">บาท/ชิ้น</option>
+        <option value="บาท/กก.">บาท/กก.</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- LIMITED QUANTITY MODE -->
+  <div id="dealLimitedMode" class="hidden grid grid-cols-12 gap-2">
     <div class="col-span-4">
-      <select class="form-select h-full">
-        <option>จำกัดจำนวน</option>
-        <option>ขั้นบันได</option>
+      <label class="form-label text-muted text-xs mb-1">จำนวนจำกัด</label>
+      <input type="number" class="form-control" id="dealLimitedQty" placeholder="0">
+    </div>
+    <div class="col-span-4">
+      <label class="form-label text-muted text-xs mb-1">หน่วย</label>
+      <select class="form-select" id="dealLimitedUnit">
+        <option value="ชิ้น">ชิ้น</option>
+        <option value="บาท">บาท</option>
+        <option value="ตัน">ตัน</option>
+        <option value="เส้น">เส้น</option>
+        <option value="แผ่น">แผ่น</option>
       </select>
     </div>
-
-    <!-- VALUE -->
-    <div class="col-span-3">
-      <input
-        type="number"
-        class="form-control"
-        placeholder="0"
-      />
-    </div>
-
-    <!-- UNIT -->
-    <div class="col-span-3">
-      <select class="form-select h-full">
-        <option>ชิ้น</option>
-        <option>บาท</option>
-        <option>ตัน</option>
-        <option>เส้น</option>
-        <option>แผ่น</option>
+    <div class="col-span-4">
+      <label class="form-label text-muted text-xs mb-1">ประเภทจำนวนจำกัด</label>
+      <select class="form-select" id="dealLimitedType">
+        <option value="amount">จำนวน (บาท)</option>
+        <option value="percent">เปอร์เซ็นต์ (%)</option>
       </select>
     </div>
+  </div>
 
+  <!-- STEPPED PRICING MODE -->
+  <div id="dealSteppedMode" class="hidden">
+    <div id="dealStepsContainer" class="space-y-1 p-2 bg-light rounded border">
+      <!-- Steps will be added here dynamically -->
+    </div>
+    <button type="button" class="btn btn-outline-primary btn-sm mt-1 w-full" onclick="addDealStep()">
+      <i class="bi bi-plus-lg"></i> เพิ่มขั้นบันไดราคา
+    </button>
   </div>
 </div>
 
@@ -1720,10 +1796,6 @@
           </div>
 
           <div class="flex justify-end gap-2 form-action-bar">
-            <button type="button" class="btn btn-secondary" onclick="resetDealForm()">
-              <i class="bi bi-arrow-counterclockwise"></i> ล้างค่า
-            </button>
-
             <button type="button" class="btn btn-primary fw-bold px-4" id="submitDealBtn">
               <i class="bi bi-save"></i> บันทึก
             </button>
@@ -1751,11 +1823,11 @@
                 <tr>
                   <th>#</th>
                   <th>สถานะ</th>
+                  <th style="width:80px;">แก้ไข</th>
                   <th>ชื่อดีล / ผู้ให้ราคา</th>
                   <th>Scope</th>
                   <th class="text-end">ราคา / เงื่อนไข</th>
                   <th style="width:140px;">แก้ไขล่าสุด</th>
-                  <th class="text-center" style="width: 120px;">Action</th>
                 </tr>
               </thead>
               <tbody id="dealTableBody"></tbody>
@@ -1800,7 +1872,13 @@
 
             <input type="file"
                    id="supplierDocFile"
-                   class="hidden">
+                   class="hidden"
+                   onchange="handleFileSelect(this)">
+          </div>
+          
+          <!-- Selected file name display -->
+          <div id="selectedFileName" class="text-sm text-green-600 mt-2 hidden">
+            <i class="bi bi-check-circle"></i> <span id="fileNameText"></span>
           </div>
 
           <!-- Description -->
@@ -1874,11 +1952,11 @@
 <div id="cancelMoqModal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
   <div class="bg-white rounded-xl shadow-lg w-[400px] p-6">
 
-    <h3 class="text-lg font-semibold mb-4">
+    <h3 id="cancelMoqTitle" class="text-lg font-semibold mb-4">
       ยืนยันการยกเลิก
     </h3>
 
-    <p class="text-sm text-gray-600 mb-6">
+    <p id="cancelMoqMessage" class="text-sm text-gray-600 mb-6">
       คุณกำลังจะยกเลิก MOQ นี้<br>
       ต้องการดำเนินการต่อหรือไม่?
     </p>
@@ -1909,23 +1987,33 @@
   <div class="bg-white rounded-xl shadow-lg w-[400px] p-6">
 
     <h3 class="text-lg font-semibold mb-4">
-      ยืนยันการเปลี่ยนสถานะ
+      เลือกสถานะดีลราคา
     </h3>
 
     <p id="dealModalMessage"
        class="text-sm text-gray-600 mb-6">
-      ต้องการดำเนินการต่อหรือไม่?
+      กรุณาเลือกสถานะที่ต้องการ
     </p>
 
-    <div class="flex justify-end gap-3">
-      <button id="cancelDealNoBtn"
-              class="px-4 py-2 rounded-lg border text-gray-600">
-        ยกเลิก
+    <div class="flex flex-col gap-3">
+      <button id="dealStatusOpenBtn"
+              class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700">
+        เปิดใช้งาน (OPEN)
       </button>
 
-      <button id="cancelDealYesBtn"
-              class="px-4 py-2 rounded-lg bg-red-600 text-white">
-        ยืนยัน
+      <button id="dealStatusUseBtn"
+              class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+        ใช้ (USE)
+      </button>
+
+      <button id="dealStatusCancelBtn"
+              class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">
+        ยกเลิก (CANCELLED)
+      </button>
+
+      <button id="cancelDealNoBtn"
+              class="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-100">
+        ปิด
       </button>
     </div>
 
@@ -1969,11 +2057,10 @@
 <script src="modules/supplier-contact.js"></script>
 <script src="modules/supplier-special-terms.js"></script>
 <script src="./components/supplier-history.js" defer></script>
-<script src="/components/supplier-document.js"></script>
+<script src="./components/supplier-document.js"></script>
 <script type="module" src="modules/supplier-moq.js"></script>
-<script src="modules/supplier-deal.js"></script>
+<script type="module" src="modules/supplier-deal.js"></script>
 <script type="module" src="modules/supplier-target.js"></script>
-<script src="components/supplier-document.js"></script>
 
 
 
@@ -1982,3 +2069,4 @@
 
 
 </html>
+

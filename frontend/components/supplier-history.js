@@ -71,6 +71,9 @@ function initHistoryTabs() {
    PRODUCT HISTORY
    ===================================================== */
 async function loadProductHistory(supplierNo) {
+  // Show loading indicator
+  showLoadingIndicator("productHistoryGrid", "กำลังโหลดประวัติสินค้า...");
+  
   try {
     const res = await fetch(
       `${window.API_BASE}/api/suppliers/${supplierNo}/product-coverage/history?limit=10`
@@ -79,6 +82,9 @@ async function loadProductHistory(supplierNo) {
     if (!res.ok) throw new Error("โหลดประวัติสินค้าไม่สำเร็จ");
 
     const data = await res.json();
+    
+    // Clear loading indicator
+    hideLoadingIndicator("productHistoryGrid");
 
     const mapped = data.map(row => ({
       id: row.id,
@@ -195,6 +201,9 @@ function renderProductHistory(list) {
    SPECIAL TERMS HISTORY (REAL)
    ===================================================== */
 async function loadTermsHistory(supplierNo) {
+  // Show loading indicator
+  showLoadingIndicator("termsHistoryGrid", "กำลังโหลดประวัติเงื่อนไขพิเศษ...");
+  
   try {
     const res = await fetch(
       `${window.API_BASE}/api/suppliers/${supplierNo}/special-terms/history`
@@ -203,6 +212,9 @@ async function loadTermsHistory(supplierNo) {
     if (!res.ok) throw new Error("โหลดประวัติเงื่อนไขพิเศษไม่สำเร็จ");
 
     const data = await res.json();
+    
+    // Clear loading indicator
+    hideLoadingIndicator("termsHistoryGrid");
 
 const mapped = data.map(row => {
   const terms = row.payload?.terms || {};
@@ -372,6 +384,9 @@ function buildClaimText(claim) {
 }
 
 async function loadContactHistory(supplierNo) {
+  // Show loading indicator
+  showLoadingIndicator("history-contacts", "กำลังโหลดรายชื่อผู้ติดต่อ...");
+  
   try {
     const res = await fetch(
       `${window.API_BASE}/api/suppliers/${supplierNo}/contacts`
@@ -380,6 +395,10 @@ async function loadContactHistory(supplierNo) {
     if (!res.ok) throw new Error("โหลดรายชื่อผู้ติดต่อไม่สำเร็จ");
 
     const data = await res.json();
+    
+    // Clear loading indicator
+    hideLoadingIndicator("history-contacts");
+    
     renderContactHistory(data);
 
   } catch (err) {
@@ -498,4 +517,37 @@ window.cancelContact = cancelContact;
 
 
 // expose
+
+/* ===============================
+   🔥 LOADING INDICATOR HELPER
+================================ */
+function showLoadingIndicator(containerId, message = "กำลังโหลด...") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Store original content
+  if (!container.dataset.originalContent) {
+    container.dataset.originalContent = container.innerHTML;
+  }
+  
+  container.innerHTML = `
+    <div class="flex items-center justify-center gap-2 py-4">
+      <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span class="text-gray-500">${message}</span>
+    </div>
+  `;
+}
+
+function hideLoadingIndicator(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Restore original content if stored
+  if (container.dataset.originalContent) {
+    delete container.dataset.originalContent;
+  }
+}
 window.loadContactHistory = loadContactHistory;

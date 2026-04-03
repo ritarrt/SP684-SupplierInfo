@@ -11,26 +11,30 @@
       <!-- upload -->
       <div class="col-span-12 md:col-span-2">
         <label class="form-label">เลือกไฟล์เอกสาร</label>
-        <input type="file" class="supplierDocFile form-control">
+        <input
+          type="file"
+          id="supplierDocFile_basic"
+          class="form-control"
+        >
       </div>
 
       <!-- description -->
-      <div class="col-span-12 md:col-span-2">
+      <div class="col-span-12 md:col-span-3">
         <label class="form-label">เอกสารนี้คืออะไร</label>
         <input
           type="text"
+          id="supplierDocDesc_basic"
           class="form-control"
-          id="supplierDocDesc"
           placeholder="เช่น หนังสือรับรองบริษัท / สัญญาซื้อขาย"
         >
       </div>
 
       <!-- button -->
-      <div class="col-span-12 md:col-span-1">
+      <div class="col-span-12 md:col-span-2">
         <button
           type="button"
           class="btn btn-outline-primary w-full"
-         onclick="saveSupplierDocument(this)"
+          onclick="addSupplierDocument()"
         >
           <i class="bi bi-upload"></i> บันทึกเอกสาร
         </button>

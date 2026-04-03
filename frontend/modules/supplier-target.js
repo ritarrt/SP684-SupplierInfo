@@ -318,6 +318,9 @@ async function loadTargetTable() {
 
   if (!window.supplierNo) return;
 
+  // Show loading indicator
+  showLoadingIndicator("tgTableBody", "กำลังโหลดข้อมูลเป้าหมาย...");
+
   try {
     const color = document.getElementById("tgColor")?.value || "";
 
@@ -328,6 +331,9 @@ const data = await res.json();
 
     const tbody = document.getElementById("tgTableBody");
     if (!tbody) return;
+    
+    // Clear loading indicator
+    hideLoadingIndicator("tgTableBody");
 
     tbody.innerHTML = "";
 
@@ -609,13 +615,16 @@ async function loadContactDropdown() {
 
   if (!window.supplierNo) return;
 
+  const select = document.getElementById("tgProvider");
+  if (!select) return;
+  
+  // Show loading indicator
+  select.innerHTML = `<option value="">กำลังโหลด...</option>`;
+
   try {
 
     const res = await fetch(`${API_BASE}/api/suppliers/${window.supplierNo}/contacts`);
     const contacts = await res.json();
-
-    const select = document.getElementById("tgProvider");
-    if (!select) return;
 
     select.innerHTML = `<option value="">- เลือกผู้ติดต่อ -</option>`;
 
@@ -675,5 +684,42 @@ async function loadBranchMaster() {
 
   } catch (err) {
     console.error("Load Branch Error:", err);
+  }
+}
+
+/* ===============================
+   🔥 LOADING INDICATOR HELPER
+================================ */
+function showLoadingIndicator(containerId, message = "กำลังโหลด...") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Store original content
+  if (!container.dataset.originalContent) {
+    container.dataset.originalContent = container.innerHTML;
+  }
+  
+  container.innerHTML = `
+    <tr>
+      <td colspan="100%" class="text-center py-4">
+        <div class="flex items-center justify-center gap-2">
+          <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-gray-500">${message}</span>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function hideLoadingIndicator(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Restore original content if stored
+  if (container.dataset.originalContent) {
+    delete container.dataset.originalContent;
   }
 }

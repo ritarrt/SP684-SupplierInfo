@@ -335,7 +335,15 @@ function onCategoryChange(radio) {
 // ===================================================
 async function loadBrandsForRow(row) {
   const dd = row.querySelector(".brand-dropdown");
-  dd.innerHTML = "กำลังโหลด...";
+  dd.innerHTML = `
+    <div class="flex items-center justify-center gap-2 py-4">
+      <svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span class="text-gray-500 text-sm">กำลังโหลด...</span>
+    </div>
+  `;
 
   const res = await fetch(`${window.API_BASE}/api/suppliers/brands?categories=${row.dataset.category}`);
   //await fetch(`${API_BASE}/api/suppliers/brands?categories=${row.dataset.category}`);
@@ -360,7 +368,15 @@ async function loadBrandsForRow(row) {
 
 async function loadGroupsForRow(row) {
   const dd = row.querySelector(".group-dropdown");
-  dd.innerHTML = "กำลังโหลด...";
+  dd.innerHTML = `
+    <div class="flex items-center justify-center gap-2 py-4">
+      <svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span class="text-gray-500 text-sm">กำลังโหลด...</span>
+    </div>
+  `;
 
   const res = await fetch(`${window.API_BASE}/api/suppliers/groups?categories=${row.dataset.category}`);
   //await fetch(`${API_BASE}/api/suppliers/groups?categories=${row.dataset.category}`);
@@ -388,14 +404,20 @@ async function loadGroupsForRow(row) {
 // LOAD / SAVE COVERAGE
 // ===================================================
 async function loadProductCoverage(supplierNo) {
+  const container = getCoverageContainer();
+  if (!container) return;
+  
+  // Show loading indicator
+  showLoadingIndicator("productCoverageContainer", "กำลังโหลดข้อมูลสินค้าที่บริษัทดูแล...");
+  
   const res = await fetch(
     `${window.API_BASE}/api/suppliers/${supplierNo}/product-coverage`
   );
 
   const data = await res.json();
-
-  const container = getCoverageContainer();
-  if (!container) return;
+  
+  // Clear loading indicator
+  hideLoadingIndicator("productCoverageContainer");
 
   const firstRow = container.querySelector(".product-row");
   container.innerHTML = "";
@@ -672,7 +694,15 @@ async function loadSubGroupsForRow(row) {
   const category = row.dataset.category;
   if (!category) return;
 
-  dd.innerHTML = "กำลังโหลด...";
+  dd.innerHTML = `
+    <div class="flex items-center justify-center gap-2 py-4">
+      <svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span class="text-gray-500 text-sm">กำลังโหลด...</span>
+    </div>
+  `;
 
   const res = await fetch(
     `${window.API_BASE}/api/suppliers/subgroups?category=${encodeURIComponent(category)}`
@@ -757,3 +787,36 @@ document.addEventListener("DOMContentLoaded", () => {
     attachSkuAutocomplete(firstSkuInput);
   }
 });
+
+/* ===============================
+   🔥 LOADING INDICATOR HELPER
+================================ */
+function showLoadingIndicator(containerId, message = "กำลังโหลด...") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Store original content
+  if (!container.dataset.originalContent) {
+    container.dataset.originalContent = container.innerHTML;
+  }
+  
+  container.innerHTML = `
+    <div class="flex items-center justify-center gap-2 py-4">
+      <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span class="text-gray-500">${message}</span>
+    </div>
+  `;
+}
+
+function hideLoadingIndicator(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Restore original content if stored
+  if (container.dataset.originalContent) {
+    delete container.dataset.originalContent;
+  }
+}

@@ -6,6 +6,15 @@ console.log("supplier-moq.js loaded");
 
 let moqData = [];
 let currentCancelMoqId = null;
+let currentFilter = "ACTIVE"; // ค่าเริ่มต้น
+
+function setMoqFilter(status) {
+  console.log("🔥 filter:", status);
+
+  currentFilter = status;
+
+  renderMoqTable(); // 👈 สำคัญมาก ต้องเรียก render ใหม่
+}
 
 function loadBrands(category, selectId) {
 
@@ -72,7 +81,7 @@ console.log("branchData:", window.branchData);
 
   el.innerHTML = filtered.map(b => `
     <label class="flex items-center gap-2">
-      <input type="checkbox" value="${b.branchCode}">
+      <input type="checkbox" value="${b.branchCode}" onchange="onMoqBranchChange()">
       ${b.branchCode} - ${b.branchName}
     </label>
   `).join("");
@@ -92,8 +101,19 @@ function onMoqRegionChange() {
 function updateText(dropdownId, textId) {
   const values = getCheckedValues(dropdownId);
 
-document.getElementById(textId).innerText =
-  values.length ? values.join(", ") : "- เลือก -";
+  const el = document.getElementById(textId);
+
+  if (values.length === 0) {
+    el.innerText = "- เลือก -";
+    return;
+  }
+
+  if (values.length <= 2) {
+    el.innerText = values.join(", ");
+    return;
+  }
+
+  el.innerText = `${values.slice(0, 2).join(", ")} +${values.length - 2}`;
 }
 
 /* ===============================
@@ -186,8 +206,23 @@ renderMoqBranchDropdown();
 
   btn.addEventListener("click", async () => {
 
+    const moqNameInput = document.getElementById("moqName");
+const moqNameError = document.getElementById("moqNameError");
+
+const moqName = moqNameInput.value.trim();
+
+if (!moqName) {
+  moqNameInput.classList.add("border-red-500");
+  moqNameError.classList.remove("hidden");
+  moqNameInput.focus();
+  return;
+} else {
+  moqNameInput.classList.remove("border-red-500");
+  moqNameError.classList.add("hidden");
+}
+
     const payload = {
-      moq_name: document.getElementById("moqName")?.value,
+      moq_name: moqName,
 
       // 🔥 FIX multi-select
       region: getCheckedValues("moqRegionDropdown").join(","),
@@ -287,6 +322,9 @@ function setupModalEvents() {
    LOAD
 ================================ */
 async function loadMoqList(supplierNo) {
+  // Show loading indicator
+  showLoadingIndicator("moqTableBody", "กำลังโหลดข้อมูล MOQ...");
+  
   try {
     const res = await fetch(
       `${API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/moq`
@@ -300,6 +338,8 @@ async function loadMoqList(supplierNo) {
 
   } catch (err) {
     console.error("❌ Load MOQ error", err);
+    // Hide loading indicator on error
+    hideLoadingIndicator("moqTableBody");
   }
 }
 
@@ -310,46 +350,74 @@ function renderMoqTable() {
   const tbody = document.getElementById("moqTableBody");
   const countEl = document.getElementById("moqRecordCount");
 
+  // 🔥 กันพัง
+  if (!tbody) {
+    console.warn("❌ moqTableBody not found");
+    return;
+  }
+  
+  // Clear loading indicator
+  hideLoadingIndicator("moqTableBody");
+
+  if (!Array.isArray(moqData)) {
+    console.warn("❌ moqData not ready");
+    return;
+  }
+
   let rows = [...moqData];
 
+  // 🔥 อ่านค่า filter (radio)
   const filterValue =
     document.querySelector("input[name='moqFilter']:checked")?.value;
 
+  // 🔥 filter status
   if (filterValue === "active") {
     rows = rows.filter(r => r.status === "OPEN");
-  }
-
-  if (filterValue === "cancelled") {
+  } else if (filterValue === "cancelled") {
     rows = rows.filter(r => r.status === "CANCELLED");
   }
 
+  console.log("📊 render rows:", rows);
+
+  // 🔥 clear table
   tbody.innerHTML = "";
 
+  // 🔥 render rows
   rows.forEach((r, idx) => {
     const tr = document.createElement("tr");
 
     tr.innerHTML = `
       <td>${idx + 1}</td>
+
       <td>
-        <span class="badge ${r.status === "OPEN" ? "bg-success" : "bg-danger"}"
-          onclick="toggleMoqStatus(${r.moq_id}, '${r.status}')">
+        <span 
+          class="badge ${r.status === "OPEN" ? "bg-success" : "bg-danger"}"
+          style="cursor:pointer"
+          onclick="toggleMoqStatus(${r.moq_id}, '${r.status}')"
+        >
           ${r.status}
         </span>
       </td>
+
       <td>${r.moq_name || "-"}</td>
+
       <td class="small">
         ${r.region || "-"} / ${r.branch || "-"}<br>
         ${r.category || "-"} / ${r.brand || "-"} / ${r.product_group || "-"}
       </td>
-      <td><b>${r.moq_qty} ${r.moq_unit}</b></td>
-      <td>${formatThaiDateTime(r.updated_at || r.created_at)}</td>
 
+      <td><b>${r.moq_qty ?? "-"} ${r.moq_unit ?? ""}</b></td>
+
+      <td>${formatThaiDateTime(r.updated_at || r.created_at)}</td>
     `;
 
     tbody.appendChild(tr);
   });
 
-  countEl.textContent = `${rows.length} รายการ`;
+  // 🔥 update count
+  if (countEl) {
+    countEl.textContent = `${rows.length} รายการ`;
+  }
 }
 
 /* ===============================
@@ -379,6 +447,36 @@ function editMoq(row) {
 function toggleMoqStatus(moqId, status) {
   currentCancelMoqId = moqId;
 
+  const isCancel = status === "OPEN";
+
+  // 🔥 ข้อความใหม่
+  const title = isCancel
+    ? "ยืนยันการยกเลิก"
+    : "ยืนยันการเปิดใช้งาน";
+
+  const message = isCancel
+    ? "คุณกำลังจะยกเลิก MOQ นี้\nต้องการดำเนินการต่อหรือไม่?"
+    : "คุณต้องการเปิด MOQ นี้อีกครั้ง\nต้องการดำเนินการต่อหรือไม่?";
+
+  const confirmText = isCancel ? "ยืนยัน" : "เปิดใช้งาน";
+
+  // 👉 set ลง modal
+  document.getElementById("cancelMoqTitle").innerText = title;
+
+  document.getElementById("cancelMoqMessage").innerHTML =
+    message.replace(/\n/g, "<br>");
+
+  document.getElementById("cancelMoqYesBtn").innerText = confirmText;
+
+  // 👉 เปลี่ยนสีปุ่ม
+  const btn = document.getElementById("cancelMoqYesBtn");
+  btn.classList.remove("bg-red-600", "bg-green-600");
+  btn.classList.add(isCancel ? "bg-red-600" : "bg-green-600");
+
+  // 👉 status ถัดไป
+  window.nextStatus = isCancel ? "CANCELLED" : "OPEN";
+
+  // 👉 เปิด modal
   const modal = document.getElementById("cancelMoqModal");
   modal.classList.remove("hidden");
   modal.classList.add("flex");
@@ -428,4 +526,46 @@ async function loadBranchData() {
   }
 }
 
+/* ===============================
+   🔥 LOADING INDICATOR HELPER
+================================ */
+function showLoadingIndicator(containerId, message = "กำลังโหลด...") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Store original content
+  if (!container.dataset.originalContent) {
+    container.dataset.originalContent = container.innerHTML;
+  }
+  
+  container.innerHTML = `
+    <tr>
+      <td colspan="100%" class="text-center py-4">
+        <div class="flex items-center justify-center gap-2">
+          <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-gray-500">${message}</span>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function hideLoadingIndicator(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Restore original content if stored
+  if (container.dataset.originalContent) {
+    delete container.dataset.originalContent;
+  }
+}
+
+
+
 window.onMoqRegionChange = onMoqRegionChange;
+window.toggleMoqStatus = toggleMoqStatus;
+window.setMoqFilter = setMoqFilter;
+window.renderMoqTable = renderMoqTable;
