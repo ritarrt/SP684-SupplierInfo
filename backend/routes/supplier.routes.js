@@ -71,7 +71,9 @@ const router = express.Router();
 import {
   getSupplierDeals,
   saveSupplierDeal,
-  toggleSupplierDealStatus
+  updateSupplierDeal,
+  toggleSupplierDealStatus,
+  updateSupplierDealStatus
 } from "../controllers/supplierDeal.controller.js";
 
 
@@ -210,10 +212,22 @@ router.post(
   saveSupplierDeal
 );
 
+// Update deal
+router.put(
+  "/:supplierNo/deals/:id",
+  updateSupplierDeal
+);
+
 // Toggle deal status
 router.put(
   "/:supplierNo/deals/:id/toggle",
   toggleSupplierDealStatus
+);
+
+// Update deal status
+router.put(
+  "/:supplierNo/deals/:id/status",
+  updateSupplierDealStatus
 );
 
 

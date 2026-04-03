@@ -8,7 +8,7 @@ export async function uploadSupplierDocument(req, res) {
     const pool = await getPool();
 
     const { supplierNo } = req.params;
-    const { description } = req.body;
+    const { description, source } = req.body;
     const file = req.file;
 
     if (!file) {
@@ -26,6 +26,7 @@ export async function uploadSupplierDocument(req, res) {
       .input("file_type", sql.NVarChar(100), file.mimetype)
       .input("file_size", sql.Int, file.size)
       .input("description", sql.NVarChar(255), description || null)
+      .input("source", sql.NVarChar(50), source || "basic")
       .query(`
         INSERT INTO supplier_documents
         (
@@ -35,6 +36,7 @@ export async function uploadSupplierDocument(req, res) {
           file_type,
           file_size,
           description,
+          source,
           uploaded_at,
           is_active
         )
@@ -46,6 +48,7 @@ export async function uploadSupplierDocument(req, res) {
           @file_type,
           @file_size,
           @description,
+          @source,
           GETDATE(),
           1
         )
@@ -77,6 +80,7 @@ export async function getSupplierDocuments(req, res) {
       file_name,
       file_path,
       description,
+      source,
       uploaded_at
 
     FROM dbo.supplier_documents

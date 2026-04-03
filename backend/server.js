@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import supplierRoutes from "./routes/supplier.routes.js";
 import targetRoutes from "./routes/target.routes.js";
 import masterRoutes from "./routes/master.routes.js";
+import { startScheduler } from "./scheduler.js";
 
 dotenv.config();
 
@@ -34,4 +35,7 @@ app.use(express.static(path.join(__dirname, "../frontend")));
 const PORT = Number(process.env.PORT || 3000);
 app.listen(PORT, () => {
   console.log(`Supplier API running on port ${PORT}`);
+  
+  // Start the scheduler for auto-closing expired deals
+  startScheduler();
 });
