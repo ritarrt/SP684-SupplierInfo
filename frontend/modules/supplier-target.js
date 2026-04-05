@@ -30,13 +30,39 @@ document.addEventListener("click", (e) => {
 
 function renderCheckboxList(containerId, data) {
   const el = document.getElementById(containerId);
-
-  el.innerHTML = data.map(d => `
+  if (!el) return;
+  
+  const isMultiSelect = containerId.includes("Dropdown");
+  
+  el.innerHTML = (isMultiSelect && data.length > 0 ? `
+    <label class="block text-sm py-1 font-semibold border-b mb-1">
+      <input type="checkbox" class="mr-2 select-all-checkbox" data-container="${containerId}">
+      เลือกทั้งหมด
+    </label>
+  ` : '') + data.map(d => `
     <label class="block text-sm py-1">
-      <input type="checkbox" value="${d.value}" class="mr-2">
+      <input type="checkbox" value="${d.value}" class="mr-2 item-checkbox" data-container="${containerId}">
       ${d.label}
     </label>
   `).join("");
+  
+  if (isMultiSelect && data.length > 0) {
+    el.querySelector('.select-all-checkbox')?.addEventListener('change', function() {
+      const container = this.dataset.container;
+      const checkboxes = document.querySelectorAll(`#${container} .item-checkbox`);
+      checkboxes.forEach(cb => cb.checked = this.checked);
+      updateSelectedText(container, container.replace('Dropdown', 'Text'));
+    });
+  }
+}
+
+function updateSelectedText(containerId, textId) {
+  const values = [...document.querySelectorAll(`#${containerId} input:checked`)]
+    .map(i => i.parentElement.textContent.trim())
+    .filter(t => t !== "เลือกทั้งหมด");
+
+  document.getElementById(textId).innerText =
+    values.length ? values.join(", ") : "- เลือก -";
 }
 
 // ============================================================
@@ -48,7 +74,8 @@ let branchData = [];
 
 function getSelectedValues(containerId) {
   return [...document.querySelectorAll(`#${containerId} input:checked`)]
-    .map(i => i.value);
+    .map(i => i.value)
+    .filter(v => v);
 }
 
 
@@ -264,26 +291,48 @@ document.addEventListener("change", (e) => {
       }))
     );
   }
+
+  // Handle select-all checkbox state when individual items change
+  if (e.target.matches("#regionDropdown .item-checkbox") || 
+      e.target.matches("#provinceDropdown .item-checkbox") ||
+      e.target.matches("#branchDropdown .item-checkbox")) {
+    const container = e.target.dataset.container;
+    const selectAll = document.querySelector(`#${container} .select-all-checkbox`);
+    const itemCheckboxes = document.querySelectorAll(`#${container} .item-checkbox`);
+    if (selectAll) {
+      selectAll.checked = itemCheckboxes.length > 0 && itemCheckboxes.every(cb => cb.checked);
+    }
+  }
 });
-
-function updateSelectedText(containerId, textId) {
-  const values = [...document.querySelectorAll(`#${containerId} input:checked`)]
-    .map(i => i.parentElement.textContent.trim());
-
-  document.getElementById(textId).innerText =
-    values.length ? values.join(", ") : "- เลือก -";
-}
 
 document.addEventListener("change", (e) => {
 
-  if (e.target.matches("#regionDropdown input"))
+  if (e.target.matches("#regionDropdown input")) {
     updateSelectedText("regionDropdown", "regionText");
+    const selectAll = document.querySelector('#regionDropdown .select-all-checkbox');
+    const items = document.querySelectorAll('#regionDropdown .item-checkbox');
+    if (selectAll && items.length > 0) {
+      selectAll.checked = items.every(cb => cb.checked);
+    }
+  }
 
-  if (e.target.matches("#provinceDropdown input"))
+  if (e.target.matches("#provinceDropdown input")) {
     updateSelectedText("provinceDropdown", "provinceText");
+    const selectAll = document.querySelector('#provinceDropdown .select-all-checkbox');
+    const items = document.querySelectorAll('#provinceDropdown .item-checkbox');
+    if (selectAll && items.length > 0) {
+      selectAll.checked = items.every(cb => cb.checked);
+    }
+  }
 
-  if (e.target.matches("#branchDropdown input"))
+  if (e.target.matches("#branchDropdown input")) {
     updateSelectedText("branchDropdown", "branchText");
+    const selectAll = document.querySelector('#branchDropdown .select-all-checkbox');
+    const items = document.querySelectorAll('#branchDropdown .item-checkbox');
+    if (selectAll && items.length > 0) {
+      selectAll.checked = items.every(cb => cb.checked);
+    }
+  }
 
 });
 

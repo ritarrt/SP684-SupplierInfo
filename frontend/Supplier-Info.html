@@ -1163,18 +1163,19 @@
                       <option value="บาท">บาท</option>
                       <option value="ตัน">ตัน</option>
                       <option value="ชิ้น">ชิ้น</option>
+                      <option value="ตร.ฟุต">ตร.ฟุต</option>
                     </select>
                   </div>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">วันที่เริ่มเป้า<span class="text-red-600">*</span></label>
-                  <input type="date" class="form-control" id="tgStart">
+                  <input type="date" class="form-control" id="tgStart" min="2559-01-01" max="2589-12-31">
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">วันที่สิ้นสุดเป้า<span class="text-red-600">*</span></label>
-                  <input type="date" class="form-control" id="tgEnd">
+                  <input type="date" class="form-control" id="tgEnd" min="2559-01-01" max="2589-12-31">
                 </div>
               </div>
 
@@ -1703,12 +1704,12 @@
 
                 <div class="col-span-12 md:col-span-3">
                   <label class="form-label text-muted">วันที่เริ่มใช้ราคา <span class="text-red-600">*</span></label>
-                  <input type="date" class="form-control" id="dealStart" required>
+                  <input type="date" class="form-control" id="dealStart" required min="2559-01-01" max="2589-12-31">
                 </div>
 
                 <div class="col-span-12 md:col-span-3">
                   <label class="form-label text-muted">วันที่สิ้นสุด <span class="text-red-600">*</span></label>
-                  <input type="date" class="form-control" id="dealEnd" required>
+                  <input type="date" class="form-control" id="dealEnd" required min="2559-01-01" max="2589-12-31">
                 </div>
               </div>
 

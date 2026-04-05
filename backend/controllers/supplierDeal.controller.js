@@ -408,9 +408,9 @@ export const saveSupplierDeal = async (req, res) => {
 
     // Generate deal reference: PD/YYMM/NNN
     const now = new Date();
-    const year = String(now.getFullYear()).slice(-2);
+    const buddhistYear = String(now.getFullYear() + 543).slice(-2); // 2 หลักท้าย พ.ศ. (69)
     const month = String(now.getMonth() + 1).padStart(2, "0");
-    const prefix = `PD/${year}${month}`;
+    const prefix = `PD${buddhistYear}${month}`;
 
     // Get next running number (handle case where deal_ref column doesn't exist yet)
     let deal_ref = null;
@@ -425,7 +425,7 @@ export const saveSupplierDeal = async (req, res) => {
           WHERE deal_ref LIKE @prefix + '%'
         `);
       const running = runningResult.recordset[0].next_running;
-      deal_ref = `${prefix}/${String(running).padStart(3, "0")}`;
+      deal_ref = `${prefix}${String(running).padStart(3, "0")}`;
     } catch (err) {
       // deal_ref column doesn't exist yet, skip generating reference
       console.log("deal_ref column not found, skipping reference generation");
@@ -842,9 +842,9 @@ export const updateSupplierDeal = async (req, res) => {
     let newDealRef = null;
     if (currentStatus === 'CANCELLED' && hasBeenUsed) {
       const now = new Date();
-      const year = String(now.getFullYear()).slice(-2);
+      const buddhistYear = String(now.getFullYear() + 543).slice(-2); // 2 หลักท้าย พ.ศ. (69)
       const month = String(now.getMonth() + 1).padStart(2, "0");
-      const prefix = `PD/${year}${month}`;
+      const prefix = `PD${buddhistYear}${month}`;
 
       try {
         const runningResult = await pool.request()
@@ -857,7 +857,7 @@ export const updateSupplierDeal = async (req, res) => {
             WHERE deal_ref LIKE @prefix + '%'
           `);
         const running = runningResult.recordset[0].next_running;
-        newDealRef = `${prefix}/${String(running).padStart(3, "0")}`;
+        newDealRef = `${prefix}${String(running).padStart(3, "0")}`;
       } catch (err) {
         // deal_ref column doesn't exist yet, skip generating reference
         console.log("deal_ref column not found, skipping reference generation");

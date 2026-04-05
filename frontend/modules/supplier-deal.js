@@ -60,7 +60,8 @@ window.toggleDropdown = function (id) {
 
 function getSelectedValues(containerId) {
   return [...document.querySelectorAll(`#${containerId} input:checked`)]
-    .map(i => i.value);
+    .map(i => i.value)
+    .filter(v => v); // กรองค่าว่างออก
 }
 
 function renderCheckboxList(containerId, data) {

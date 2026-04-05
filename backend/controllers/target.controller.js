@@ -12,10 +12,10 @@ export const createTarget = async (req, res) => {
     const d = req.body;
 
     const now = new Date();
-const year = String(now.getFullYear()).slice(-2); // หลัง 2 หลัก
+const buddhistYear = String(now.getFullYear() + 543).slice(-2); // 2 หลักท้าย พ.ศ. (69)
 const month = String(now.getMonth() + 1).padStart(2, "0");
 
-const prefix = `PT/${year}${month}`;
+const prefix = `PT${buddhistYear}${month}`;
 
     await pool.request()
       .input("supplier_code", sql.NVarChar, d.supplier_code)
@@ -73,7 +73,7 @@ FROM supplier_targets WITH (UPDLOCK, HOLDLOCK)
 WHERE target_ref LIKE @prefix + '%';
 
 DECLARE @target_ref NVARCHAR(50) =
-    @prefix + '/' + RIGHT('000' + CAST(@running AS VARCHAR), 3);
+    @prefix + RIGHT('000' + CAST(@running AS VARCHAR), 3);
 
 INSERT INTO supplier_targets (
   supplier_code,

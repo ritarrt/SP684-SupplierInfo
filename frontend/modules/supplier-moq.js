@@ -55,12 +55,24 @@ function renderMoqRegionDropdown() {
 
   const regions = [...new Set(window.branchData.map(b => b.region))];
 
-  el.innerHTML = regions.map(r => `
+  el.innerHTML = `
+    <label class="flex items-center gap-2 font-semibold border-b mb-1 pb-1">
+      <input type="checkbox" class="moq-select-all" data-target="moqRegionDropdown">
+      เลือกทั้งหมด
+    </label>
+  ` + regions.map(r => `
     <label class="flex items-center gap-2">
-      <input type="checkbox" value="${r}" onchange="onMoqRegionChange()">
+      <input type="checkbox" value="${r}" class="moq-item-checkbox" onchange="onMoqRegionChange()">
       ${r}
     </label>
   `).join("");
+
+  // Add select-all event listener
+  el.querySelector('.moq-select-all')?.addEventListener('change', function() {
+    const checkboxes = el.querySelectorAll('.moq-item-checkbox');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+    onMoqRegionChange();
+  });
 
   console.log("✅ MOQ region loaded:", regions);
 }
@@ -71,31 +83,50 @@ function renderMoqBranchDropdown() {
 
   const selectedRegions = getCheckedValues("moqRegionDropdown");
 
-const filtered = (window.branchData || []).filter(b =>
+  const filtered = (window.branchData || []).filter(b =>
   selectedRegions.length === 0 ||
   selectedRegions.includes((b.region || "").trim())
 );
 
-console.log("selectedRegions:", selectedRegions);
-console.log("branchData:", window.branchData);
+  console.log("selectedRegions:", selectedRegions);
+  console.log("branchData:", window.branchData);
 
-  el.innerHTML = filtered.map(b => `
+  el.innerHTML = `
+    <label class="flex items-center gap-2 font-semibold border-b mb-1 pb-1">
+      <input type="checkbox" class="moq-select-all" data-target="moqBranchDropdown">
+      เลือกทั้งหมด
+    </label>
+  ` + filtered.map(b => `
     <label class="flex items-center gap-2">
-      <input type="checkbox" value="${b.branchCode}" onchange="onMoqBranchChange()">
+      <input type="checkbox" value="${b.branchCode}" class="moq-item-checkbox" onchange="handleMoqBranchChange()">
       ${b.branchCode} - ${b.branchName}
     </label>
   `).join("");
+
+  // Add select-all event listener
+  el.querySelector('.moq-select-all')?.addEventListener('change', function() {
+    const checkboxes = el.querySelectorAll('.moq-item-checkbox');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+    handleMoqBranchChange();
+  });
 }
 
 function getCheckedValues(dropdownId) {
   return Array.from(
     document.querySelectorAll(`#${dropdownId} input:checked`)
-  ).map(el => el.value);
+  ).map(el => el.value).filter(v => v);
 }
 
 function onMoqRegionChange() {
   renderMoqBranchDropdown();
   updateText("moqRegionDropdown", "moqRegionText");
+  
+  // Update select-all checkbox state
+  const selectAll = document.querySelector('#moqRegionDropdown .moq-select-all');
+  const items = document.querySelectorAll('#moqRegionDropdown .moq-item-checkbox');
+  if (selectAll && items.length > 0) {
+    selectAll.checked = items.length > 0 && [...items].every(cb => cb.checked);
+  }
 }
 
 function updateText(dropdownId, textId) {
@@ -163,11 +194,18 @@ groupEl?.addEventListener("change", () => {
 }
 
 
-function onMoqBranchChange() {
+function handleMoqBranchChange() {
   updateText("moqBranchDropdown", "moqBranchText");
+  
+  const selectAll = document.querySelector('#moqBranchDropdown .moq-select-all');
+  const items = document.querySelectorAll('#moqBranchDropdown .moq-item-checkbox');
+  if (selectAll && items.length > 0) {
+    selectAll.checked = items.length > 0 && [...items].every(cb => cb.checked);
+  }
 }
 
-window.onMoqBranchChange = onMoqBranchChange;
+window.handleMoqBranchChange = handleMoqBranchChange;
+
 /* ===============================
    🔥 MULTI SELECT HELPER
 ================================ */
