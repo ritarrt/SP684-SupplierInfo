@@ -1,0 +1,63 @@
+<div class="card card-table" id="supplierHistoryPanel">
+
+  <!-- ================= HEADER : TABS ================= -->
+  <div class="card-header">
+    <div class="flex items-center gap-2">
+
+      <button class="tab-btn active" data-history-tab="contacts">
+        <i class="bi bi-person-lines-fill"></i>
+        รายชื่อผู้ติดต่อ
+      </button>
+
+      <button class="tab-btn" data-history-tab="products">
+        <i class="bi bi-box-seam"></i>
+        ประวัติสินค้าที่ดูแล
+      </button>
+
+      <button class="tab-btn" data-history-tab="terms">
+        <i class="bi bi-shield-check"></i>
+        ประวัติเงื่อนไขพิเศษ
+      </button>
+
+    </div>
+  </div>
+
+  <!-- ================= BODY ================= -->
+  <div class="card-body">
+
+    <!-- =====================================================
+         TAB : CONTACTS
+         ===================================================== -->
+    <div class="history-pane active" id="history-contacts">
+
+      <!-- 👉 ย้ายตารางผู้ติดต่อเดิมของคุณมาใส่ตรงนี้ -->
+      <div class="text-gray-500 text-sm">
+        เลือกแท็บเพื่อดูประวัติการบันทึกข้อมูล
+      </div>
+
+    </div>
+
+    <!-- =====================================================
+         TAB : PRODUCT HISTORY (GRID)
+         ===================================================== -->
+    <div class="history-pane hidden" id="history-products">
+
+      <!-- Rows -->
+      <div id="productHistoryGrid" class="divide-y">
+
+      </div>
+    </div>
+
+    <!-- =====================================================
+         TAB : SPECIAL TERMS HISTORY (GRID)
+         ===================================================== -->
+    <div class="history-pane hidden" id="history-terms">
+
+      <!-- Rows -->
+      <div id="termsHistoryGrid" class="divide-y">
+
+      </div>
+    </div>
+
+  </div>
+</div>

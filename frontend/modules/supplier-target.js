@@ -1,0 +1,1403 @@
+import { loadColors, loadThickness } from "../modules/master-helper.js";
+import { loadCoverageToForm, loadGroups, loadSubGroups } from "../modules/coverage-helper.js";
+
+// ============================================================
+// DROPDOWN TOGGLE
+// ============================================================
+window.toggleDropdown = function (id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  el.classList.toggle("hidden");
+};
+
+document.addEventListener("click", (e) => {
+  const dropdowns = ["regionDropdown", "provinceDropdown", "branchDropdown"];
+
+  dropdowns.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    if (!el.contains(e.target) && !e.target.closest(`[onclick*="${id}"]`)) {
+      el.classList.add("hidden");
+    }
+  });
+});
+
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+
+function renderCheckboxList(containerId, data) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  
+  const isMultiSelect = containerId.includes("Dropdown");
+  
+  el.innerHTML = (isMultiSelect && data.length > 0 ? `
+    <label class="block text-sm py-1 font-semibold border-b mb-1">
+      <input type="checkbox" class="mr-2 select-all-checkbox" data-container="${containerId}" value="">
+      ทั้งหมด
+    </label>
+  ` : '') + data.map(d => `
+    <label class="block text-sm py-1">
+      <input type="checkbox" value="${d.value}" class="mr-2 item-checkbox" data-container="${containerId}">
+      ${d.label}
+    </label>
+  `).join("");
+  
+  if (isMultiSelect && data.length > 0) {
+    el.querySelector('.select-all-checkbox')?.addEventListener('change', function() {
+      const container = this.dataset.container;
+      const checkboxes = document.querySelectorAll(`#${container} .item-checkbox`);
+      checkboxes.forEach(cb => cb.checked = this.checked);
+      updateSelectedText(container, container.replace('Dropdown', 'Text'));
+    });
+  }
+}
+
+function updateSelectedText(containerId, textId) {
+  const values = [...document.querySelectorAll(`#${containerId} input:checked`)]
+    .map(i => i.parentElement.textContent.trim())
+    .filter(t => t !== "ทั้งหมด");
+
+  document.getElementById(textId).innerText =
+    values.length ? values.join(", ") : "ทั้งหมด";
+}
+
+// ============================================================
+// INIT
+// ============================================================
+let currentTargetId = null;
+let branchData = [];
+
+
+function getSelectedValues(containerId) {
+  return [...document.querySelectorAll(`#${containerId} input:checked`)]
+    .map(i => i.value)
+    .filter(v => v);
+}
+
+
+// Show/hide loading for form fields
+function showFormLoading(show) {
+  const form = document.getElementById("targetForm");
+  if (!form) return;
+  
+  let loader = document.getElementById("targetFormLoading");
+  
+  if (show) {
+    if (!loader) {
+      loader = document.createElement("div");
+      loader.id = "targetFormLoading";
+      loader.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        flex-direction: column;
+        gap: 12px;
+      `;
+      loader.innerHTML = `
+        <svg class="animate-spin" style="width: 32px; height: 32px; color: #2563eb;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span style="color: #374151; font-weight: 500;">กำลังโหลดข้อมูล...</span>
+      `;
+      form.style.position = "relative";
+      form.appendChild(loader);
+    }
+    loader.style.display = "flex";
+  } else {
+    if (loader) {
+      loader.style.display = "none";
+    }
+  }
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // Show loading while form data is being loaded
+  showFormLoading(true);
+
+  // 🔥 โหลด branch master ก่อนใช้งาน
+  await loadBranchMaster();
+
+  // 🔥 Ensure default options exist for all dropdowns
+  ensureDefaultOptions();
+
+  console.log("supplier-target.js loaded");
+  updateLastModifiedLabel();
+  await loadContactDropdown();
+  await loadParentTargets();
+
+  // Set default start date to current date
+  const today = new Date();
+  const tgStart = document.getElementById("tgStart");
+  if (tgStart && !tgStart.value) {
+    tgStart.value = today.toISOString().split("T")[0];
+  }
+  
+  // โหลดสี + ความหนา ตามประเภทสินค้า
+  const catSelect = document.getElementById("tgCat");
+  if (catSelect) {
+    catSelect.addEventListener("change", (e) => {
+      const category = e.target.value;
+
+      loadColors(category, "tgColor");
+      loadThickness(category, "tgThick");
+    });
+  }
+
+  // ============================================================
+  // 1️⃣ โหลด Coverage ของ Supplier
+  // ============================================================
+  if (window.supplierNo) {
+    await loadCoverageToForm(window.supplierNo, {
+      category: "tgCat",
+      brand: "tgBrand",
+      group: "tgGroup",
+      sub: "tgSub",
+      color: "tgColor",
+      thickness: "tgThick",
+      sku: "tgSku"
+    });
+
+    // โหลด Group และ Sub Group หลังจาก Coverage โหลดเสร็จ
+    const catValue = document.getElementById("tgCat")?.value;
+    if (catValue) {
+      await loadGroups(catValue, "tgGroup");
+      await loadSubGroups(catValue, "tgSub");
+    }
+  }
+
+  // ============================================================
+  // Reload GROUP when Category / Brand change
+  // ============================================================
+  const catSelect2 = document.getElementById("tgCat");
+  const brandSelect2 = document.getElementById("tgBrand");
+
+  if (catSelect2) {
+
+    catSelect2.addEventListener("change", () => {
+      loadGroups(catSelect2.value, "tgGroup");
+    });
+
+    // โหลด group เมื่อ category เปลี่ยน
+    loadGroups(catSelect2.value, "tgGroup");
+  }
+
+  const groupSelect = document.getElementById("tgGroup");
+
+  if (groupSelect) {
+    groupSelect.addEventListener("change", () => {
+      loadSubGroups(
+        catSelect2.value,
+        "tgSub"
+      );
+    });
+  }
+
+  // ============================================================
+  // 2️⃣ Prevent form reload
+  // ============================================================
+  const form = document.getElementById("targetForm");
+  if (form) {
+    form.addEventListener("submit", e => e.preventDefault());
+  }
+
+  // ============================================================
+  // 3️⃣ Radio Filter
+  // ============================================================
+  document.querySelectorAll('input[name="tgFilter"]')
+    .forEach(radio => {
+      radio.addEventListener("change", loadTargetTable);
+    });
+
+  // ============================================================
+  // 4️⃣ Save Button
+  // ============================================================
+  const submitBtn = document.getElementById("submitTgBtn");
+
+  if (submitBtn) {
+    submitBtn.addEventListener("click", async () => {
+
+      if (!window.supplierNo) return;
+
+      const targetName = document.getElementById("tgName")?.value?.trim();
+      const category = document.getElementById("tgCat")?.value?.trim();
+      const brand = document.getElementById("tgBrand")?.value?.trim();
+      const brandName = document.getElementById("tgBrand")?.selectedOptions[0]?.text || "";
+      const productGroup = document.getElementById("tgGroup")?.value?.trim();
+      const groupName = document.getElementById("tgGroup")?.selectedOptions[0]?.text || "";
+
+      const benefitPeriod = document.getElementById("tgBenefit")?.value?.trim();
+      const targetType = document.getElementById("tgType")?.value?.trim();
+      const targetQty = document.getElementById("tgQty")?.value?.trim();
+      const targetUnit = document.getElementById("tgUnit")?.value?.trim();
+      const startDate = document.getElementById("tgStart")?.value?.trim();
+      const endDate = document.getElementById("tgEnd")?.value?.trim();
+
+      if (!targetName) return showToast("กรุณากรอกชื่อเป้าหมาย", true, "tgName");
+      if (!category) return showToast("กรุณาเลือกประเภทสินค้า", true, "tgCat");
+      if (!brand) return showToast("กรุณาเลือกแบรนด์", true, "tgBrand");
+      if (!benefitPeriod) return showToast("กรุณาเลือกระยะเวลาได้รับผลประโยชน์", true, "tgBenefit");
+      if (!targetType) return showToast("กรุณาเลือกประเภทเป้า", true, "tgType");
+      if (!targetQty) return showToast("กรุณากรอกเป้าหมาย/หน่วย", true, "tgQty");
+      if (!targetUnit) return showToast("กรุณาเลือกหน่วย", true, "tgUnit");
+      if (!startDate) return showToast("กรุณาเลือกวันที่เริ่มเป้า", true, "tgStart");
+      if (!endDate) return showToast("กรุณาเลือกวันที่สิ้นสุดเป้า", true, "tgEnd");
+      const startD = new Date(startDate);
+      const endD = new Date(endDate);
+      const diffDays = (endD - startD) / (1000 * 60 * 60 * 24);
+      if (diffDays < 0) return showToast("วันที่สิ้นสุดต้องเป็นวันที่เดียวกับหรือหลังวันที่เริ่ม", true, "tgEnd");
+
+      const payload = {
+        supplier_code: window.supplierNo,
+        provider_contact_id: document.getElementById("tgProvider")?.value || null,
+        target_name: targetName,
+        parent_target_ref: document.getElementById("tgParent")?.value || null,
+        region: getSelectedValues("regionDropdown").join(",") || null,
+        province: getSelectedValues("provinceDropdown").join(",") || null,
+        branch: getSelectedValues("branchDropdown").join(",") || null,
+        category: category,
+
+        brand: brand,
+        brand_name: brandName,
+        group: productGroup,
+        group_name: groupName,
+      
+
+        sub_group_name: document.getElementById("tgSub")?.selectedOptions[0]?.text || "",
+        sub_group_code: document.getElementById("tgSub")?.value || "",
+        color: document.getElementById("tgColor")?.value || "",
+        thickness: document.getElementById("tgThick")?.value || "",
+        mold: document.getElementById("tgMold")?.value || "",
+        sku: document.getElementById("tgSku")?.value || "",
+
+        benefit_period: benefitPeriod,
+        target_type: targetType,
+        target_qty: targetQty,
+        target_unit: targetUnit,
+
+        start_date: convertToCE(startDate),
+        end_date: convertToCE(endDate)
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/api/targets`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+          showToast("บันทึกเป้าสินค้าสำเร็จ", false);
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        } else {
+          showToast(result.message || "บันทึกไม่สำเร็จ", true);
+        }
+
+      } catch (err) {
+        console.error("Save Target Error:", err);
+        showToast("เกิดข้อผิดพลาด กรุณาลองใหม่", true);
+      }
+    });
+  }
+
+  // ============================================================
+// 🔥 REGION → PROVINCE (MULTI)
+// ============================================================
+document.addEventListener("change", (e) => {
+
+  if (e.target.matches("#regionDropdown input")) {
+
+    const selectedRegions = getSelectedValues("regionDropdown");
+
+    let provinces = [];
+
+    selectedRegions.forEach(r => {
+
+      let regionName = r;
+
+      if (r === "กลาง") regionName = "ภาคกลาง";
+      if (r === "เหนือ") regionName = "ภาคเหนือ";
+      if (r === "ใต้") regionName = "ภาคใต้";
+      if (r === "อีสาน") regionName = "ภาคตะวันออกเฉียงเหนือ";
+
+      const filtered = branchData
+        .filter(b => b.region === regionName)
+        .map(b => b.province);
+
+      provinces = provinces.concat(filtered);
+    });
+
+    provinces = [...new Set(provinces)];
+
+    renderCheckboxList("provinceDropdown",
+      provinces.map(p => ({ value: p, label: p }))
+    );
+
+    renderCheckboxList("branchDropdown", []);
+  }
+});
+
+console.log("branchData:", branchData);
+
+  // ============================================================
+// 🔥 PROVINCE → BRANCH (MULTI)
+// ============================================================
+document.addEventListener("change", (e) => {
+
+  if (e.target.matches("#provinceDropdown input")) {
+
+    const selectedProvinces = getSelectedValues("provinceDropdown");
+
+    let branches = [];
+
+    selectedProvinces.forEach(p => {
+      const filtered = branchData.filter(b => b.province === p);
+      branches = branches.concat(filtered);
+    });
+
+    renderCheckboxList("branchDropdown",
+      branches.map(b => ({
+        value: b.branchCode,
+        label: `${b.branchCode} - ${b.branchName}`
+      }))
+    );
+  }
+
+  // Handle select-all checkbox state when individual items change
+  if (e.target.matches("#regionDropdown .item-checkbox") || 
+      e.target.matches("#provinceDropdown .item-checkbox") ||
+      e.target.matches("#branchDropdown .item-checkbox")) {
+    const container = e.target.dataset.container;
+    const selectAll = document.querySelector(`#${container} .select-all-checkbox`);
+    const itemCheckboxes = document.querySelectorAll(`#${container} .item-checkbox`);
+    if (selectAll) {
+      selectAll.checked = itemCheckboxes.length > 0 && [...itemCheckboxes].every(cb => cb.checked);
+    }
+  }
+});
+
+document.addEventListener("change", (e) => {
+
+  if (e.target.matches("#regionDropdown input")) {
+    updateSelectedText("regionDropdown", "regionText");
+    const selectAll = document.querySelector('#regionDropdown .select-all-checkbox');
+    const items = document.querySelectorAll('#regionDropdown .item-checkbox');
+    if (selectAll && items.length > 0) {
+      selectAll.checked = [...items].every(cb => cb.checked);
+    }
+  }
+
+  if (e.target.matches("#provinceDropdown input")) {
+    updateSelectedText("provinceDropdown", "provinceText");
+    const selectAll = document.querySelector('#provinceDropdown .select-all-checkbox');
+    const items = document.querySelectorAll('#provinceDropdown .item-checkbox');
+    if (selectAll && items.length > 0) {
+      selectAll.checked = [...items].every(cb => cb.checked);
+    }
+  }
+
+  if (e.target.matches("#branchDropdown input")) {
+    updateSelectedText("branchDropdown", "branchText");
+    const selectAll = document.querySelector('#branchDropdown .select-all-checkbox');
+    const items = document.querySelectorAll('#branchDropdown .item-checkbox');
+    if (selectAll && items.length > 0) {
+      selectAll.checked = [...items].every(cb => cb.checked);
+    }
+  }
+
+});
+
+  // ============================================================
+  // 5️⃣ Initial Table Load
+  // ============================================================
+if (window.supplierNo) {
+    loadTargetTable();
+  }
+  renderRegionDropdown();
+  
+  // Hide form loading after all data is loaded
+  showFormLoading(false);
+});
+
+function renderRegionDropdown() {
+
+  // 🔥 ดึง region จาก branchData จริง
+  const regions = [...new Set(branchData.map(b => b.region))];
+
+renderCheckboxList("regionDropdown",
+  regions.map(r => ({
+    value: r,   // ✅ ใช้ค่าจริงจาก DB
+    label: r
+  }))
+);
+
+  console.log("✅ region loaded:", regions);
+}
+
+// ============================================================
+// LOAD TABLE
+// ============================================================
+async function loadTargetTable() {
+
+  if (!window.supplierNo) return;
+
+  // Show loading indicator
+  showLoadingIndicator("tgTableBody", "กำลังโหลดข้อมูลเป้าหมาย...");
+
+  try {
+const res = await fetch(
+  `${API_BASE}/api/targets/${window.supplierNo}?t=${Date.now()}`
+);
+const data = await res.json();
+
+console.log("🔍 API Response:", data);
+
+const tbody = document.getElementById("tgTableBody");
+if (!tbody) return;
+
+// Clear loading indicator
+hideLoadingIndicator("tgTableBody");
+
+tbody.innerHTML = "";
+
+if (!Array.isArray(data)) {
+  console.error("Invalid data format:", data);
+  tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">Failed to load data</td></tr>`;
+  return;
+}
+
+const selectedFilter =
+  document.querySelector('input[name="tgFilter"]:checked')?.value || "OPEN";
+
+const filtered = data.filter(item => {
+
+    if (selectedFilter === "OPEN") {
+      return item.status === "OPEN";
+    }
+
+    if (selectedFilter === "CLOSED") {
+      return item.status === "CLOSED";
+    }
+
+    if (selectedFilter === "CANCELLED") {
+      return item.status === "CANCELLED";
+    }
+
+    return true;
+  });
+
+  // แจ้งสถานะเมื่อโหลดเสร็จ
+  const closedCount = data.filter(i => i.status === "CLOSED").length;
+  const openCount = data.filter(i => i.status === "OPEN").length;
+  const cancelledCount = data.filter(i => i.status === "CANCELLED").length;
+  
+  console.log(`สถานะเป้าสินค้า: OPEN=${openCount} | CLOSED=${closedCount} | CANCELLED=${cancelledCount}`);
+
+    const countEl = document.getElementById("tgRecordCount");
+    if (countEl) {
+      countEl.textContent = `${filtered.length} รายการ`;
+    }
+
+    filtered.forEach((item, index) => {
+
+      const statusBadge =
+  item.status === "OPEN"
+    ? `<span
+         style="
+           display:inline-block;
+           background:#198754;
+           color:#fff;
+           padding:6px 16px;
+           border-radius:20px;
+           font-weight:600;
+           font-size:13px;
+           cursor:pointer;
+         "
+         onclick="toggleTargetStatus(${item.id}, 'OPEN')">
+         OPEN
+       </span>`
+
+  : item.status === "CANCELLED"
+    ? `<span
+         style="
+           display:inline-block;
+           background:#dc3545;
+           color:#fff;
+           padding:6px 16px;
+           border-radius:20px;
+           font-weight:600;
+           font-size:13px;
+           cursor:pointer;
+         "
+         onclick="toggleTargetStatus(${item.id}, 'CANCELLED')">
+         CANCELLED
+       </span>`
+
+  : `<span
+       style="
+         display:inline-block;
+         background:#0d6efd;
+         color:#fff;
+         padding:6px 16px;
+         border-radius:20px;
+         font-weight:600;
+         font-size:13px;
+       ">
+        CLOSED
+      </span>`;
+
+        tbody.innerHTML += `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${statusBadge}</td>
+            <td>
+    <div style="font-weight:600;">
+      ${item.target_ref || "-"}
+    </div>
+    <div style="font-size:12px; color:#6c757d;">
+      ${item.target_name || "-"}
+    </div>
+</td>
+
+          <td class="small">
+            ${item.region || "-"} / ${item.province || "-"} / ${item.branch || "-"}<br>
+            ${item.category || "-"} / ${item.brand_name || "-"} / ${item.sub_group || "-"}
+${item.color || "-"} / ${item.thickness || "-"}
+            Mold: ${item.mold || "-"} / SKU: ${item.sku || "-"}
+          </td>
+
+          <td>
+            ${formatDate(item.start_date)} - ${formatDate(item.end_date)}
+          </td>
+
+        <td style="min-width:200px;">
+
+  <!-- Parent/Sub Badge -->
+  <div style="margin-bottom:4px;">
+    ${
+      item.parent_target_ref
+        ? `<span style="background:#6c757d;color:#fff;padding:2px 6px;border-radius:8px;font-size:11px;">
+             เป้าย่อย → ${item.parent_target_ref}
+           </span>`
+        : item.has_sub_targets === 1
+          ? `<span style="background:#0d6efd;color:#fff;padding:2px 6px;border-radius:8px;font-size:11px;">
+               เป้าหลัก
+             </span>`
+          : ""
+    }
+  </div>
+
+  <!-- Target -->
+  <div style="font-weight:600; font-size:15px;">
+    ${Number(item.target_qty || 0).toLocaleString()} ${item.target_unit || ""}
+  </div>
+
+  <!-- Actual (ใช้ combined สำหรับเป้าหลัก) -->
+  <div style="font-size:14px; margin-top:4px;">
+
+  ${
+    item.combined_actual_value != null && item.combined_actual_value !== undefined
+      ? `${Number(item.combined_actual_value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${item.target_unit || ""}`
+      : "-"
+  }
+
+  ${
+    item.combined_achievement_percent != null && item.combined_achievement_percent !== undefined
+      ? `<span style="font-size:13px; color:#6c757d;">
+           (${Number(item.combined_achievement_percent).toFixed(2)}%)
+         </span>`
+      : ""
+  }
+
+</div>
+
+  <!-- Status Badge -->
+ <div style="margin-top:6px;">
+  ${
+    item.target_state === "บรรลุเป้า"
+      ? `<span style="background:#198754;color:#fff;padding:3px 8px;border-radius:12px;font-size:12px;">
+          บรรลุเป้า
+        </span>`
+
+        : item.target_state === "ไม่ถึงเป้า (หมดอายุ)"
+  ? `<span style="background:#dc3545;color:#fff;padding:3px 8px;border-radius:12px;font-size:12px;">
+        ไม่ถึงเป้า
+     </span>
+     <span style="background:#6c757d;color:#fff;padding:3px 8px;border-radius:12px;font-size:12px;margin-left:4px;">
+        หมดอายุ
+     </span>`
+
+
+    : item.target_state === "บรรลุแล้ว (หมดอายุ)"
+      ? `<span style="background:#198754;color:#fff;padding:3px 8px;border-radius:12px;font-size:12px;">
+          บรรลุแล้ว
+        </span>
+         <span style="background:#6c757d;color:#fff;padding:3px 8px;border-radius:12px;font-size:12px;margin-left:4px;">
+          หมดอายุ
+        </span>`
+
+    : item.target_state === "หมดอายุแล้ว"
+      ? `<span style="background:#6c757d;color:#fff;padding:3px 8px;border-radius:12px;font-size:12px;">
+          หมดอายุแล้ว
+        </span>`
+
+    : item.target_state === "ยังไม่ถึงเป้า"
+      ? `<span style="background:#ffc107;color:#000;padding:3px 8px;border-radius:12px;font-size:12px;">
+          ยังไม่ถึงเป้า
+        </span>`
+
+    : item.target_state === "ยังไม่เริ่ม"
+      ? `<span style="background:#0d6efd;color:#fff;padding:3px 8px;border-radius:12px;font-size:12px;">
+          ยังไม่เริ่ม
+        </span>`
+
+    : ""
+  }
+</div>
+
+</td>
+
+          <td>
+            ${formatDateTime(item.updated_at)}
+          </td>
+        </tr>
+      `;
+    });
+
+  } catch (err) {
+    console.error("Load Target Error:", err);
+  }
+}
+
+
+// ============================================================
+// TOGGLE STATUS
+// ============================================================
+function toggleTargetStatus(targetId, currentStatus) {
+
+  currentTargetId = targetId;
+
+  const modal = document.getElementById("cancelTargetModal");
+  const messageEl = document.getElementById("cancelTargetMessage");
+
+  if (currentStatus === "OPEN") {
+    messageEl.innerHTML =
+      "คุณกำลังจะยกเลิก Target นี้<br>ต้องการดำเนินการต่อหรือไม่?";
+  } else {
+    messageEl.innerHTML =
+      "คุณต้องการเปิดใช้งาน Target นี้อีกครั้งหรือไม่?";
+  }
+
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+}
+
+window.toggleTargetStatus = toggleTargetStatus;
+function closeCancelModal() {
+  const modal = document.getElementById("cancelTargetModal");
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+}
+
+// ปุ่ม ยกเลิก
+document.getElementById("cancelTargetNoBtn")
+  ?.addEventListener("click", closeCancelModal);
+
+// ปุ่ม ยืนยัน
+document.getElementById("cancelTargetYesBtn")
+  ?.addEventListener("click", async () => {
+
+    if (!currentTargetId) return;
+
+    try {
+      await fetch(`${API_BASE}/api/targets/cancel/${currentTargetId}`, {
+        method: "PUT"
+      });
+
+      closeCancelModal();
+      loadTargetTable();
+
+    } catch (err) {
+      console.error("Toggle Status Error:", err);
+    }
+});
+
+// ============================================================
+// Convert CE (YYYY-MM-DD) to BE (พ.ศ.)
+function convertToBE(dateStr) {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split("-");
+  const beYear = parseInt(year) + 543;
+  return `${beYear}-${month}-${day}`;
+}
+
+// Convert BE to CE (พ.ศ. → ค.ศ.)
+function convertToCE(dateStr) {
+  if (!dateStr) return null;
+  let year, month, day;
+  
+  if (dateStr.includes("/")) {
+    // Format: DD/MM/YYYY
+    const parts = dateStr.split("/");
+    day = parts[0];
+    month = parts[1];
+    year = parts[2];
+  } else {
+    // Format: YYYY-MM-DD
+    const parts = dateStr.split("-");
+    year = parts[0];
+    month = parts[1];
+    day = parts[2];
+  }
+  
+  let ceYear = parseInt(year);
+  
+  // ถ้าเป็น พ.ศ. (ปี > 2500) ให้แปลงเป็น ค.ศ.
+  if (ceYear > 2500) {
+    ceYear = ceYear - 543;
+  }
+  // ถ้าเป็น ค.ศ. เก่า (ปี < 1000) ให้แปลงเป็น พ.ศ.
+  else if (ceYear < 1000) {
+    ceYear = ceYear + 543;
+  }
+  return `${ceYear}-${month}-${day}`;
+}
+
+// ============================================================
+// DATE FORMATTERS
+// ============================================================
+function formatDate(dateStr) {
+  if (!dateStr) return "-";
+  // Convert CE to BE for display
+  const date = new Date(dateStr);
+  if (isNaN(date)) return dateStr;
+  const beYear = date.getFullYear() + 543;
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${day}/${month}/${beYear}`;
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return "-";
+
+  // ตัด millisecond
+  const clean = dateStr.replace("T", " ").substring(0, 19);
+
+  const [datePart, timePart] = clean.split(" ");
+  if (!datePart || !timePart) return "-";
+
+  let [year, month, day] = datePart.split("-");
+  const [hour, minute, second] = timePart.split(":");
+
+  // ถ้าเป็น พ.ศ.
+  if (parseInt(year) > 2400) {
+    year = parseInt(year);
+  } else {
+    year = parseInt(year) + 543;
+  }
+
+  return `${day}/${month}/${year} ${hour}:${minute}:${second}`;
+}
+
+// ============================================================
+// LOAD CONTACT DROPDOWN
+// ============================================================
+async function loadContactDropdown() {
+
+  if (!window.supplierNo) return;
+
+  const select = document.getElementById("tgProvider");
+  if (!select) return;
+  
+  // Show loading indicator
+  select.innerHTML = `<option value="">กำลังโหลด...</option>`;
+
+  try {
+
+    const res = await fetch(`${API_BASE}/api/suppliers/${window.supplierNo}/contacts`);
+    const contacts = await res.json();
+
+    select.innerHTML = `<option value="">- เลือกผู้ติดต่อ -</option>`;
+
+    contacts
+      .filter(c => c.status !== "CANCELLED")
+      .forEach(c => {
+
+        const option = document.createElement("option");
+        option.value = c.id;
+        option.textContent = `${c.name} ${c.position ? `(${c.position})` : ""}`;
+
+        select.appendChild(option);
+      });
+
+  } catch (err) {
+    console.error("Load Contacts Error:", err);
+  }
+}
+
+// ===================================================
+// LOAD PARENT TARGETS DROPDOWN
+// ===================================================
+let parentTargetsData = [];
+
+async function loadParentTargets() {
+  if (!window.supplierNo) return;
+
+  const select = document.getElementById("tgParent");
+  if (!select) return;
+
+  select.innerHTML = `<option value="">- ไม่มี -</option>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/targets/parents/${window.supplierNo}`);
+    const targets = await res.json();
+
+    parentTargetsData = targets;
+
+    targets.forEach(t => {
+      const option = document.createElement("option");
+      option.value = t.target_ref;
+      option.textContent = `${t.target_ref} - ${t.target_name}`;
+      option.dataset.scope = JSON.stringify({
+        region: t.region,
+        province: t.province,
+        branch: t.branch,
+        category: t.category,
+        brand: t.brand,
+        group: t.product_group_code,
+        group_name: t.product_group,
+        sub_group_code: t.sub_group_code,
+        sub_group_name: t.sub_group,
+        color: t.color,
+        thickness: t.thickness,
+        mold: t.mold,
+        sku: t.sku
+      });
+      select.appendChild(option);
+    });
+  } catch (err) {
+    console.error("Load Parent Targets Error:", err);
+  }
+}
+
+// ===================================================
+// ON CHANGE PARENT TARGET -> AUTO FILL SCOPE
+// ===================================================
+document.getElementById("tgParent")?.addEventListener("change", (e) => {
+  const selectedOption = e.target.selectedOptions[0];
+  
+  if (!selectedOption?.dataset.scope) {
+    enableScopeFields();
+    return;
+  }
+
+  const scope = JSON.parse(selectedOption.dataset.scope);
+  disableScopeFields(scope);
+});
+
+function disableScopeFields(scope) {
+  console.log("🔍 disableScopeFields scope:", scope);
+  
+  // Show loading indicator
+  showScopeLoadingIndicator(true);
+  
+  const fields = [
+    "tgCat", "tgBrand", "tgGroup", "tgSub", 
+    "tgColor", "tgThick", "tgMold", "tgSku"
+  ];
+  
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = true;
+  });
+
+  // First, ensure coverage data is loaded
+  if (!window.COVERAGE_DATA || window.COVERAGE_DATA.length === 0) {
+    console.log("🔍 Loading coverage data first...");
+    loadCoverageToForm(window.supplierNo, {
+      category: "tgCat",
+      brand: "tgBrand",
+      group: "tgGroup",
+      sub: "tgSub",
+      color: "tgColor",
+      thickness: "tgThick",
+      sku: "tgSku"
+    }).then(() => {
+      setScopeValuesWithCategory(scope);
+    });
+  } else {
+    setScopeValuesWithCategory(scope);
+  }
+}
+
+async function setScopeValuesWithCategory(scope) {
+  // 1. Set category first (this will trigger loading of groups, colors, thickness)
+  if (scope.category) {
+    const catSelect = document.getElementById("tgCat");
+    const foundCat = Array.from(catSelect?.options || []).find(opt => opt.value === scope.category || opt.text === scope.category);
+    if (foundCat) {
+      catSelect.value = foundCat.value;
+      // Trigger category change to load related dropdowns
+      catSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+  
+  // Wait for category change to complete loading (including async loadColors/loadThickness)
+  // Using a promise-based wait to ensure all async operations complete
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  // Also load groups if needed
+  if (scope.category) {
+    loadGroups(scope.category, "tgGroup");
+    loadSubGroups(scope.category, "tgSub");
+  }
+  
+  // Additional wait for groups/subgroups to populate
+  await new Promise(resolve => setTimeout(resolve, 200));
+  
+  // Now set all the values
+  setScopeFieldValues(scope);
+  
+  // Handle region/province/branch
+  handleRegionProvinceBranch(scope);
+}
+
+function setScopeFieldValues(scope) {
+  // Brand
+  if (scope.brand) {
+    const brandSelect = document.getElementById("tgBrand");
+    if (brandSelect) {
+      let found = Array.from(brandSelect.options).find(opt => opt.value === scope.brand);
+      if (!found) {
+        found = Array.from(brandSelect.options).find(opt => opt.text.trim() === scope.brand.trim());
+      }
+      if (found) brandSelect.value = found.value;
+    }
+  }
+  
+  // Group
+  if (scope.group) {
+    const groupSelect = document.getElementById("tgGroup");
+    if (groupSelect) {
+      let found = Array.from(groupSelect.options).find(opt => opt.value === scope.group || opt.value === scope.group?.toString().padStart(2, '0'));
+      if (!found && scope.group_name) {
+        found = Array.from(groupSelect.options).find(opt => opt.text.trim() === scope.group_name.trim());
+      }
+      if (found) groupSelect.value = found.value;
+    }
+  }
+  
+  // Sub Group
+  if (scope.sub_group_code) {
+    const subSelect = document.getElementById("tgSub");
+    if (subSelect) {
+      let found = Array.from(subSelect.options).find(opt => opt.value === scope.sub_group_code || opt.value === scope.sub_group_code?.toString().padStart(3, '0'));
+      if (!found && scope.sub_group_name) {
+        found = Array.from(subSelect.options).find(opt => opt.text.trim() === scope.sub_group_name.trim());
+      }
+      if (found) subSelect.value = found.value;
+    }
+  }
+  
+  // Color
+  if (scope.color) {
+    const colorSelect = document.getElementById("tgColor");
+    if (colorSelect) {
+      const found = Array.from(colorSelect.options).find(opt => opt.value === scope.color || opt.text === scope.color);
+      if (found) colorSelect.value = found.value;
+    }
+  }
+  
+  // Thickness
+  if (scope.thickness) {
+    const thickSelect = document.getElementById("tgThick");
+    if (thickSelect) {
+      const found = Array.from(thickSelect.options).find(opt => opt.value === scope.thickness || opt.text === scope.thickness);
+      if (found) thickSelect.value = found.value;
+    }
+  }
+  
+  // Mold
+  if (scope.mold) {
+    const moldSelect = document.getElementById("tgMold");
+    if (moldSelect) {
+      const found = Array.from(moldSelect.options).find(opt => opt.value === scope.mold);
+      if (found) moldSelect.value = found.value;
+    }
+  }
+  
+  // SKU
+  if (scope.sku) {
+    document.getElementById("tgSku").value = scope.sku;
+  }
+}
+
+function handleRegionProvinceBranch(scope) {
+  // Region/Province/Branch Multi-select
+  if (scope.region) {
+    setMultiSelectValues("regionDropdown", scope.region);
+    setTimeout(() => {
+      setMultiSelectValues("provinceDropdown", scope.province);
+      setTimeout(() => {
+        setMultiSelectValues("branchDropdown", scope.branch);
+        showScopeLoadingIndicator(false);
+      }, 100);
+    }, 100);
+  } else if (scope.province) {
+    renderAllProvinces().then(() => {
+      setMultiSelectValues("provinceDropdown", scope.province);
+      setTimeout(() => {
+        setMultiSelectValues("branchDropdown", scope.branch);
+        showScopeLoadingIndicator(false);
+      }, 100);
+    });
+  } else if (scope.branch) {
+    setMultiSelectValues("branchDropdown", scope.branch);
+    showScopeLoadingIndicator(false);
+  } else {
+    showScopeLoadingIndicator(false);
+  }
+}
+
+// Show/hide loading indicator for scope fields
+function showScopeLoadingIndicator(show) {
+  let loader = document.getElementById("scopeLoadingIndicator");
+  
+  if (show) {
+    if (!loader) {
+      loader = document.createElement("div");
+      loader.id = "scopeLoadingIndicator";
+      loader.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+        background: white;
+        padding: 16px 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        border: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      `;
+      loader.innerHTML = `
+        <svg class="animate-spin" style="width: 24px; height: 24px; color: #2563eb;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span style="color: #374151; font-weight: 500;">กำลังโหลดข้อมูลจากเป้าหลัก...</span>
+      `;
+      document.body.appendChild(loader);
+    }
+    loader.style.display = "flex";
+  } else {
+    if (loader) {
+      loader.style.display = "none";
+    }
+  }
+}
+
+async function waitForDataLoad() {
+  return new Promise(resolve => {
+    // Wait for coverage data to be loaded
+    const checkData = () => {
+      if (window.COVERAGE_DATA && window.COVERAGE_DATA.length > 0) {
+        resolve();
+      } else {
+        setTimeout(checkData, 50);
+      }
+    };
+    checkData();
+  });
+}
+
+// Helper to render all provinces (when region is not selected)
+async function renderAllProvinces() {
+  const provinceContainer = document.getElementById("provinceDropdown");
+  if (!provinceContainer) return;
+  
+  // Get all unique provinces from branchData
+  const provinces = [...new Set(branchData.map(b => b.province))];
+  
+  renderCheckboxList("provinceDropdown",
+    provinces.map(p => ({ value: p, label: p }))
+  );
+}
+
+function enableScopeFields() {
+  const fields = [
+    "tgCat", "tgBrand", "tgGroup", "tgSub", 
+    "tgColor", "tgThick", "tgMold", "tgSku"
+  ];
+  
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = false;
+  });
+
+  // Re-enable all form fields
+  const regionDiv = document.querySelector('#regionDropdownToggle');
+  const provinceDiv = document.querySelector('#provinceDropdownToggle');
+  const branchDiv = document.querySelector('#branchDropdownToggle');
+  
+  if (regionDiv) regionDiv.style.pointerEvents = "auto";
+  if (provinceDiv) provinceDiv.style.pointerEvents = "auto";
+  if (branchDiv) branchDiv.style.pointerEvents = "auto";
+
+  ["regionText", "provinceText", "branchText"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = "ทั้งหมด";
+  });
+  ["regionDropdown", "provinceDropdown", "branchDropdown"].forEach(id => {
+    const container = document.getElementById(id);
+    if (container) {
+      container.querySelectorAll("input").forEach(cb => cb.checked = false);
+    }
+  });
+}
+
+function setSelectValue(selectId, value) {
+  const select = document.getElementById(selectId);
+  if (select && value) {
+    select.value = value;
+  }
+}
+
+function setMultiSelectValues(dropdownId, valuesStr) {
+  if (!valuesStr) return;
+  
+  const rawValues = valuesStr.split(",").map(v => v.trim());
+  const container = document.getElementById(dropdownId);
+  const textId = dropdownId.replace("Dropdown", "Text");
+  
+  if (!container) return;
+  
+  console.log(`🔍 setMultiSelectValues: ${dropdownId}`, { rawValues, textId });
+  
+  container.querySelectorAll("input").forEach(cb => {
+    const cbValue = cb.value.trim();
+    const cbText = cb.parentElement.textContent.trim();
+    
+    // Try multiple matching strategies
+    const isMatch = rawValues.some(v => {
+      return cbValue === v || 
+             cbText === v ||
+             cbValue === v.replace(/^0+/, '') || // Remove leading zeros
+             cbValue.padStart(3, '0') === v.padStart(3, '0'); // Normalize padding
+    });
+    
+    cb.checked = isMatch;
+    if (isMatch) {
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+
+  const selectedLabels = [...container.querySelectorAll("input:checked")]
+    .map(cb => cb.parentElement.textContent.trim())
+    .filter(t => t !== "ทั้งหมด");
+  
+  const textEl = document.getElementById(textId);
+  if (textEl) {
+    textEl.textContent = selectedLabels.length ? selectedLabels.join(", ") : "ทั้งหมด";
+  }
+}
+
+// ===================================================
+// ENSURE DEFAULT OPTIONS FOR ALL DROPDOWNS
+// ===================================================
+function ensureDefaultOptions() {
+  const defaults = {
+    tgCat: "ทั้งหมด",
+    tgBrand: "ทั้งหมด",
+    tgGroup: "ทั้งหมด",
+    tgSub: "ทั้งหมด",
+    tgColor: "ทั้งหมด",
+    tgThick: "ทั้งหมด",
+    tgMold: "ทั้งหมด"
+  };
+
+  Object.entries(defaults).forEach(([id, text]) => {
+    const select = document.getElementById(id);
+    if (select && select.options.length > 0 && select.options[0].value === "") {
+      select.options[0].textContent = text;
+    }
+  });
+}
+
+// ===================================================
+// UPDATE LAST MODIFIED TIME
+// ===================================================
+function updateLastModifiedLabel() {
+
+  const el = document.getElementById("tgLastUpdated"); // 👈 แก้ตรงนี้
+  if (!el) return;
+
+  const now = new Date();
+
+  const formatted =
+    now.toLocaleDateString("th-TH") +
+    " " +
+    now.toLocaleTimeString("th-TH", {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+
+  el.innerHTML = `
+    <i class="bi bi-clock"></i> แก้ไขล่าสุด: ${formatted}
+  `;
+}
+
+async function loadBranchMaster() {
+  try {
+    const res = await fetch(`${API_BASE}/api/master/branches`);
+
+    if (!res.ok) {
+      console.error("❌ API NOT FOUND:", res.status);
+      return;
+    }
+
+    const data = await res.json();
+
+    console.log("✅ Branch Data:", data);
+
+    branchData = data;
+
+  } catch (err) {
+    console.error("Load Branch Error:", err);
+  }
+}
+
+/* ===============================
+   🔥 LOADING INDICATOR HELPER
+================================ */
+function showLoadingIndicator(containerId, message = "กำลังโหลด...") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Store original content
+  if (!container.dataset.originalContent) {
+    container.dataset.originalContent = container.innerHTML;
+  }
+  
+  container.innerHTML = `
+    <tr>
+      <td colspan="100%" class="text-center py-4">
+        <div class="flex items-center justify-center gap-2">
+          <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-gray-500">${message}</span>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function hideLoadingIndicator(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // Restore original content if stored
+  if (container.dataset.originalContent) {
+    delete container.dataset.originalContent;
+  }
+}
+
+// ============================================================
+// TOAST NOTIFICATION
+// ============================================================
+function showToast(message, isError = false, focusElementId = null) {
+  const existingToast = document.getElementById('tgValidationToast');
+  if (existingToast) existingToast.remove();
+
+  document.querySelectorAll('.tg-validation-error').forEach(el => {
+    el.classList.remove('tg-validation-error', 'ring-2', 'ring-red-500');
+  });
+
+  if (focusElementId) {
+    const el = document.getElementById(focusElementId);
+    if (el) {
+      el.classList.add('tg-validation-error', 'ring-2', 'ring-red-500');
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  const toast = document.createElement('div');
+  toast.id = 'tgValidationToast';
+  toast.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in';
+  toast.innerHTML = `
+    <div class="${isError ? 'bg-red-500' : 'bg-green-500'} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2" style="min-width: 280px;">
+      <i class="bi ${isError ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill'}"></i>
+      <span class="font-medium">${message}</span>
+    </div>
+  `;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.remove('animate-fade-in');
+    toast.classList.add('animate-fade-out');
+    setTimeout(() => {
+      toast.remove();
+      if (isError) {
+        document.querySelectorAll('.tg-validation-error').forEach(el => {
+          el.classList.remove('tg-validation-error', 'ring-2', 'ring-red-500');
+        });
+      }
+    }, 300);
+  }, 3000);
+}
+
+window.showToast = showToast;
+
+/* ===============================
+    DEBUG TARGET CALCULATION
+============================== */
+async function debugTargetCalc(targetId) {
+  try {
+    const res = await fetch(`${API_BASE}/api/targets/debug-calculation/${targetId}`);
+    const data = await res.json();
+    
+    console.log("🔍 Target Calculation Debug:", data);
+    alert(`Target: ${data.target?.target_name}
+Category: ${data.target?.category}
+Brand: ${data.target?.brand_code}
+Pattern: ${data.calculation?.sku_pattern}
+Target Qty: ${data.calculation?.target_qty}
+Actual Qty: ${data.calculation?.actual_qty}
+Actual Amount: ${data.calculation?.actual_amount}
+Actual Weight: ${data.calculation?.actual_weight}
+Actual Area: ${data.calculation?.actual_area}
+Actual Value: ${data.calculation?.actual_value}
+Achievement: ${data.calculation?.achievement_percent?.toFixed(2)}%
+Records: ${data.calculation?.record_count}
+
+--- RAW DATA CHECK ---
+Raw Count: ${data.debug?.raw_count}
+Raw Sample: ${JSON.stringify(data.debug?.raw_data_sample, null, 2)}`);
+  } catch (err) {
+    console.error("Debug Error:", err);
+    alert("Debug failed: " + err.message);
+  }
+}
+
+window.debugTargetCalc = debugTargetCalc;
+window.loadTargetTable = loadTargetTable;

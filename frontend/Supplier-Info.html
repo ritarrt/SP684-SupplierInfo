@@ -1,0 +1,2159 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+  window.API_BASE = "http://localhost:3000";
+  
+  // Placeholder - will be replaced when supplier-deal.js module loads
+  window.renderDealTable = function() {
+    if (window.dealModuleLoaded && window._renderDealTable) {
+      window._renderDealTable();
+    } else {
+      console.log("renderDealTable: waiting for module to load...");
+    }
+  };
+</script>
+
+
+  <!-- ✅ Tailwind (แทน Bootstrap) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- ✅ Icons (ใช้ได้ ไม่ใช่ Bootstrap CSS) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+  <!-- Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body { background-color: #ffffff; font-family: 'Sarabun', sans-serif; color: #333; }
+
+    /* =========================================================
+       ✅ KEEP YOUR ORIGINAL LOOK (CSS เดิมของคุณ)
+       ========================================================= */
+
+    /* Styling for File Upload Zone */
+    .upload-dropzone {
+      border: 2px dashed #dee2e6;
+      border-radius: 10px;
+      background-color: #f8f9fa;
+      transition: all 0.3s;
+      cursor: pointer;
+      text-align: center;
+      padding: 30px 20px;
+    }
+    .upload-dropzone:hover {
+      border-color: #0d6efd;
+      background-color: #f1f7ff;
+    }
+    .file-icon-lg { font-size: 2.5rem; }
+    .file-icon-sm { font-size: 1.2rem; margin-right: 5px; }
+
+    /* Tabs Styling (ทำให้เหมือน nav-pills) */
+    .nav-pills { gap: 10px; margin-bottom: 20px; }
+    .nav-pills .nav-link {
+      background-color: #e9ecef; color: #495057;
+      border-radius: 8px; padding: 10px 30px; font-weight: 600;
+      display: inline-flex; align-items: center;
+    }
+    .nav-pills .nav-link.active { background-color: #fcd535; color: #000; font-weight: 700; }
+
+    /* Header & Section Styles */
+    .page-header { padding: 20px 0; margin-bottom: 10px; }
+    .section-header {
+      font-size: 1rem; font-weight: 700; color: #0d6efd;
+      border-bottom: 2px solid #e9ecef; padding-bottom: 8px;
+      margin-bottom: 15px; margin-top: 25px;
+    }
+    .first-section { margin-top: 0; }
+
+    /* Form Inputs */
+    .form-label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; display:block; }
+    .form-control, .form-select {
+      font-size: 0.9rem;
+      border-radius: 4px;
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #ced4da;
+      background: #fff;
+      outline: none;
+    }
+    .form-control:focus, .form-select:focus {
+      border-color: #86b7fe;
+      box-shadow: 0 0 0 0.25rem rgba(13,110,253,.15);
+    }
+    .form-text { font-size: 0.8rem; color: #6c757d; margin-top: 4px; }
+
+    /* Readonly & Status */
+    .form-control[readonly] { background-color: #f8f9fa; color: #6c757d; font-weight: 600; }
+    .bg-readonly-info { background-color: #eef2f7 !important; border: 1px solid #dee2e6; color: #495057; }
+
+    /* --- CUSTOM STATUS COLORS --- */
+    .status-open { background-color: #198754 !important; color: #ffffff !important; border: 1px solid #198754; }
+    .status-closed { background-color: #212529 !important; color: #ffffff !important; border: 1px solid #212529; }
+
+    /* Table Style */
+    .card-table { border-top: 4px solid #198754; margin-top: 30px; }
+
+    /* --- Highlight Editing Row --- */
+    .row-editing > td {
+      background-color: #ffe69c !important;
+      color: #000 !important;
+    }
+
+    /* Badge Scope Style */
+    .badge-scope {
+      font-weight: normal;
+      border: 1px solid #dee2e6;
+      color: #495057;
+      background: #f8f9fa;
+      margin-right: 2px;
+      margin-bottom: 2px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      display: inline-block;
+      font-size: 0.75rem;
+    }
+
+    /* Custom Phone Input Group */
+    .phone-row { margin-bottom: 8px; display:flex; gap:0; }
+    .flag-select { max-width: 110px; background-color: #f8f9fa; }
+
+    /* ===== STATUS TEXT (NO BOX) ===== */
+    .status-text { font-weight: 700; letter-spacing: 0.5px; font-size: 0.9rem; }
+    .status-open-text { color: #198754; }
+    .status-closed-text { color: #212529; }
+    .status-cancelled-text { color: #dc3545; }
+
+    .last-updated { font-size: 0.8rem; color: #6c757d; font-weight: 500; }
+    .last-updated i { margin-right: 4px; }
+
+    .form-action-bar {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #dee2e6;
+      padding-right: 8px;
+    }
+
+    /* =========================================================
+       ✅ Small UI kit (แทน Bootstrap .btn .badge .card .table)
+       เพื่อให้ JS เดิมที่ใช้ btn-primary/btn-warning ทำงานได้
+       ========================================================= */
+    .card {
+      background: #f8f9fa;
+      border-radius: 0.75rem;
+      border: 0;
+      box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
+    }
+    .card-body { padding: 1.25rem; }
+    .card-header {
+      padding: .5rem 1rem;
+      border-bottom: 1px solid #dee2e6;
+      border-top-left-radius: .75rem;
+      border-top-right-radius: .75rem;
+      background:#fff;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .45rem .75rem;
+      border-radius: .375rem;
+      border: 1px solid transparent;
+      font-size: .9rem;
+      line-height: 1.2;
+      cursor: pointer;
+      user-select: none;
+      transition: all .15s ease;
+      background: #e9ecef;
+      color: #212529;
+    }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-primary { background:#0d6efd; border-color:#0d6efd; color:#fff; }
+    .btn-secondary { background:#6c757d; border-color:#6c757d; color:#fff; }
+    .btn-warning { background:#ffc107; border-color:#ffc107; color:#000; }
+    .btn-outline-danger { background:transparent; border-color:#dc3545; color:#dc3545; }
+    .btn-outline-primary { background:transparent; border-color:#0d6efd; color:#0d6efd; }
+    .btn-outline-success { background:transparent; border-color:#198754; color:#198754; }
+    .btn-outline-danger:hover { background:#dc3545; color:#fff; }
+    .btn-outline-primary:hover { background:#0d6efd; color:#fff; }
+    .btn-outline-success:hover { background:#198754; color:#fff; }
+
+    .btn-sm { padding: .25rem .5rem; font-size: .8rem; border-radius: .3rem; }
+
+    .badge {
+      display:inline-block;
+      padding: .25rem .5rem;
+      font-size: .75rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      line-height: 1.1;
+    }
+    .bg-dark { background:#212529; color:#fff; }
+    .bg-light { background:#f8f9fa; }
+    .text-dark { color:#212529; }
+    .border { border: 1px solid #dee2e6; }
+    .bg-primary { background:#0d6efd; color:#fff; }
+    .bg-info { background:#0dcaf0; }
+    .bg-danger { background:#dc3545; color:#fff; }
+    .bg-success { background:#198754; color:#fff; }
+
+    .table-wrap { overflow:auto; }
+    table.table {
+      width:100%;
+      border-collapse: collapse;
+      background:#fff;
+    }
+    .table th {
+      font-size: 0.85rem;
+      background-color: #f8f9fa;
+      white-space: nowrap;
+      text-align:left;
+      border:1px solid #dee2e6;
+      padding:.6rem .75rem;
+    }
+    .table td {
+      font-size: 0.85rem;
+      vertical-align: middle;
+      border:1px solid #dee2e6;
+      padding:.6rem .75rem;
+    }
+    .table-hover tbody tr:hover td { background:#f8f9fa; }
+    .text-center { text-align:center; }
+    .text-end { text-align:right; }
+    .fw-bold { font-weight:700; }
+    .text-muted { color:#6c757d; }
+    .small { font-size:.85rem; }
+    .fs-4 { font-size:1.5rem; }
+    .fs-6 { font-size:1rem; }
+
+    /* "fade" แบบ bootstrap */
+    .tab-pane { display:none; }
+    .tab-pane.active { display:block; }
+
+.subgroup-display span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subgroup-dropdown {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.subgroup-display {
+  min-height: 38px;
+  border: 1px solid #ced4da;     /* สีเดียวกับ form-control */
+  border-radius: 6px;
+  background-color: #f8f9fa;     /* เทาแบบ bootstrap */
+}
+
+.subgroup-display:hover {
+  border-color: #86b7fe;
+}
+
+.subgroup-display:focus-within {
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25);
+}
+
+.multi-dropdown {
+  position: absolute;
+  z-index: 50;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+.border-red-500 {
+  border-color: #ef4444 !important;
+}
+
+.text-red-500 {
+  color: #ef4444 !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, -10px); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.3s ease-out forwards;
+}
+
+  </style>
+
+<style>
+  /* บังคับให้ select กับ input สูงเท่ากัน */
+  .form-control,
+  .form-select {
+    height: 38px;
+  }
+</style>
+
+
+</head>
+
+<body>
+
+  <div class="w-full px-6 md:px-12 pb-10">
+
+    <!-- Header -->
+    <div class="flex items-center page-header">
+      <a href="javascript:void(0)"
+   onclick="goBackToSupplierList()"
+   class="text-gray-800 mr-3 no-underline fs-4">
+  <i class="bi bi-chevron-left"></i>
+</a>
+
+      <h3 id="supplierName" class="m-0 fw-bold text-[1.25rem]">-</h3>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav-pills flex flex-wrap" id="pills-tab" role="tablist">
+      <li class="nav-item">
+        <button class="nav-link active" data-tab="pills-basic" type="button">ข้อมูลพื้นฐาน</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-tab="pills-target" type="button">เป้าการสั่งสินค้า</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-tab="pills-moq" type="button">เงื่อนไขการสั่ง/ส่งสินค้า</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-tab="pills-deal" type="button">ดีลราคา</button>
+      </li>
+      <li class="nav-item">
+  <button class="nav-link" data-tab="pills-document" type="button">
+    เอกสาร
+  </button>
+</li>
+
+    </ul>
+
+    <hr class="mt-0 mb-4 text-gray-300">
+
+    <div class="tab-content" id="pills-tabContent">
+
+      <!-- =========================================================
+           TAB: BASIC
+           ========================================================= -->
+      <div class="tab-pane active" id="pills-basic">
+
+        <!-- CARD 1 -->
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="section-header first-section">
+      <i class="bi bi-building"></i> 1. ข้อมูลบริษัท (Company Profile)
+    </div>
+
+    <div class="grid grid-cols-12 gap-3">
+
+      <!-- Supplier Code -->
+      <div class="col-span-12 md:col-span-3">
+        <label class="form-label">รหัสผู้ขาย (Supplier Code)</label>
+        <input
+          id="supplierCode"
+          type="text"
+          class="form-control bg-readonly-info"
+          readonly
+        >
+      </div>
+
+      <!-- Location Type -->
+      <div class="col-span-12 md:col-span-3">
+        <label class="form-label">ประเภทสถานที่</label>
+        <div class="flex">
+          <span
+            class="inline-flex items-center justify-center px-3 bg-success text-white"
+            style="border-radius:4px 0 0 4px;"
+          >
+            <i class="bi bi-check-lg"></i>
+          </span>
+          <input
+            id="locationType"
+            type="text"
+            class="form-control bg-readonly-info"
+            readonly
+            style="border-radius:0 4px 4px 0;"
+          >
+        </div>
+      </div>
+
+      <!-- Tax ID -->
+      <div class="col-span-12 md:col-span-3">
+        <label class="form-label">เลขประจำตัวผู้เสียภาษี</label>
+        <input
+          id="taxId"
+          type="text"
+          class="form-control bg-readonly-info"
+          readonly
+        >
+      </div>
+
+      <!-- Registered Address -->
+      <div class="col-span-12">
+        <label class="form-label">ที่อยู่จดทะเบียน</label>
+        <textarea
+          id="registeredAddress"
+          class="form-control bg-readonly-info"
+          rows="2"
+          readonly
+        ></textarea>
+      </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- =========================================================
+     CARD 3.X : DOCUMENT UPLOAD
+     ========================================================= -->
+<div class="card mb-4" id="supplierDocumentCard">
+  <div class="card-body">
+
+    <div class="section-header first-section">
+      <i class="bi bi-paperclip"></i> เอกสารที่เกี่ยวข้อง
+    </div>
+
+    <!-- Upload Row -->
+    <div class="grid grid-cols-12 gap-3 items-end">
+
+      <!-- File -->
+      <div class="col-span-12 md:col-span-2">
+        <label class="form-label">เลือกไฟล์เอกสาร</label>
+        <input
+          type="file"
+          id="supplierDocFile_basic"
+          class="form-control form-control-sm"
+        />
+      </div>
+
+      <!-- Description -->
+      <div class="col-span-12 md:col-span-3">
+        <label class="form-label">เอกสารนี้คืออะไร? </label>
+        <input
+          type="text"
+          id="supplierDocDesc_basic"
+          class="form-control form-control-sm"
+          placeholder="เช่น หนังสือรับรองบริษัท / สัญญาซื้อขาย"
+        />
+      </div>
+
+      <!-- Save -->
+      <div class="col-span-12 md:col-span-3 flex gap-2">
+        <button
+          type="button"
+          class="btn btn-outline-primary btn-sm"
+          onclick="addSupplierDocument()"
+        >
+          <i class="bi bi-upload"></i> บันทึกเอกสาร
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ===============================
+         Uploaded Document List
+         =============================== -->
+    <div class="mt-4">
+
+      <div class="text-sm font-semibold text-gray-600 mb-2">
+        เอกสารที่อัปโหลดแล้ว
+      </div>
+      <div id="supplierDocumentContainer"></div>
+
+    </div>
+
+  </div>
+</div>
+
+        <!-- CARD 2 : COMPANY PRODUCTS -->
+        <form id="companyProductForm">
+          <div class="card mb-4">
+            <div class="card-body">
+
+              <div class="flex justify-between items-center section-header first-section">
+  <div>
+    <i class="bi bi-box-seam"></i> 2. สินค้าที่บริษัทดูแล
+  </div>
+  
+  
+  <div class="flex gap-2">
+    <button
+      type="button"
+      class="btn btn-outline-primary btn-sm"
+      onclick="addProductRow()"
+    >
+      <i class="bi bi-plus-lg"></i> เพิ่มประเภทสินค้า
+    </button>
+    <button
+      type="button"
+      class="btn btn-outline-secondary btn-sm"
+      id="cancelEditProductBtn"
+      style="display:none;"
+      onclick="cancelEditProductCoverage()"
+    >
+      <i class="bi bi-x-lg"></i> ยกเลิก
+    </button>
+    <button
+    type="button"
+    class="btn btn-outline-success btn-sm"
+    onclick="saveProductCoverageOnly()"
+  >
+    <i class="bi bi-save"></i> บันทึกสินค้า
+  </button>
+  </div>
+</div>
+
+
+              <!-- container สำหรับหลายแถว -->
+<div id="productCoverageContainer" class="space-y-3">
+
+  <!-- 1 แถวสินค้า -->
+  <div class="product-row grid grid-cols-12 gap-3 border rounded-lg p-3 bg-white">
+
+    <!-- ประเภทสินค้า -->
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label text-blue-600">ประเภทสินค้า *</label>
+      <div class="relative w-full">
+        <div
+          class="form-control flex items-center justify-between cursor-pointer category-display"
+          onclick="toggleCategoryDropdown(this)"
+        >
+          <span class="text-gray-400">ทั้งหมด</span>
+          <i class="bi bi-chevron-down text-gray-500"></i>
+        </div>
+
+        <div class="category-dropdown absolute z-50 mt-1 w-full bg-white border rounded shadow hidden"></div>
+      </div>
+    </div>
+
+    <!-- แบรนด์ -->
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label text-blue-600">แบรนด์ที่ดูแล *</label>
+      <div class="relative w-full">
+        <div
+          class="form-control flex items-center justify-between cursor-pointer brand-display"
+          onclick="toggleBrandDropdown(this)"
+        >
+          <span class="text-gray-400">- เลือกแบรนด์ -</span>
+          <i class="bi bi-chevron-down text-gray-500"></i>
+        </div>
+
+       <div class="brand-dropdown absolute z-50 mt-1 w-full bg-white border rounded shadow hidden max-h-60 overflow-y-auto"></div>
+      </div>
+    </div>
+
+    <!-- กลุ่มสินค้า -->
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label text-blue-600">กลุ่มสินค้า *</label>
+      <div class="relative w-full">
+        <div
+          class="form-control flex items-center justify-between cursor-pointer group-display"
+          onclick="toggleGroupDropdown(this)"
+        >
+          <span class="text-gray-400">- ทั้งหมด -</span>
+          <i class="bi bi-chevron-down text-gray-500"></i>
+        </div>
+
+        <div class="group-dropdown absolute z-50 mt-1 w-full bg-white border rounded shadow hidden max-h-60 overflow-y-auto"></div>
+      </div>
+    </div>
+
+<!-- กลุ่มย่อย -->
+<div class="col-span-12 md:col-span-2">
+  <label class="form-label text-blue-600">
+    กลุ่มย่อย
+  </label>
+
+  <div class="relative w-full">
+    <div
+      class="form-control flex items-center justify-between cursor-pointer subgroup-display"
+      onclick="toggleSubGroupDropdown(this)"
+    >
+      <span class="text-gray-400">- ทั้งหมด -</span>
+      <i class="bi bi-chevron-down text-gray-500"></i>
+    </div>
+
+    <div class="subgroup-dropdown absolute z-50 mt-1 w-full bg-white border rounded shadow hidden"></div>
+  </div>
+</div>
+
+    <!-- SKU -->
+    <div class="col-span-12 md:col-span-3">
+      <label class="form-label">SKU (ระบุเองได้)</label>
+      <input type="text" class="form-control sku-input">
+    </div>
+
+    <!-- ปุ่มลบ -->
+    <div class="col-span-12 md:col-span-1 flex items-end">
+      <button
+        type="button"
+        class="btn btn-outline-danger btn-sm"
+        onclick="removeProductRow(this)"
+      >
+        <i class="bi bi-x"></i>
+      </button>
+    </div>
+
+  </div>
+</div>
+</div>
+</div>
+</form>
+
+
+
+        <!-- CARD 3 : SPECIAL TERMS -->
+<div class="card mb-4">
+  <div class="card-body">
+
+    <div class="flex justify-between items-center section-header first-section">
+      <div>
+        <i class="bi bi-shield-check"></i> 3. เงื่อนไขพิเศษ (Special Terms & Conditions)
+      </div>
+      
+      <div class="flex gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="cancelEditBtn" style="display:none;" onclick="cancelEditSpecialTerms()">
+          <i class="bi bi-x-lg"></i> ยกเลิก
+        </button>
+        
+        <button type="button" class="btn btn-outline-success btn-sm" id="submitSpecialTermsBtn">
+          <i class="bi bi-save"></i> บันทึกเงื่อนไขพิเศษ
+        </button>
+      </div>
+    </div>
+
+    <!-- ===============================
+         3.1 เงื่อนไขการเงิน / เครดิต
+         =============================== -->
+     <div class="section-header">
+       <i class="bi bi-cash-coin"></i> 3.1 เงื่อนไขเครดิต (การเงินกรอก)
+     </div>
+
+    <div class="grid grid-cols-12 gap-3">
+  <div class="col-span-12 md:col-span-4">
+  <label class="form-label">รูปแบบการวางบิล</label>
+  <select class="form-select" id="spBillingCycle">
+
+    <!-- 📅 วางบิลตามรอบ -->
+    <option value="bill_10_days">วางบิลทุก 10 วัน</option>
+    <option value="bill_15_days">วางบิลทุก 15 วัน</option>
+    <option value="bill_30_days">วางบิลทุก 30 วัน</option>
+    <option value="bill_25_fixed">ตัดบิลและวางบิลวันที่ 25</option>
+    <option value="bill_end_month">วางบิลสิ้นเดือน</option>
+
+    <!-- 📦 รวมบิล -->
+    <option value="summary_7_days">รวมบิล 7 วัน</option>
+    <option value="summary_15_days">รวมบิล 15 วัน</option>
+    <option value="summary_30_days">รวมบิล 30 วัน</option>
+
+    <!-- 💳 เงื่อนไขพิเศษ -->
+    <option value="deduct_debt">หักหนี้</option>
+    <option value="count_from_bill">นับจากบิล</option>
+    <option value="delivery_collect_check">ส่งของรับเช็ค</option>
+    <option value="delivery_next_trip_check">ส่งของเที่ยวนี้ รับเช็คเที่ยวหน้า</option>
+    <option value="delivery_with_billing">ส่งของวางบิล</option>
+
+    <!-- 📄 ต่อใบ -->
+    <option value="per_order">วางบิลต่อใบสั่ง</option>
+
+  </select>
+</div>
+
+  <div class="col-span-12 md:col-span-4">
+  <label class="form-label">เงื่อนไขเครดิต</label>
+  <select class="form-select" id="spCreditTerm">
+
+    <!-- 💵 เงินสด -->
+    <option value="cash">เงินสด</option>
+
+    <!-- 📆 เครดิตตรง -->
+    <option value="1">เครดิต 1 วัน</option>
+    <option value="3">เครดิต 3 วัน</option>
+    <option value="7">เครดิต 7 วัน</option>
+    <option value="15">เครดิต 15 วัน</option>
+    <option value="25">เครดิต 25 วัน</option>
+    <option value="30">เครดิต 30 วัน</option>
+    <option value="45">เครดิต 45 วัน</option>
+    <option value="60">เครดิต 60 วัน</option>
+    <option value="75">เครดิต 75 วัน</option>
+    <option value="90">เครดิต 90 วัน</option>
+
+    <!-- 📄 นับจากบิล -->
+    <option value="bill_7">นับจากบิล เครดิต 7 วัน</option>
+    <option value="bill_15">นับจากบิล เครดิต 15 วัน</option>
+    <option value="bill_30">นับจากบิล เครดิต 30 วัน</option>
+    <option value="bill_60">นับจากบิล เครดิต 60 วัน</option>
+    <option value="bill_60_deduct">นับจากบิล เครดิต 60 วัน (หักหนี้)</option>
+    <option value="bill_75">นับจากบิล เครดิต 75 วัน</option>
+    <option value="bill_90">นับจากบิล เครดิต 90 วัน</option>
+    <option value="bill_mix">นับจากบิล เครดิต 1/7/30</option>
+
+    <!-- 🌍 ต่างประเทศ -->
+    <option value="lc">Letter of Credit (L/C)</option>
+
+  </select>
+</div>
+
+  <div class="col-span-12 md:col-span-4">
+  <label class="form-label">
+    วงเงินเครดิต (ถ้ามี)
+  </label>
+
+  <div class="flex">
+    <input
+      type="number"
+      class="form-control"
+      id="spCreditLimit"
+      placeholder="0.00"
+      style="border-radius:4px 0 0 4px;"
+    >
+
+    <select
+      class="form-select"
+      id="spCreditLimitUnit"
+      style="border-radius:0 4px 4px 0; width:auto; padding-left:6px; padding-right:6px;"
+    >
+      <option value="THB" selected>บาท</option>
+      <option value="USD">USD</option>
+      <option value="CREDIT_PERCENT">% ของยอดซื้อ</option>
+    </select>
+  </div>
+
+  <div class="form-text">
+    ค่าเริ่มต้นเป็นหน่วย “บาท” หากไม่กำหนด ให้ถือว่าไม่จำกัดวงเงิน
+  </div>
+</div>
+
+</div>
+
+<!-- ===============================
+     3.2 วิธีการชำระเงิน
+     =============================== -->
+<div class="card mb-4">
+    <div class="flex justify-between items-center section-header">
+     <div>
+       <i class="bi bi-credit-card"></i> 3.2 วิธีการชำระเงิน (การเงินกรอก)
+     </div>
+
+    <div class="flex gap-2">
+      <button
+        type="button"
+        class="btn btn-outline-primary btn-sm"
+        onclick="addPaymentRow()"
+      >
+        <i class="bi bi-plus-lg"></i> เพิ่มวิธีชำระเงิน
+      </button>
+    </div>
+  </div>
+
+  <!-- 🔴 container สำคัญมาก -->
+  <div id="paymentMethodContainer" class="space-y-2 mt-3">
+
+    <!-- แถวแรก (template) -->
+    <div class="payment-row grid grid-cols-12 gap-2 items-center">
+      <div class="col-span-12 md:col-span-3">
+        <select class="form-select payment-method-select">
+          <option value="">ทั้งหมด</option>
+          <option value="transfer">โอนเงิน</option>
+          <option value="cash">เงินสด</option>
+          <option value="cheque">เช็ค</option>
+          <option value="credit_note">หัก Credit Note</option>
+        </select>
+      </div>
+
+      <div class="col-span-12 md:col-span-3">
+        <input
+          type="text"
+          class="form-control bank-input"
+          placeholder="เช่น SCB / KBank"
+        />
+      </div>
+
+      <div class="col-span-12 md:col-span-3">
+        <input
+          type="text"
+          class="form-control account-input"
+          placeholder="xxx-x-xxxxx-x"
+        />
+      </div>
+
+      <div class="col-span-12 md:col-span-2">
+        <input
+          type="text"
+          class="form-control account-name-input"
+          placeholder="ชื่อบัญชี"
+        />
+      </div>
+
+      <div class="col-span-12 md:col-span-1 text-center">
+        <button
+          type="button"
+          class="btn btn-outline-danger btn-sm"
+          onclick="removePaymentRow(this)"
+        >
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+    <!-- ===============================
+         3.3 เงื่อนไขการเคลมสินค้า
+         =============================== -->
+    <div class="section-header">
+      <i class="bi bi-arrow-repeat"></i> 3.3 เงื่อนไขการเคลม / คืนสินค้า
+    </div>
+
+    <div class="grid grid-cols-12 gap-3">
+      <div class="col-span-12 md:col-span-4">
+        <label class="form-label">ระยะเวลารับเคลม</label>
+        <input type="text" class="form-control" id="spClaimPeriod" placeholder="เช่น ภายใน 7 วันหลังรับสินค้า">
+      </div>
+
+      <div class="col-span-12 md:col-span-4">
+        <label class="form-label">เงื่อนไขการรับเคลม</label>
+        <input type="text" class="form-control" id="spClaimCondition" placeholder="เช่น สินค้าต้องไม่ถูกใช้งาน">
+      </div>
+
+      <div class="col-span-12 md:col-span-4">
+        <label class="form-label">หมายเหตุเพิ่มเติม</label>
+        <input type="text" class="form-control" id="spClaimNote">
+      </div>
+    </div>
+
+  </div>
+
+
+
+</div>
+
+
+
+        <!-- CARD 4 : CONTACT -->
+        <form id="contactForm">
+          <div class="card mb-4">
+            <div class="card-body">
+
+              <div class="flex justify-between items-center section-header first-section">
+              <div>
+                <i class="bi bi-person-vcard-fill"></i> 4. เพิ่มข้อมูลผู้ติดต่อ (New Contact)
+              </div>
+              
+              <button
+                type="button"
+                class="btn btn-outline-success btn-sm"
+                onclick="saveSupplierContact()"
+              >
+                <i class="bi bi-save"></i> บันทึกข้อมูลผู้ติดต่อ
+              </button>
+            </div>
+
+              <div class="mb-2">
+                <label class="form-label inline-block mr-3 text-muted">ประเภทผู้ติดต่อ:</label>
+
+                <label class="inline-flex items-center gap-2 mr-4">
+                  <input class="mr-1" type="radio" name="ctType" id="ctTypePerson" value="บุคคล" checked>
+                  <span><i class="bi bi-person-fill"></i> บุคคลธรรมดา</span>
+                </label>
+
+                <label class="inline-flex items-center gap-2">
+                  <input class="mr-1" type="radio" name="ctType" id="ctTypeCompany" value="บริษัท">
+                  <span><i class="bi bi-building-fill"></i> นิติบุคคล / บริษัท</span>
+                </label>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3">
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ชื่อ-นามสกุล / บริษัท <span class="text-red-600">*</span></label>
+                  <input type="text" class="form-control" id="ctName" required placeholder="ระบุชื่อ">
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ตำแหน่ง <span class="text-red-600">*</span></label>
+                  <input type="text" class="form-control" id="ctPosition" placeholder="ระบุตำแหน่ง">
+                </div>
+
+                <!-- ⭐ ภาคที่ดูแล -->
+<div class="col-span-12 md:col-span-2">
+  <label class="form-label text-blue-600">
+    ภาคที่ดูแล
+  </label>
+  <div class="relative">
+    <div class="form-control flex justify-between items-center cursor-pointer"
+         onclick="toggleDropdown('ctRegionDropdown')">
+      <span id="ctRegionText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+      <i class="bi bi-chevron-down ml-2"></i>
+    </div>
+    <div id="ctRegionDropdown" class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2"></div>
+  </div>
+</div>
+
+<!-- ⭐ จังหวัดที่ดูแล -->
+<div class="col-span-12 md:col-span-2">
+  <label class="form-label text-blue-600">
+    จังหวัดที่ดูแล
+  </label>
+  <div class="relative">
+    <div class="form-control flex justify-between items-center cursor-pointer"
+         onclick="toggleDropdown('ctProvinceDropdown')">
+      <span id="ctProvinceText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+      <i class="bi bi-chevron-down ml-2"></i>
+    </div>
+    <div id="ctProvinceDropdown" class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2"></div>
+  </div>
+</div>
+
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label text-blue-600">แบรนด์ที่ดูแล</label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('ctBrandDropdown')">
+                      <span id="ctBrandText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="ctBrandDropdown" class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2"></div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label text-blue-600">กลุ่มสินค้า</label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('ctGroupDropdown')">
+                      <span id="ctGroupText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="ctGroupDropdown" class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2"></div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">วันที่เริ่มติดต่อ <span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="ctStartDate" min="2016-01-01" max="2046-12-31">
+                </div>
+
+                <div class="col-span-12 md:col-span-4">
+                  <label class="form-label">อีเมล</label>
+                  <input type="email" class="form-control" id="ctEmail" placeholder="name@company.com">
+                </div>
+
+                <div class="col-span-12 md:col-span-4">
+                  <label class="form-label text-green-600">ไอดีไลน์</label>
+                  <div class="flex">
+                    <span class="inline-flex items-center justify-center px-3 bg-success text-white border border-green-700" style="border-radius:4px 0 0 4px;">
+                      <i class="bi bi-line"></i>
+                    </span>
+                    <input type="text" class="form-control" id="ctLine" placeholder="Line ID" style="border-radius:0 4px 4px 0;">
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-4">
+                  <div class="flex justify-between">
+                    <label class="form-label">เบอร์โทรศัพท์ <span class="text-red-600">*</span></label>
+                    <a href="javascript:void(0)" onclick="addPhoneRow()" class="no-underline text-blue-600 text-sm">
+                      <i class="bi bi-plus-circle"></i> เพิ่มเบอร์
+                    </a>
+                  </div>
+                  <div id="phoneContainer"></div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          <!-- Save button moved to header -->
+        </form>
+
+        <!-- Supplier History Panel -->
+<div id="supplierHistoryContainer"></div>
+
+
+      </div>
+      </div>
+      
+
+      <!-- =========================================================
+           TAB: TARGET
+           ========================================================= -->
+      <div class="tab-pane" id="pills-target">
+
+        <form id="targetForm">
+          <!-- hidden fields required by JS (เดิมคุณเรียก แต่ไม่มี element) -->
+          <input type="hidden" id="tgCode">
+          <input type="hidden" id="tgStatus" value="CLOSED">
+
+          <div class="card">
+            <div class="card-body">
+
+              <div class="flex justify-between items-end section-header first-section">
+                <div><i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐาน (Target)</div>
+                <div class="last-updated" id="tgLastUpdated">
+                  <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+                </div>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สถานะ</label>
+                  <div id="tgStatusText" class="status-text status-open-text">OPEN</div>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ผู้ให้เป้า (จาก Contact) </label>
+                  <select class="form-select" id="tgProvider">
+                    <option value="">- เลือกผู้ติดต่อ -</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ชื่อเป้าหมาย <span class="text-red-600">*</span></label>
+                  <input type="text" class="form-control" id="tgName" required placeholder="ระบุชื่อเป้าหมาย">
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">เป้าหลัก (Parent)</label>
+                  <select class="form-select" id="tgParent">
+                    <option value="">- ไม่มี -</option>
+                  </select>
+                  <small class="text-muted text-xs">ถ้าเลือก จะนำยอดเป้าย่อยมารวมกับเป้าหลัก</small>
+                </div>
+              </div>
+
+              <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขตเป้าหมาย (Scope)</div>
+
+              <div class="grid grid-cols-12 gap-3">
+
+                <!-- REGION -->
+<div class="col-span-12 md:col-span-2">
+  <label class="form-label">ภาค</label>
+
+  <div class="relative">
+    <div class="form-control flex justify-between items-center cursor-pointer"
+         onclick="toggleDropdown('regionDropdown')">
+
+      <span id="regionText"
+            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+        ทั้งหมด
+      </span>
+
+      <i class="bi bi-chevron-down ml-2"></i>
+    </div>
+
+    <div id="regionDropdown"
+         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+    </div>
+  </div>
+</div>
+
+
+<!-- PROVINCE -->
+<div class="col-span-12 md:col-span-2">
+  <label class="form-label">จังหวัด</label>
+
+  <div class="relative">
+    <div class="form-control flex justify-between items-center cursor-pointer"
+         onclick="toggleDropdown('provinceDropdown')">
+
+      <span id="provinceText"
+            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+        ทั้งหมด
+      </span>
+
+      <i class="bi bi-chevron-down ml-2"></i>
+    </div>
+
+    <div id="provinceDropdown"
+         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+    </div>
+  </div>
+</div>
+
+
+<!-- BRANCH -->
+<div class="col-span-12 md:col-span-2">
+  <label class="form-label">สาขา</label>
+
+  <div class="relative">
+    <div class="form-control flex justify-between items-center cursor-pointer"
+         onclick="toggleDropdown('branchDropdown')">
+
+      <span id="branchText"
+            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+        ทั้งหมด
+      </span>
+
+      <i class="bi bi-chevron-down ml-2"></i>
+    </div>
+
+    <div id="branchDropdown"
+         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+    </div>
+  </div>
+</div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทสินค้า<span class="text-red-600">*</span></label>
+                  <select class="form-select" id="tgCat">
+                    <option value="">ทั้งหมด</option>
+                    </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">แบรนด์<span class="text-red-600">*</span></label>
+                  <select class="form-select" id="tgBrand">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">กลุ่มสินค้า</label>
+                  <select class="form-select" id="tgGroup">
+                    <option value="-">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">กลุ่มย่อย</label>
+                  <select class="form-select" id="tgSub">
+                    <option value="-">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สีของสินค้า</label>
+                  <select class="form-select" id="tgColor">
+                    <option value="">ทั้งหมด</option></select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ความหนา</label>
+                  <select class="form-select" id="tgThick">
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">รหัสแม่พิมพ์</label>
+                  <select class="form-select" id="tgMold">
+                    <option value="-">ทั้งหมด</option>
+                    <option value="M-001">M-001</option>
+                    <option value="M-002">M-002</option>
+                    <option value="A-101">A-101</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+  <label class="form-label">SKU</label>
+
+  <input 
+    type="text"
+    class="form-control"
+    id="tgSku"
+    list="tgSkuList"
+    placeholder="ระบุ SKU"
+  >
+
+  <datalist id="tgSkuList"></datalist>
+</div>
+
+              </div>
+
+              <div class="section-header"><i class="bi bi-rulers"></i> 3. เงื่อนไขในการให้เป้าหมาย</div>
+
+              <div class="grid grid-cols-12 gap-3 items-end">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ระยะเวลาได้รับผลประโยชน์<span class="text-red-600">*</span></label>
+                  <select class="form-select" id="tgBenefit">
+                    <option value="ทุกสิ้นเดือน">รายเดือน</option>
+                    <option value="ทุกสิ้นไตรมาส">รายไตรมาส</option>
+                    <option value="สิ้นปี">รายปี</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทเป้า<span class="text-red-600">*</span></label>
+                  <select class="form-select" id="tgType">
+                    <option value="รายเดือน">น้ำหนัก</option>
+                    <option value="รายไตรมาส">มูลค่ารวมในการซื้อ</option>
+                    <option value="รายปี">จำนวน</option>
+                    <option value="เป้าพื้นที่">เป้าพื้นที่</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">เป้าหมาย / หน่วย<span class="text-red-600">*</span></label>
+                  <div class="flex">
+                    <input type="number" class="form-control" id="tgQty" placeholder="0" style="border-radius:4px 0 0 4px;">
+                    <select class="form-select" id="tgUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;">
+                      <option value="บาท">บาท</option>
+                      <option value="ตัน">ตัน</option>
+                      <option value="ชิ้น">ชิ้น</option>
+                      <option value="ตร.ฟุต">ตร.ฟุต</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">วันที่เริ่มเป้า<span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="tgStart" min="2016-01-01" max="2046-12-31">
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">วันที่สิ้นสุดเป้า<span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="tgEnd" min="2016-01-01" max="2046-12-31">
+                </div>
+              </div>
+
+            </div>
+
+            <!-- ================= DOCUMENT ATTACHMENT (BALANCED) ================= -->
+<div class="card mt-4">
+  <div id="supplierDocumentContainer_target"></div>
+</div>
+
+
+          </div>
+
+          <!-- ACTION BAR (✅ FIX: เดิมเรียก resetMoqForm/submitMoqBtn ผิด) -->
+          <div class="flex justify-end gap-2 form-action-bar">
+           
+
+            <button type="button" class="btn btn-primary fw-bold px-4" id="submitTgBtn">
+              <i class="bi bi-save"></i> บันทึก
+            </button>
+          </div>
+        </form>
+
+        <!-- TARGET TABLE -->
+<div class="card card-table">
+  <div class="card-header">
+    <div class="flex justify-between items-center">
+      <div class="inline-flex" role="group" style="gap:6px;">
+
+  <!-- OPEN -->
+  <input type="radio"
+         class="hidden"
+         name="tgFilter"
+         id="tgFilterOpen"
+         value="OPEN"
+         checked>
+
+  <label class="btn btn-sm btn-outline-success"
+         for="tgFilterOpen">
+    <i class="bi bi-check-circle"></i> รายการปกติ
+  </label>
+
+  <!-- CLOSED -->
+  <input type="radio"
+         class="hidden"
+         name="tgFilter"
+         id="tgFilterClosed"
+         value="CLOSED">
+
+  <label class="btn btn-sm btn-outline-primary"
+       for="tgFilterClosed">
+    <i class="bi bi-lock"></i> รายการปิดแล้ว
+  </label>
+
+  <!-- CANCEL -->
+  <input type="radio"
+         class="hidden"
+         name="tgFilter"
+         id="tgFilterCancel"
+         value="CANCELLED">
+
+  <label class="btn btn-sm btn-outline-danger"
+         for="tgFilterCancel">
+    <i class="bi bi-x-circle"></i> รายการยกเลิก
+  </label>
+
+</div>
+
+      <span class="badge bg-light text-dark border"
+            id="tgRecordCount">
+        0 รายการ
+      </span>
+
+    </div>
+  </div>
+
+          <div class="table-wrap">
+            <table class="table table-hover table-bordered mb-0">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>สถานะ</th>
+                  <th>ข้อมูลเป้า / ผู้ให้เป้า</th>
+                  <th>Scope</th>
+                  <th>เงื่อนไขเวลา</th>
+                  <th class="text-end">เป้าหมาย</th>
+                  <th style="width:140px;">แก้ไขล่าสุด</th>
+                </tr>
+              </thead>
+              <tbody id="tgTableBody"></tbody>
+            </table>
+          </div>
+          
+          <!-- Toast Notification -->
+          <div id="tgToast" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999; display: none;">
+            <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+              <div class="toast-header bg-success text-white">
+                <strong class="me-auto">แจ้งสถานะ</strong>
+                <button type="button" class="btn-close btn-close-white" onclick="document.getElementById('tgToast').style.display='none'"></button>
+              </div>
+              <div class="toast-body" id="tgToastBody"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- =========================================================
+           TAB: MOQ
+           ========================================================= -->
+      <div class="tab-pane" id="pills-moq">
+
+        <form id="moqForm">
+          <input type="hidden" id="moqCode">
+          <input type="hidden" id="moqStatus" value="OPEN">
+
+          <div class="card">
+            <div class="card-body">
+
+              <div class="flex justify-between items-end section-header first-section">
+                <div><i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐาน (MOQ)</div>
+                <div class="last-updated" id="moqLastUpdated">
+                  <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+                </div>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สถานะ</label>
+                  <div id="moqStatusText" class="status-text status-open-text">OPEN</div>
+                </div>
+
+                <div class="col-span-12 md:col-span-4">
+  <label class="form-label">
+    ชื่อเงื่อนไข <span class="text-red-600">*</span>
+  </label>
+
+  <input
+    type="text"
+    class="form-control"
+    id="moqName"
+    placeholder="ระบุชื่อเงื่อนไข"
+    required
+  >
+
+  <!-- 🔥 error message -->
+  <p id="moqNameError" class="text-red-500 text-sm mt-1 hidden">
+    กรุณากรอกชื่อเงื่อนไข
+  </p>
+</div>
+
+              </div>
+
+              <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขตของเงื่อนไข (Scope)</div>
+
+              <div class="grid grid-cols-12 gap-3 mb-2">
+                <div class="col-span-12 md:col-span-2">
+  <label class="form-label">ภาค</label>
+
+  <div class="relative">
+    <div class="form-control flex justify-between items-center cursor-pointer"
+         onclick="toggleDropdown('moqRegionDropdown')">
+
+      <span id="moqRegionText">ทั้งหมด</span>
+      <i class="bi bi-chevron-down ml-2"></i>
+    </div>
+
+    <div id="moqRegionDropdown"
+         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+    </div>
+  </div>
+</div>
+
+<!-- BRANCH -->
+<div class="col-span-12 md:col-span-2">
+  <label class="form-label">สาขา</label>
+
+  <div class="relative">
+    <div class="form-control flex justify-between items-center cursor-pointer"
+         onclick="toggleDropdown('moqBranchDropdown')">
+
+      <span id="moqBranchText">ทั้งหมด</span>
+      <i class="bi bi-chevron-down ml-2"></i>
+    </div>
+
+    <div id="moqBranchDropdown"
+         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+    </div>
+  </div>
+</div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทสินค้า</label>
+                   <select class="form-select" id="moqCat">
+  <option value="">ทั้งหมด</option>
+</select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">แบรนด์</label>
+                  <select class="form-select" id="moqBrand">
+  <option value="">ทั้งหมด</option>
+</select>
+
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">กลุ่มสินค้า</label>
+                  <select class="form-select" id="moqGroup">
+  <option value="">ทั้งหมด</option>
+</select>
+
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">กลุ่มย่อย</label>
+               <select class="form-select" id="moqSub">
+  <option value="">ทั้งหมด</option>
+</select>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สีของสินค้า</label>
+                  <select class="form-select" id="moqColor">
+  <option value="">ทั้งหมด</option>
+</select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">รหัสแม่พิมพ์</label>
+                  <select class="form-select" id="moqMold">
+                    <option value="-">ทั้งหมด</option>
+                    <option value="M-001">M-001</option>
+                    <option value="M-002">M-002</option>
+                    <option value="A-101">A-101</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ความหนา</label>
+                  <select class="form-select" id="moqThick">
+</select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label text-muted">SKU</label>
+                  <input 
+  type="text"
+  class="form-control"
+  id="moqSku"
+  list="moqSkuList"
+  placeholder="ระบุ SKU"
+/>
+
+<datalist id="moqSkuList"></datalist>
+                </div>
+              </div>
+
+              <div class="section-header"><i class="bi bi-list-check"></i> 3. เงื่อนไขในการสั่งสินค้า</div>
+
+              <div class="grid grid-cols-12 gap-3 items-end">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทเงื่อนไข</label>
+                  <select class="form-select" id="moqType">
+                    <option value="ผลิต">ผลิต</option>
+                    <option value="นำเข้า">นำเข้า</option>
+                    <option value="ขนส่ง">ขนส่ง</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทรถ</label>
+                  <select class="form-select" id="moqVehicle">
+                    <option value="-">-</option>
+                    <option value="กระบะ">กระบะ</option>
+                    <option value="หกล้อ">หกล้อ</option>
+                    <option value="สิบล้อ">สิบล้อ</option>
+                    <option value="เทรลเลอร์">เทรลเลอร์</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทตัววัด</label>
+                  <select class="form-select" id="moqMeasure">
+                    <option value="รายน้ำหนัก">รายน้ำหนัก</option>
+                    <option value="มูลค่ารวม">มูลค่ารวม</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">จำนวน / หน่วย <span class="text-red-600">*</span></label>
+                  <div class="flex">
+                    <input type="number" class="form-control" id="moqQty" required placeholder="0.00" style="border-radius:4px 0 0 4px;">
+                    <select class="form-select" id="moqUnit" style="border-radius:0 4px 4px 0; max-width:90px; background:#f8f9fa;">
+                      <option value="kg">kg</option>
+                      <option value="บาท">บาท</option>
+                      <option value="ชิ้น">ชิ้น</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+      
+          </div>
+
+          <!-- ACTION BAR (✅ FIX: เดิมเรียก resetDealForm/submitDealBtn ผิด) -->
+          <div class="flex justify-end gap-2 form-action-bar">
+            <button
+  type="button"
+  class="btn btn-primary fw-bold px-4"
+  id="submitMoqBtn"
+>
+  <i class="bi bi-save"></i> บันทึก
+</button>
+
+          </div>
+        </form>
+
+        <!-- MOQ TABLE -->
+        <div class="card card-table">
+          <div class="card-header">
+            <div class="flex justify-between items-center">
+              <div class="inline-flex" role="group" style="gap:6px;">
+                <input type="radio" class="hidden" name="moqFilter" id="moqFilterActive" value="active" checked onchange="renderMoqTable()">
+                <label class="btn btn-sm btn-outline-success" for="moqFilterActive"><i class="bi bi-check-circle"></i> รายการปกติ</label>
+
+                <input type="radio" class="hidden" name="moqFilter" id="moqFilterCancel" value="cancelled" onchange="renderMoqTable()">
+                <label class="btn btn-sm btn-outline-danger" for="moqFilterCancel"><i class="bi bi-x-circle"></i> รายการที่ยกเลิก</label>
+              </div>
+              <span class="badge bg-light text-dark border" id="moqRecordCount">0 รายการ</span>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table table-hover table-bordered mb-0">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>สถานะ</th>
+                  <th>ชื่อเงื่อนไข</th>
+                  <th style="width: 35%;">ขอบเขตของเงื่อนไข</th>
+                  <th>เงื่อนไข</th>
+                  <th style="width:140px;">แก้ไขล่าสุด</th>
+                </tr>
+              </thead>
+              <tbody id="moqTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- =========================================================
+           TAB: DEAL
+           ========================================================= -->
+      <div class="tab-pane" id="pills-deal">
+
+        <form id="dealForm">
+          <input type="hidden" id="dealCode">
+          <input type="hidden" id="dealStatus" value="OPEN">
+
+          <div class="card">
+            <div class="card-body">
+
+              <div class="flex justify-between items-center section-header first-section">
+                <div><i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐานดีลราคา</div>
+                <div class="last-updated" id="dealLastUpdated">
+                  <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+                </div>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สถานะ</label>
+                  <div id="dealStatusText" class="status-text status-open-text">OPEN</div>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ผู้ให้ราคา (จาก Contact) </label>
+                  <select class="form-select" id="dealProvider">
+                    <option value="">- เลือกผู้ติดต่อ -</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ชื่อดีลราคา <span class="text-red-600">*</span></label>
+                  <input type="text" class="form-control" id="dealName" required placeholder="เช่น ราคากระจกพิเศษ Q1">
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">Project No. <span class="text-muted small">(กรณีดีลราคาโปรเจค)</span></label>
+                  <input type="text" class="form-control" id="dealProjectNo" placeholder="พิมพ์เพื่อค้นหา">
+                </div>
+              </div>
+
+              <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขต (Scope)</div>
+
+              <div class="grid grid-cols-12 gap-3">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ภาค<span class="text-red-600">*</span></label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealRegionDropdown')">
+                      <span id="dealRegionText"
+                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+                        ทั้งหมด
+                      </span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealRegionDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">จังหวัด<span class="text-red-600">*</span></label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealProvinceDropdown')">
+                      <span id="dealProvinceText"
+                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+                        ทั้งหมด
+                      </span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealProvinceDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สาขา<span class="text-red-600">*</span></label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealBranchDropdown')">
+                      <span id="dealBranchText"
+                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
+                        ทั้งหมด
+                      </span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealBranchDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทสินค้า<span class="text-red-600">*</span></label>
+                  <select class="form-select" id="dealCat">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">แบรนด์<span class="text-red-600">*</span></label>
+                  <select class="form-select" id="dealBrand">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">กลุ่มสินค้า</label>
+                  <select class="form-select" id="dealGroup">
+                    <option value="-">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">กลุ่มย่อย</label>
+                  <select class="form-select" id="dealSub">
+                    <option value="-">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สีของสินค้า</label>
+                  <select class="form-select" id="dealColor">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ความหนา</label>
+                  <select class="form-select" id="dealThick">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">รหัสแม่พิมพ์</label>
+                  <select class="form-select" id="dealMold">
+                    <option value="-">ทั้งหมด</option>
+                    <option value="M-001">M-001</option>
+                    <option value="M-002">M-002</option>
+                    <option value="A-101">A-101</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+  <label class="form-label">
+    โครงสร้างสินค้า (อลูมิเนียม)
+  </label>
+  <select class="form-select" id="dealStructure">
+    <option value="">ทั้งหมด</option>
+    <option value="SOLID">Solid</option>
+    <option value="HOLLOW">Hollow</option>
+  </select>
+</div>
+
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">SKU</label>
+                  <input type="text" class="form-control" id="dealSku" placeholder="ระบุ SKU">
+                </div>
+
+              </div>
+
+              <div class="section-header"><i class="bi bi-currency-dollar"></i> 3. รายละเอียดราคาและเงื่อนไข</div>
+
+              <div class="grid grid-cols-12 gap-3 mb-3">
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ประเภทของดีล <span class="text-red-600">*</span></label>
+                  <select class="form-select" id="dealType">
+                    <option value="Discount">ส่วนลด (Discount)</option>
+                    <option value="New Price">ราคาใหม่จากผู้ขาย (New Price)</option>
+                  </select>
+                </div>
+
+
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label text-muted">วันที่เริ่มใช้ราคา <span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="dealStart" required min="2016-01-01" max="2046-12-31">
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label text-muted">วันที่สิ้นสุด <span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="dealEnd" required min="2016-01-01" max="2046-12-31">
+                </div>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3 items-end">
+                <div class="col-span-12 md:col-span-6">
+  <label class="form-label">
+    กรอบเงื่อนไข <span class="text-red-600">*</span>
+  </label>
+
+  <!-- MODE SELECT -->
+  <div class="mb-3">
+    <select class="form-select" id="dealConditionMode" onchange="toggleDealConditionMode()">
+      <option value="normal">ราคาปกติ</option>
+      <option value="limited">จำกัดจำนวน</option>
+      <option value="stepped">ขั้นบันได</option>
+    </select>
+  </div>
+
+  <!-- NORMAL PRICE MODE -->
+  <div id="dealNormalMode">
+    <label class="form-label text-muted text-xs mb-1">ราคา / หน่วย</label>
+    <div class="flex">
+      <input type="number" class="form-control" id="dealPrice" placeholder="0.00" style="border-radius:4px 0 0 4px;">
+      <select class="form-select" id="dealUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;">
+        <option value="บาท">บาท</option>
+        <option value="%">%</option>
+        <option value="บาท/ชิ้น">บาท/ชิ้น</option>
+        <option value="บาท/กก.">บาท/กก.</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- LIMITED QUANTITY MODE -->
+  <div id="dealLimitedMode" class="hidden">
+    <div class="grid grid-cols-12 gap-2">
+      <div class="col-span-4">
+        <label class="form-label text-muted text-xs mb-1">จำนวนจำกัด</label>
+        <input type="number" class="form-control" id="dealLimitedQty" placeholder="0">
+      </div>
+      <div class="col-span-4">
+        <label class="form-label text-muted text-xs mb-1">หน่วย</label>
+        <select class="form-select" id="dealLimitedUnit">
+          <option value="ชิ้น">ชิ้น</option>
+          <option value="บาท">บาท</option>
+          <option value="ตัน">ตัน</option>
+          <option value="เส้น">เส้น</option>
+          <option value="แผ่น">แผ่น</option>
+        </select>
+      </div>
+      <div class="col-span-4">
+        <label class="form-label text-muted text-xs mb-1">ประเภทจำนวนจำกัด</label>
+        <select class="form-select" id="dealLimitedType" onchange="updateLimitedDiscountDisplay()">
+          <option value="amount">จำนวน (บาท)</option>
+          <option value="percent">เปอร์เซ็นต์ (%)</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid grid-cols-12 gap-2 mt-2">
+      <div class="col-span-6">
+        <label class="form-label text-muted text-xs mb-1">ราคาที่ได้รับ</label>
+        <div class="flex">
+          <input type="number" class="form-control" id="dealLimitedDiscount" placeholder="0.00" oninput="updateLimitedDiscountDisplay()">
+          <select class="form-select" id="dealLimitedDiscountUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;" onchange="updateLimitedDiscountDisplay()">
+            <option value="บาท">บาท</option>
+            <option value="%">%</option>
+            <option value="บาท/ชิ้น">บาท/ชิ้น</option>
+          </select>
+        </div>
+      </div>
+      <div class="col-span-6">
+        <label class="form-label text-muted text-xs mb-1">ราคาที่ได้รับ (แสดงผล)</label>
+        <div id="dealLimitedDiscountDisplay" class="form-control bg-light text-success fw-bold">-</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEPPED PRICING MODE -->
+  <div id="dealSteppedMode" class="hidden">
+    <div id="dealStepsContainer" class="space-y-1 p-2 bg-light rounded border">
+      <!-- Steps will be added here dynamically -->
+    </div>
+    <button type="button" class="btn btn-outline-primary btn-sm mt-1 w-full" onclick="addDealStep()">
+      <i class="bi bi-plus-lg"></i> เพิ่มขั้นบันไดราคา
+    </button>
+  </div>
+</div>
+
+
+                <!-- NOTE: เดิมใน JS มี dealNote แต่ HTML เดิมคอมเมนต์ไว้ ทำให้ error -> ใส่กลับให้ครบ -->
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">หมายเหตุ</label>
+                  <input type="text" class="form-control" id="dealNote" placeholder="ระบุเงื่อนไขเพิ่มเติม...">
+                </div>
+              </div>
+
+            </div>
+
+            <!-- ================= DOCUMENT ATTACHMENT (BALANCED) ================= -->
+<div class="card mt-4">
+  <div id="supplierDocumentContainer_deal"></div>
+</div>
+
+
+          </div>
+
+          <div class="flex justify-end gap-2 form-action-bar">
+            <button type="button" class="btn btn-secondary fw-bold px-4 hidden" id="cancelDealEditBtn">
+              <i class="bi bi-x-circle"></i> ยกเลิกการแก้ไข
+            </button>
+            <button type="button" class="btn btn-primary fw-bold px-4" id="submitDealBtn">
+              <i class="bi bi-save"></i> บันทึก
+            </button>
+          </div>
+        </form>
+
+        <!-- DEAL TABLE -->
+        <div class="card card-table">
+          <div class="card-header">
+            <div class="flex justify-between items-center">
+              <div class="inline-flex" role="group" style="gap:6px;">
+                <input type="radio" class="hidden" name="dealFilter" id="dealFilterActive" value="active" checked onchange="renderDealTable()">
+                <label class="btn btn-sm btn-outline-success" for="dealFilterActive"><i class="bi bi-check-circle"></i> รายการปกติ</label>
+
+                <input type="radio" class="hidden" name="dealFilter" id="dealFilterClosed" value="closed" onchange="renderDealTable()">
+                <label class="btn btn-sm btn-outline-primary" for="dealFilterClosed"><i class="bi bi-clock-history"></i> รายการที่หมดอายุ</label>
+
+                <input type="radio" class="hidden" name="dealFilter" id="dealFilterCancel" value="cancelled" onchange="renderDealTable()">
+                <label class="btn btn-sm btn-outline-danger" for="dealFilterCancel"><i class="bi bi-x-circle"></i> รายการที่ยกเลิก</label>
+              </div>
+              <span class="badge bg-light text-dark border" id="dealRecordCount">0 รายการ</span>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table table-hover table-bordered mb-0">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>สถานะ</th>
+                  <th style="width:80px;">แก้ไข</th>
+                  <th>ชื่อดีล / ผู้ให้ราคา</th>
+                  <th>Scope</th>
+                  <th class="text-end">ราคา / เงื่อนไข</th>
+                  <th style="width:140px;">แก้ไขล่าสุด</th>
+                </tr>
+              </thead>
+              <tbody id="dealTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- =========================================================
+     TAB: DOCUMENT (Professional Layout)
+     ========================================================= -->
+<div class="tab-pane" id="pills-document">
+
+  <div class="grid grid-cols-12 gap-6">
+
+    <!-- =========================================
+         LEFT: UPLOAD PANEL
+         ========================================= -->
+    <div class="col-span-12 md:col-span-4">
+
+      <div class="card">
+        <div class="card-body">
+
+          <div class="section-header first-section">
+            <i class="bi bi-cloud-upload"></i> อัปโหลดเอกสาร
+          </div>
+
+          <!-- Dropzone -->
+          <div class="upload-dropzone mb-4"
+               onclick="document.getElementById('supplierDocFile').click()">
+
+            <i class="bi bi-file-earmark-arrow-up file-icon-lg text-blue-600"></i>
+
+            <div class="mt-2 fw-bold">
+              คลิกเพื่อเลือกไฟล์
+            </div>
+
+            <div class="text-sm text-gray-500">
+              รองรับ PDF / Excel / รูปภาพ
+            </div>
+
+            <input type="file"
+                   id="supplierDocFile"
+                   class="hidden"
+                   onchange="handleFileSelect(this)">
+          </div>
+          
+          <!-- Selected file name display -->
+          <div id="selectedFileName" class="text-sm text-green-600 mt-2 hidden">
+            <i class="bi bi-check-circle"></i> <span id="fileNameText"></span>
+          </div>
+
+          <!-- Description -->
+          <div class="mb-3">
+            <label class="form-label">คำอธิบายเอกสาร</label>
+            <input type="text"
+                   id="supplierDocDesc"
+                   class="form-control"
+                   placeholder="เช่น หนังสือรับรองบริษัท">
+          </div>
+
+          <!-- Upload Button -->
+          <button type="button"
+                  class="btn btn-primary w-full"
+                  onclick="addSupplierDocument()">
+
+            <i class="bi bi-upload"></i>
+            อัปโหลดเอกสาร
+          </button>
+
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- =========================================
+         RIGHT: DOCUMENT LIST
+         ========================================= -->
+    <div class="col-span-12 md:col-span-8">
+
+      <div class="card">
+        <div class="card-body">
+
+          <div class="flex justify-between items-center section-header first-section">
+            <div>
+              <i class="bi bi-folder2-open"></i> รายการเอกสาร
+            </div>
+
+            <div id="documentCount"
+                 class="badge bg-light text-dark border">
+              0 ไฟล์
+            </div>
+          </div>
+
+          <div id="supplierDocumentList"
+               class="space-y-3">
+
+            <!-- JS Render Here -->
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+  <!-- Toast Message -->
+<div
+  id="saveMessage"
+  class="hidden fixed bottom-4 right-4 z-50
+         bg-green-600 text-white
+         px-4 py-2 rounded shadow"
+></div>
+
+<!-- Cancel MOQ Modal -->
+<div id="cancelMoqModal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
+  <div class="bg-white rounded-xl shadow-lg w-[400px] p-6">
+
+    <h3 id="cancelMoqTitle" class="text-lg font-semibold mb-4">
+      ยืนยันการยกเลิก
+    </h3>
+
+    <p id="cancelMoqMessage" class="text-sm text-gray-600 mb-6">
+      คุณกำลังจะยกเลิก MOQ นี้<br>
+      ต้องการดำเนินการต่อหรือไม่?
+    </p>
+
+    <div class="flex justify-end gap-3">
+      <button
+        id="cancelMoqNoBtn"
+        class="px-4 py-2 rounded-lg border text-gray-600"
+      >
+        ยกเลิก
+      </button>
+
+      <button
+        id="cancelMoqYesBtn"
+        class="px-4 py-2 rounded-lg bg-red-600 text-white"
+      >
+        ยืนยัน
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Cancel Deal Modal -->
+<div id="cancelDealModal"
+     class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
+
+  <div class="bg-white rounded-xl shadow-lg w-[400px] p-6">
+
+    <h3 class="text-lg font-semibold mb-4">
+      เลือกสถานะดีลราคา
+    </h3>
+
+    <p id="dealModalMessage"
+       class="text-sm text-gray-600 mb-6">
+      กรุณาเลือกสถานะที่ต้องการ
+    </p>
+
+    <div class="flex flex-col gap-3">
+      <button id="dealStatusOpenBtn"
+              class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700">
+        เปิดใช้งาน (OPEN)
+      </button>
+
+      <button id="dealStatusUseBtn"
+              class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+        ใช้ (USE)
+      </button>
+
+      <button id="dealStatusCancelBtn"
+              class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">
+        ยกเลิก (CANCELLED)
+      </button>
+
+      <button id="cancelDealNoBtn"
+              class="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-100">
+        ปิด
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- TARGET CANCEL MODAL -->
+<div id="cancelTargetModal" class="fixed inset-0 hidden items-center justify-center bg-black bg-opacity-40 z-50">
+  <div class="bg-white rounded-lg shadow-lg w-[420px] p-6">
+
+    <h5 class="text-lg font-semibold mb-3">
+      ยืนยันการยกเลิก
+    </h5>
+
+    <p class="text-gray-600 text-sm mb-5" id="cancelTargetMessage">
+      คุณกำลังจะยกเลิก Target นี้ ต้องการดำเนินการต่อหรือไม่?
+    </p>
+
+    <div class="flex justify-end gap-3">
+      <button id="cancelTargetNoBtn"
+        class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">
+        ยกเลิก
+      </button>
+
+      <button id="cancelTargetYesBtn"
+        class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+        ยืนยัน
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+
+
+</body>
+
+<script src="modules/supplier-product-coverage.js"></script>
+<script src="modules/supplier-contact.js"></script>
+<script src="modules/supplier-special-terms.js"></script>
+<script src="./components/supplier-history.js" defer></script>
+<script src="./components/supplier-document.js"></script>
+<script type="module" src="modules/supplier-moq.js"></script>
+<script type="module" src="modules/supplier-deal.js"></script>
+<script type="module" src="modules/supplier-target.js"></script>
+
+
+
+<script src="supplier-info-script.js" defer></script>
+
+
+
+</html>
+

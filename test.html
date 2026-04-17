@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2034 บริษัท ไทยไดมอนด์ อินดัสตรีส์ จำกัด</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { background-color: #ffffff; font-family: 'Sarabun', sans-serif; color: #333; }
+        
+        /* Styling for File Upload Zone */
+.upload-dropzone {
+    border: 2px dashed #dee2e6;
+    border-radius: 10px;
+    background-color: #f8f9fa;
+    transition: all 0.3s;
+    cursor: pointer;
+    text-align: center;
+    padding: 30px 20px;
+}
+.upload-dropzone:hover {
+    border-color: #0d6efd;
+    background-color: #f1f7ff;
+}
+.file-icon-lg { font-size: 2.5rem; }
+.file-icon-sm { font-size: 1.2rem; margin-right: 5px; }
+
+        /* Tabs Styling */
+        .nav-pills { gap: 10px; margin-bottom: 20px; }
+        .nav-pills .nav-link { 
+            background-color: #e9ecef; color: #495057; 
+            border-radius: 8px; padding: 10px 30px; font-weight: 600; 
+        }
+        .nav-pills .nav-link.active { background-color: #fcd535; color: #000; font-weight: 700; }
+
+        /* Header & Section Styles */
+        .page-header { padding: 20px 0; margin-bottom: 10px; }
+        .section-header { 
+            font-size: 1rem; font-weight: 700; color: #0d6efd; 
+            border-bottom: 2px solid #e9ecef; padding-bottom: 8px; 
+            margin-bottom: 15px; margin-top: 25px; 
+        }
+        .first-section { margin-top: 0; }
+        
+        /* Form Inputs */
+        .form-label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; }
+        .form-control, .form-select { font-size: 0.9rem; border-radius: 4px; }
+        .form-control:focus, .form-select:focus { border-color: #86b7fe; box-shadow: 0 0 0 0.25rem rgba(13,110,253,.15); }
+        
+        /* Readonly & Status */
+        .form-control[readonly] { background-color: #f8f9fa; color: #6c757d; font-weight: 600; }
+        .bg-readonly-info { background-color: #eef2f7 !important; border: 1px solid #dee2e6; color: #495057; }
+        
+        /* --- CUSTOM STATUS COLORS --- */
+        .status-open {
+            background-color: #198754 !important; /* Green */
+            color: #ffffff !important;
+            border: 1px solid #198754;
+        }
+        .status-closed {
+            background-color: #212529 !important; /* Black */
+            color: #ffffff !important;
+            border: 1px solid #212529;
+        }
+
+        /* Table Style */
+        .card-table { border-top: 4px solid #198754; margin-top: 30px; }
+        .table th { font-size: 0.85rem; background-color: #f8f9fa; white-space: nowrap; }
+        .table td { font-size: 0.85rem; vertical-align: middle; }
+        
+        /* --- Highlight Editing Row --- */
+        .row-editing > td { 
+            background-color: #ffe69c !important; /* Yellow Highlight */
+            color: #000 !important;
+        }
+
+        /* Filter Buttons */
+        .btn-check:checked + .btn-outline-secondary { background-color: #6c757d; color: white; }
+        
+        /* Badge Scope Style */
+        .badge-scope { font-weight: normal; border: 1px solid #dee2e6; color: #495057; background: #f8f9fa; margin-right: 2px; margin-bottom: 2px;}
+
+        /* Custom Phone Input Group */
+        .phone-row { margin-bottom: 8px; }
+        .flag-select { max-width: 110px; background-color: #f8f9fa; }
+
+        /* ===== STATUS TEXT (NO BOX) ===== */
+.status-text {
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    font-size: 0.9rem;
+}
+
+.status-open-text {
+    color: #198754; /* เขียว */
+}
+
+.status-closed-text {
+    color: #212529; /* ดำ */
+}
+
+.status-cancelled-text {
+    color: #dc3545; /* แดง */
+}
+
+.last-updated {
+    font-size: 0.8rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+.last-updated i {
+    margin-right: 4px;
+}
+
+.form-action-bar {
+    margin-top: 24px;        /* เว้นจาก card */
+    padding-top: 16px;
+   
+    border-top: 1px solid #dee2e6;
+
+    /* กันปุ่มชิดขอบขวาเกินไป */
+    padding-right: 8px;
+}
+
+
+
+    </style>
+</head>
+<body>
+
+<div class="container-fluid px-5 pb-5">
+    
+    <div class="d-flex align-items-center page-header">
+        <a href="#" class="text-dark me-3 text-decoration-none fs-4"><i class="bi bi-chevron-left"></i></a>
+        <h3 class="m-0 fw-bold">2034 บริษัท ไทยไดมอนด์ อินดัสตรีส์ จำกัด</h3>
+        <div class="ms-auto"><span class="badge bg-dark p-2 rounded-circle">P</span></div>
+    </div>
+
+    <ul class="nav nav-pills" id="pills-tab" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-basic" type="button">ข้อมูลพื้นฐาน</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-target" type="button">เป้าการสังสินค้า</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-moq" type="button">เงื่อนไขการสั่ง/ส่งสินค้า</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-deal" type="button">ดีลราคา</button></li>
+    </ul>
+
+    <hr class="mt-0 mb-4 text-muted">
+
+    <div class="tab-content" id="pills-tabContent">
+
+        <div class="tab-pane fade show active" id="pills-basic">
+            
+            <div class="card shadow-sm border-0 bg-light mb-4">
+                <div class="card-body">
+                    <div class="section-header first-section"><i class="bi bi-building"></i> 1. ข้อมูลบริษัท (Company Profile)</div>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">รหัสผู้ขาย (Supplier Code)</label>
+                            <input type="text" class="form-control bg-readonly-info" value="VEN-2034-TH" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">ประเภทสถานที่</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-success text-white border-0"><i class="bi bi-check-lg"></i></span>
+                                <input type="text" class="form-control bg-readonly-info" value="สำนักงานใหญ่ (Head Office)" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">เลขประจำตัวผู้เสียภาษี</label>
+                            <input type="text" class="form-control bg-readonly-info" value="0105558099123" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">เงื่อนไขเครดิต</label>
+                            <input type="text" class="form-control bg-readonly-info" value="Credit 30 Days" readonly>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">ที่อยู่จดทะเบียน</label>
+                            <textarea class="form-control bg-readonly-info" rows="2" readonly>88/9 หมู่ 4 นิคมอุตสาหกรรมบางพลี ต.บางเสาธง อ.บางเสาธง จ.สมุทรปราการ 10540</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= CARD 2 : COMPANY PRODUCTS ================= -->
+<form id="companyProductForm">
+
+  <div class="card shadow-sm border-0 bg-light mb-4">
+    <div class="card-body">
+
+      <div class="section-header first-section">
+        <i class="bi bi-box-seam"></i> 2. สินค้าที่บริษัทดูแล
+      </div>
+
+      <div class="row g-3">
+
+        <div class="col-md-2">
+          <label class="form-label text-primary">ประเภทสินค้า <span class="text-danger">*</span></label>
+          <select class="form-select" id="cpCategory">
+            <option value="">- เลือก -</option>
+            <option value="Glass">กระจก</option>
+            <option value="Aluminum">อลูมิเนียม</option>
+            <option value="Gypsum">ยิปซัม</option>
+            <option value="Accessories">อุปกรณ์</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label text-primary">แบรนด์ที่ดูแล <span class="text-danger">*</span></label>
+          <select class="form-select" id="cpBrand">
+            <option value="">- เลือก -</option>
+            <option value="Diamond">Diamond</option>
+            <option value="Alu-Pro">Alu-Pro</option>
+            <option value="GYP-Tech">GYP-Tech</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label text-primary">กลุ่มสินค้า <span class="text-danger">*</span></label>
+          <select class="form-select" id="cpGroup">
+            <option value="">- เลือก -</option>
+            <option value="Clear Glass">กระจกใส</option>
+            <option value="Frosted Glass">กระจกฝ้า</option>
+            <option value="Mirror">กระจกเงา</option>
+            <option value="Profile">เส้นหน้าตัด</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label text-primary">กลุ่มย่อย</label>
+          <select class="form-select" id="cpSubGroup">
+            <option value="">- เลือก -</option>
+            <option value="Standard">ธรรมดา</option>
+            <option value="Tempered">อบเทมเปอร์</option>
+            <option value="Laminated">ลามิเนต</option>
+          </select>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">SKU (ระบุเองได้)</label>
+          <input type="text"
+                 class="form-control"
+                 id="cpSku"
+                 placeholder="เช่น Y01020400112120240">
+          <div class="form-text">คั่นหลาย SKU ด้วย ,</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="form-action-bar mb-4">
+    <div class="d-flex justify-content-end gap-2">
+      <button type="reset" class="btn btn-secondary">
+        <i class="bi bi-arrow-counterclockwise"></i> ล้างค่า
+      </button>
+      <button type="submit"
+              class="btn btn-primary fw-bold px-4"
+              id="submitCompanyProductBtn">
+        <i class="bi bi-save"></i> บันทึก
+      </button>
+    </div>
+  </div>
+
+</form>
+<!-- ================= CARD 3 : เพิ่มข้อมูลผู้ติดต่อ (New Contact) ================= -->
+<form id="contactForm">
+
+  <div class="card shadow-sm border-0 bg-light mb-4">
+    <div class="card-body">
+
+      <div class="section-header first-section">
+        <i class="bi bi-person-vcard-fill"></i> 3. เพิ่มข้อมูลผู้ติดต่อ (New Contact)
+      </div>
+
+      <!-- ================= ประเภทผู้ติดต่อ ================= -->
+      <div class="row mb-2">
+        <div class="col-12">
+          <label class="form-label d-inline me-3 text-muted">ประเภทผู้ติดต่อ:</label>
+
+          <div class="form-check form-check-inline">
+            <input class="form-check-input"
+                   type="radio"
+                   name="ctType"
+                   id="ctTypePerson"
+                   value="บุคคล"
+                   checked>
+            <label class="form-check-label" for="ctTypePerson">
+              <i class="bi bi-person-fill"></i> บุคคลธรรมดา
+            </label>
+          </div>
+
+          <div class="form-check form-check-inline">
+            <input class="form-check-input"
+                   type="radio"
+                   name="ctType"
+                   id="ctTypeCompany"
+                   value="บริษัท">
+            <label class="form-check-label" for="ctTypeCompany">
+              <i class="bi bi-building-fill"></i> นิติบุคคล / บริษัท
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= ข้อมูลหลัก ================= -->
+      <div class="row g-3">
+
+        <!-- ชื่อ -->
+        <div class="col-md-3">
+          <label class="form-label">
+            ชื่อ-นามสกุล / บริษัท <span class="text-danger">*</span>
+          </label>
+          <input type="text"
+                 class="form-control"
+                 id="ctName"
+                 required
+                 placeholder="ระบุชื่อ">
+        </div>
+
+        <!-- ตำแหน่ง -->
+        <div class="col-md-3">
+          <label class="form-label">
+            ตำแหน่ง <span class="text-danger">*</span>
+          </label>
+          <input type="text"
+                 class="form-control"
+                 id="ctPosition"
+                 placeholder="ระบุตำแหน่ง">
+        </div>
+
+        <!-- แบรนด์ที่ดูแล -->
+        <div class="col-md-2">
+          <label class="form-label text-primary">
+            แบรนด์ที่ดูแล <span class="text-danger">*</span>
+          </label>
+          <select class="form-select" id="ctBrand" required>
+            <option value="">- เลือก -</option>
+            <option value="Diamond">Diamond</option>
+            <option value="Alu-Pro">Alu-Pro</option>
+            <option value="GYP-Tech">GYP-Tech</option>
+          </select>
+        </div>
+
+        <!-- กลุ่มสินค้า -->
+        <div class="col-md-2">
+          <label class="form-label text-primary">
+            กลุ่มสินค้า <span class="text-danger">*</span>
+          </label>
+          <select class="form-select" id="ctGroup" required>
+            <option value="">- เลือก -</option>
+            <option value="Glass">กระจก</option>
+            <option value="Alum">อลูมิเนียม</option>
+            <option value="Acc">อุปกรณ์</option>
+          </select>
+        </div>
+
+        <!-- วันที่เริ่มติดต่อ -->
+        <div class="col-md-2">
+          <label class="form-label">
+            วันที่เริ่มติดต่อ <span class="text-danger">*</span>
+          </label>
+          <input type="date"
+                 class="form-control"
+                 id="ctStartDate"
+                 required>
+        </div>
+
+        <!-- อีเมล -->
+        <div class="col-md-4">
+          <label class="form-label">อีเมล</label>
+          <input type="email"
+                 class="form-control"
+                 id="ctEmail"
+                 placeholder="name@company.com">
+        </div>
+
+        <!-- Line -->
+        <div class="col-md-4">
+          <label class="form-label text-success">ไอดีไลน์</label>
+          <div class="input-group">
+            <span class="input-group-text bg-success text-white border-success py-1">
+              <i class="bi bi-line"></i>
+            </span>
+            <input type="text"
+                   class="form-control"
+                   id="ctLine"
+                   placeholder="Line ID">
+          </div>
+        </div>
+
+        <!-- โทรศัพท์ -->
+        <div class="col-md-4">
+          <div class="d-flex justify-content-between">
+            <label class="form-label">
+              เบอร์โทรศัพท์ <span class="text-danger">*</span>
+            </label>
+            <a href="javascript:void(0)"
+               onclick="addPhoneRow()"
+               class="text-decoration-none small">
+              <i class="bi bi-plus-circle"></i> เพิ่มเบอร์
+            </a>
+          </div>
+
+          <div id="phoneContainer">
+            <!-- phone row จะถูกเพิ่มด้วย JS -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ACTION BAR ================= -->
+  <div class="form-action-bar">
+    <div class="d-flex justify-content-end gap-2">
+      <button type="button"
+              class="btn btn-secondary"
+              onclick="resetContactForm()">
+        <i class="bi bi-arrow-counterclockwise"></i> ล้างค่า
+      </button>
+
+      <button type="submit"
+              class="btn btn-primary fw-bold px-4"
+              id="submitCtBtn">
+        <i class="bi bi-save"></i> บันทึกข้อมูลผู้ติดต่อ
+      </button>
+    </div>
+  </div>
+
+</form>
+
+
+            <div class="card card-table">
+                <div class="card-header bg-white py-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-success"><i class="bi bi-list-ul"></i> รายชื่อผู้ติดต่อ</span>
+                        <span class="badge bg-light text-dark border" id="ctRecordCount">0 รายการ</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered mb-0">
+                        <thead>
+                            <tr>
+                                <th class="text-center" style="width: 50px;">#</th>
+                                <th style="width: 25%;">ผู้ติดต่อ (Info)</th>
+                                <th style="width: 20%;">ความรับผิดชอบ</th>
+                                <th style="width: 25%;">ช่องทางติดต่อ (Channels)</th>
+                                <th style="width: 20%;">เบอร์โทรศัพท์ (Phones)</th>
+                                <th>แก้ไขล่าสุด</th>
+                                <th class="text-center" style="width: 100px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ctTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+       <div class="tab-pane fade" id="pills-target">
+    <form id="targetForm">
+        <div class="card shadow-sm border-0 bg-light">
+            <div class="card-body">
+                
+                <div class="d-flex justify-content-between align-items-end section-header first-section">
+    <div>
+        <i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐาน (Target)
+    </div>
+    <div class="last-updated" id="tgLastUpdated">
+        <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+    </div>
+</div>
+
+                <div class="row g-3">
+                    <!-- <div class="col-md-2">
+                        <label class="form-label">รหัสเป้า (Auto)</label>
+                        <input type="text" class="form-control" id="tgCode" readonly>
+                    </div> -->
+                    <div class="col-md-2">
+                        <label class="form-label">สถานะ</label>
+                        <div id="dealStatusText" class="status-text status-open-text">OPEN</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">ผู้ให้เป้า (จาก Contact) <span class="text-danger">*</span></label>
+                        <select class="form-select" id="tgProvider" required>
+                            <option value="">- เลือกผู้ติดต่อ -</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">ชื่อเป้าหมาย <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="tgName" required placeholder="ระบุชื่อเป้าหมาย">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">อ้างอิงเป้าหลัก</label>
+                        <input type="text" class="form-control" id="tgRef">
+                    </div>
+                </div>
+
+                <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขตเป้าหมาย (Scope)</div>
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        <label class="form-label">ภาค <span class="text-danger">*</span></label>
+                        <select class="form-select" id="tgRegion">
+                            <option value="-">- เลือก -</option>
+                            <option value="BKK">กรุงเทพฯและปริมณฑล</option>
+                            <option value="North">เหนือ</option>
+                            <option value="Central">กลาง</option>
+                            <option value="NE">อีสาน</option>
+                            <option value="South">ใต้</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">จังหวัด<span class="text-danger">*</span></label>
+                        <input class="form-control" list="sharedProvince" id="tgBranch" placeholder="พิมพ์เพื่อค้นหา...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">สาขา<span class="text-danger">*</span></label>
+                        <input class="form-control" list="sharedBranchList" id="tgBranch" placeholder="พิมพ์เพื่อค้นหา...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">ประเภทสินค้า<span class="text-danger">*</span></label>
+                        <select class="form-select" id="tgCat">
+                            <option value="-">- เลือก -</option>
+                            <option value="Glass">กระจก</option>
+                            <option value="Aluminum">อลูมิเนียม</option>
+                            <option value="Gypsum">ยิปซั่ม</option>
+                            <option value="C-Line">ซีลาย</option>
+                            <option value="Glue">กาว</option>
+                            <option value="Accessories">อุปกรณ์</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">แบรนด์<span class="text-danger">*</span></label>
+                        <select class="form-select" id="tgBrand">
+                            <option value="-">- เลือก -</option>
+                            <option value="DIAMOND-Glas">DIAMOND-Glas</option>
+                            <option value="ALU-Pro">ALU-Pro</option>
+                            <option value="GYP-Tech">GYP-Tech</option>
+                            <option value="THAI-Seal">THAI-Seal</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">กลุ่มสินค้า<span class="text-danger">*</span></label>
+                        <select class="form-select" id="tgGroup">
+                            <option value="-">- เลือก -</option>
+                            <option value="Clear Glass">กระจกใส</option>
+                            <option value="Frosted Glass">กระจกฝ้า</option>
+                            <option value="Mirror">กระจกเงา</option>
+                            <option value="Profile">เส้นหน้าตัด</option>
+                            <option value="Sheet">แผ่นเรียบ</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">กลุ่มย่อย</label>
+                        <select class="form-select" id="tgSub">
+                            <option value="-">- เลือก -</option>
+                            <option value="Standard">ธรรมดา</option>
+                            <option value="Tempered">อบเทมเปอร์</option>
+                            <option value="Laminated">ลามิเนต</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label class="form-label">สีของสินค้า</label>
+                        <select class="form-select" id="tgColor">
+                            <option value="-">- เลือก -</option>
+                            <option value="Clear">ใส (Clear)</option>
+                            <option value="Green">เขียว (Green)</option>
+                            <option value="Tea">ชา (Tea)</option>
+                            <option value="Black">ดำ (Black)</option>
+                            <option value="White">อบขาว (White)</option>
+                            <option value="Anodize">ธรรมชาติ (Anodize)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">ความหนา</label>
+                        <select class="form-select" id="tgThick">
+                            <option value="-">- เลือก -</option>
+                            <option value="3mm">3mm</option>
+                            <option value="5mm">5mm</option>
+                            <option value="6mm">6mm</option>
+                            <option value="10mm">10mm</option>
+                            <option value="1.2mm">1.2mm (Alum)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                                 <label class="form-label">รหัสแม่พิมพ์</label>
+                                 <select class="form-select" id="moqMold">
+                                     <option value="-">- เลือก -</option>
+                                     <option value="M-001">M-001</option>
+                                     <option value="M-002">M-002</option>
+                                     <option value="A-101">A-101</option>
+                                 </select>
+                             </div>
+                    <div class="col-md-2">
+                        <label class="form-label">SKU</label>
+                        <input type="text" class="form-control" id="tgSku" placeholder="ระบุ SKU">
+                    </div>
+                </div>
+
+                <div class="section-header"><i class="bi bi-rulers"></i> 3. เงื่อนไขในการให้เป้าหมาย</div>
+                
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-2">
+                         <label class="form-label">ระยะเวลาได้รับผลประโยชน์<span class="text-danger">*</span></label>
+                        <select class="form-select" id="tgBenefit">
+                            <option value="ทุกสิ้นเดือน">รายเดือน</option>
+                            <option value="ทุกสิ้นไตรมาส">รายไตรมาส</option>
+                            <option value="สิ้นปี">รายปี</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">ประเภทเป้า<span class="text-danger">*</span></label>
+                        <select class="form-select" id="tgType">
+                            <option value="รายเดือน">น้ำหนัก</option>
+                            <option value="รายไตรมาส">มูลค่ารวมในการซื้อ</option>
+                            <option value="รายปี">จำนวน</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">เป้าหมาย / หน่วย<span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="tgQty" placeholder="0">
+                            <select class="form-select" id="tgUnit" style="padding-left: 5px; padding-right: 5px;">
+                                <option value="บาท">บาท</option>
+                                <option value="ตัน">ตัน</option>
+                                <option value="ชิ้น">ชิ้น</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">วันที่เริ่มเป้า<span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="tgStart">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">วันที่สิ้นสุดเป้า<span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="tgEnd">
+                    </div>
+
+                    
+                </div>
+            </div>
+        </div>
+        <!-- ================== ACTION BAR ================== -->
+  <div class="d-flex justify-content-end gap-2 form-action-bar">
+    <button type="button"
+            class="btn btn-secondary"
+            onclick="resetMoqForm()">
+      <i class="bi bi-arrow-counterclockwise"></i> ล้างค่า
+    </button>
+
+    <button type="submit"
+            class="btn btn-primary fw-bold px-4"
+            id="submitMoqBtn">
+      <i class="bi bi-save"></i> บันทึก
+    </button>
+  </div>
+
+    <div class="card card-table">
+        <div class="card-header bg-white py-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="btn-group" role="group">
+                    <input type="radio" class="btn-check" name="tgFilter" id="tgFilterActive" value="active" autocomplete="off" checked onchange="renderTargetTable()">
+                    <label class="btn btn-sm btn-outline-success" for="tgFilterActive"><i class="bi bi-check-circle"></i> รายการปกติ</label>
+                    <input type="radio" class="btn-check" name="tgFilter" id="tgFilterCancel" value="cancelled" autocomplete="off" onchange="renderTargetTable()">
+                    <label class="btn btn-sm btn-outline-danger" for="tgFilterCancel"><i class="bi bi-x-circle"></i> รายการที่ยกเลิก</label>
+                </div>
+                <span class="badge bg-light text-dark border" id="tgRecordCount">0 รายการ</span>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>สถานะ</th>
+                        <th>ข้อมูลเป้า / ผู้ให้เป้า</th>
+                        <th>Scope</th>
+                        <th>เงื่อนไขเวลา</th>
+                        <th class="text-end">เป้าหมาย</th>
+                        <th>แก้ไขล่าสุด</th>
+                        <th class="text-center" style="width: 120px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="tgTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="tab-pane fade" id="pills-deal">
+    <form id="dealForm">
+        <div class="card shadow-sm border-0 bg-light">
+            <div class="card-body">
+                
+                <div class="d-flex justify-content-between align-items-center section-header first-section">
+    <div>
+        <i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐานดีลราคา
+    </div>
+
+    <div class="last-updated" id="dealLastUpdated">
+        <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+    </div>
+</div>
+
+
+
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        <label class="form-label">สถานะ</label>
+                        <div id="dealStatusText" class="status-text status-open-text">OPEN</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">ผู้ให้ราคา (จาก Contact) <span class="text-danger">*</span></label>
+                        <select class="form-select" id="dealProvider" required>
+                            <option value="">- เลือกผู้ติดต่อ -</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">ชื่อดีลราคา <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="dealName" required placeholder="เช่น ราคากระจกพิเศษ Q1">
+                    </div>
+                    <!-- <div class="col-md-2">
+                        <label class="form-label">อ้างอิงเอกสาร</label>
+                        <input type="text" class="form-control" id="dealRef">
+                    </div> -->
+                </div>
+
+                <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขต (Scope)</div>
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        <label class="form-label">ภาค<span class="text-danger">*</span></label>
+                        <select class="form-select" id="dealRegion">
+                            <option value="-">- เลือก -</option>
+                            <option value="BKK">กรุงเทพฯและปริมณฑล</option>
+                            <option value="North">เหนือ</option>
+                            <option value="Central">กลาง</option>
+                            <option value="NE">อีสาน</option>
+                            <option value="South">ใต้</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">สาขา<span class="text-danger">*</span></label>
+                        <input class="form-control" list="sharedBranchList" id="dealBranch" placeholder="พิมพ์เพื่อค้นหา...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">ประเภทสินค้า<span class="text-danger">*</span></label>
+                        <select class="form-select" id="dealCat">
+                            <option value="-">- เลือก -</option>
+                            <option value="Glass">กระจก</option>
+                            <option value="Aluminum">อลูมิเนียม</option>
+                            <option value="Gypsum">ยิปซั่ม</option>
+                            <option value="C-Line">ซีลาย</option>
+                            <option value="Glue">กาว</option>
+                            <option value="Accessories">อุปกรณ์</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">แบรนด์<span class="text-danger">*</span></label>
+                        <select class="form-select" id="dealBrand">
+                            <option value="-">- เลือก -</option>
+                            <option value="DIAMOND-Glas">DIAMOND-Glas</option>
+                            <option value="ALU-Pro">ALU-Pro</option>
+                            <option value="GYP-Tech">GYP-Tech</option>
+                            <option value="THAI-Seal">THAI-Seal</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">กลุ่มสินค้า<span class="text-danger">*</span></label>
+                        <select class="form-select" id="dealGroup">
+                            <option value="-">- เลือก -</option>
+                            <option value="Clear Glass">กระจกใส</option>
+                            <option value="Frosted Glass">กระจกฝ้า</option>
+                            <option value="Mirror">กระจกเงา</option>
+                            <option value="Profile">เส้นหน้าตัด</option>
+                            <option value="Sheet">แผ่นเรียบ</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">กลุ่มย่อย</label>
+                        <select class="form-select" id="dealSub">
+                            <option value="-">- เลือก -</option>
+                            <option value="Standard">ธรรมดา</option>
+                            <option value="Tempered">อบเทมเปอร์</option>
+                            <option value="Laminated">ลามิเนต</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label class="form-label">สีของสินค้า</label>
+                        <select class="form-select" id="dealColor">
+                            <option value="-">- เลือก -</option>
+                            <option value="Clear">ใส (Clear)</option>
+                            <option value="Green">เขียว (Green)</option>
+                            <option value="Tea">ชา (Tea)</option>
+                            <option value="Black">ดำ (Black)</option>
+                            <option value="White">อบขาว (White)</option>
+                            <option value="Anodize">ธรรมชาติ (Anodize)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">ความหนา</label>
+                        <select class="form-select" id="dealThick">
+                            <option value="-">- เลือก -</option>
+                            <option value="3mm">3mm</option>
+                            <option value="5mm">5mm</option>
+                            <option value="6mm">6mm</option>
+                            <option value="10mm">10mm</option>
+                            <option value="1.2mm">1.2mm (Alum)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">รหัสแม่พิมพ์</label>
+                        <input type="text" class="form-control" id="dealMold" placeholder="ระบุ Mold ID">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">SKU</label>
+                        <input type="text" class="form-control" id="dealSku" placeholder="ระบุ SKU">
+                    </div>
+                </div>
+
+                <div class="section-header"><i class="bi bi-currency-dollar"></i> 3. รายละเอียดราคาและเงื่อนไข</div>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">ประเภทราคา <span class="text-danger">*</span></label>
+                        <select class="form-select" id="dealType">
+                            <option value="Discount">ส่วนลด (Discount)</option>
+                            <option value="New Price">ราคาใหม่จากผู้ขาย (New Price)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">ราคา / หน่วย <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="dealPrice" placeholder="0.00">
+                            <select class="form-select" id="dealUnit" style="padding-left: 5px; padding-right: 5px;">
+                                <option value="บาท">บาท</option>
+                                <option value="%">%</option>
+                                <option value="บาท/ชิ้น">บาท/ชิ้น</option>
+                                <option value="บาท/กก.">บาท/กก.</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label text-muted">วันที่เริ่มใช้ราคา (ถ้ามี)</label>
+                        <input type="date" class="form-control" id="dealStart">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label text-muted">วันที่สิ้นสุด (ถ้ามี)</label>
+                        <input type="date" class="form-control" id="dealEnd">
+                    </div>
+                </div>
+                
+                <div class="row g-3 align-items-end">
+                     <div class="col-md-3">
+                        <label class="form-label">กรอบเงื่อนไขพิเศษ (จำกัดสินค้าที่ได้ราคาพิเศษ)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="bi bi-box-seam"></i></span>
+                            <input type="number" class="form-control" id="dealMinQty" placeholder="0">
+                            <select class="form-select" id="dealMinUnit" style="padding-left: 5px; padding-right: 5px;">
+                                <option value="ชิ้น">ชิ้น</option>
+                                <option value="ตัน">ตัน</option>
+                                <option value="เส้น">เส้น</option>
+                                <option value="บาท">บาท</option>
+                            </select>
+                        </div>
+                    </div>
+                     <!-- <div class="col-md-5">
+                         <label class="form-label">หมายเหตุ</label>
+                         <input type="text" class="form-control" id="dealNote" placeholder="ระบุเงื่อนไขเพิ่มเติม...">
+                    </div> -->
+                </div>
+
+            </div>
+        </div>
+        <!-- ================== ACTION BAR ================== -->
+  <div class="d-flex justify-content-end gap-2 form-action-bar">
+    <button type="button"
+            class="btn btn-secondary"
+            onclick="resetDealForm()">
+      <i class="bi bi-arrow-counterclockwise"></i> ล้างค่า
+    </button>
+
+    <button type="submit"
+            class="btn btn-primary fw-bold px-4"
+            id="submitDealBtn">
+      <i class="bi bi-save"></i> บันทึก
+    </button>
+  </div>
+    </form>
+
+    <div class="card card-table">
+        <div class="card-header bg-white py-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="btn-group" role="group">
+                    <input type="radio" class="btn-check" name="dealFilter" id="dealFilterActive" value="active" autocomplete="off" checked onchange="renderDealTable()">
+                    <label class="btn btn-sm btn-outline-success" for="dealFilterActive"><i class="bi bi-check-circle"></i> รายการปกติ</label>
+                    <input type="radio" class="btn-check" name="dealFilter" id="dealFilterCancel" value="cancelled" autocomplete="off" onchange="renderDealTable()">
+                    <label class="btn btn-sm btn-outline-danger" for="dealFilterCancel"><i class="bi bi-x-circle"></i> รายการที่ยกเลิก</label>
+                </div>
+                <span class="badge bg-light text-dark border" id="dealRecordCount">0 รายการ</span>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>สถานะ</th>
+                        <th>ชื่อดีล / ผู้ให้ราคา</th>
+                        <th>Scope</th>
+                        <th>ราคา / เงื่อนไข</th>
+                        <th>ระยะเวลา</th>
+                        <th>แก้ไขล่าสุด</th>
+                        <th class="text-center" style="width: 120px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="dealTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="tab-pane fade" id="pills-doc">
+    <div class="row g-4">
+        
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-cloud-arrow-up"></i> อัปโหลดเอกสารใหม่
+                </div>
+                <div class="card-body">
+                    <form id="docForm">
+                        <div class="mb-3">
+                            <label class="form-label">เอกสารของ (ผู้ติดต่อ) <span class="text-danger">*</span></label>
+                            <select class="form-select" id="docProvider" required>
+                                <option value="">- เลือก -</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">ประเภทเอกสาร</label>
+                            <select class="form-select" id="docType">
+                                <option value="Quotation">ใบเสนอราคา (Quotation)</option>
+                                <option value="Contract">สัญญา (Contract)</option>
+                                <option value="Catalog">แคตตาล็อกสินค้า</option>
+                                <option value="Certificate">ใบรับรอง (Cert)</option>
+                                <option value="Other">อื่นๆ</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">คำอธิบาย / Ref.</label>
+                            <input type="text" class="form-control" id="docNote" placeholder="เช่น ฉบับแก้ไขล่าสุด">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">ไฟล์แนบ <span class="text-danger">*</span></label>
+                            <div class="upload-dropzone" onclick="document.getElementById('docFile').click()">
+                                <i class="bi bi-cloud-upload text-primary file-icon-lg"></i>
+                                <div class="mt-2 fw-bold">คลิกเพื่อเลือกไฟล์</div>
+                                <div class="text-muted small">หรือลากไฟล์มาวางที่นี่</div>
+                                <div class="text-muted small mt-1" id="fileNameDisplay">- ยังไม่ได้เลือกไฟล์ -</div>
+                            </div>
+                            <input type="file" class="form-control d-none" id="docFile" required onchange="displayFileName(this)">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload"></i> อัปโหลด</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <span class="fw-bold"><i class="bi bi-files"></i> รายการเอกสารล่าสุด</span>
+                    <span class="badge bg-light text-dark border" id="docCount">0 ไฟล์</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ชื่อไฟล์</th>
+                                <th>ประเภท</th>
+                                <th>เจ้าของเอกสาร</th>
+                                <th>วันที่</th>
+                                <th class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="docTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+        <div class="tab-pane fade" id="pills-moq">
+            <form id="moqForm">
+                <div class="card shadow-sm border-0 bg-light">
+                    <div class="card-body">
+                         <div class="d-flex justify-content-between align-items-end section-header first-section">
+    <div>
+        <i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐาน (MOQ)
+    </div>
+    <div class="last-updated" id="moqLastUpdated">
+        <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+    </div>
+</div>
+                         <div class="row g-3">
+                             <div class="col-md-2"><label class="form-label">สถานะ</label>
+                             <div id="moqStatusText" class="status-text status-open-text">OPEN</div>
+                             </div>
+                             <div class="col-md-6"><label class="form-label">ชื่อเงื่อนไข <span class="text-danger">*</span></label><input type="text" class="form-control" id="moqName" required placeholder="ระบุชื่อเงื่อนไข"></div>
+                             <div class="col-md-2"><label class="form-label">แก้ไขล่าสุด</label><input type="text" class="form-control" value="01/01/2026" readonly></div>
+                         </div>
+
+                         <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขตของเงื่อนไข (Scope)</div>
+                         <div class="row g-3 mb-2">
+                             <div class="col-md-2">
+                                <label class="form-label">ภาค <span class="text-danger">*</span></label>
+                                <select class="form-select" id="moqRegion" required>
+                                    <option value="-">- เลือก -</option>
+                                    <option value="BKK">กรุงเทพฯและปริมณฑล</option>
+                                    <option value="North">เหนือ</option>
+                                    <option value="Central">กลาง</option>
+                                    <option value="NE">อีสาน</option>
+                                    <option value="South">ใต้</option>
+                                </select>
+                             </div>
+                             <div class="col-md-2">
+                                <label class="form-label">สาขา <span class="text-danger">*</span></label>
+                                <input class="form-control" list="sharedBranchList" id="moqBranch" placeholder="พิมพ์เพื่อค้นหา..." required>
+                             </div>
+                             <div class="col-md-2">
+                                 <label class="form-label">ประเภทสินค้า</label>
+                                 <select class="form-select" id="moqCat">
+                                    <option value="-">- เลือก -</option>
+                                    <option value="Glass">กระจก</option>
+                                    <option value="Aluminum">อลูมิเนียม</option>
+                                    <option value="Gypsum">ยิปซั่ม</option>
+                                    <option value="C-Line">ซีลาย</option>
+                                    <option value="Glue">กาว</option>
+                                    <option value="Accessories">อุปกรณ์</option>
+                                 </select>
+                             </div>
+                             <div class="col-md-2">
+                                 <label class="form-label">แบรนด์</label>
+                                 <select class="form-select" id="moqBrand">
+                                    <option value="-">- เลือก -</option>
+                                    <option value="DIAMOND-Glas">DIAMOND-Glas</option>
+                                    <option value="ALU-Pro">ALU-Pro</option>
+                                    <option value="GYP-Tech">GYP-Tech</option>
+                                    <option value="THAI-Seal">THAI-Seal</option>
+                                 </select>
+                             </div>
+                             <div class="col-md-2">
+                                 <label class="form-label">กลุ่มสินค้า</label>
+                                 <select class="form-select" id="moqGroup">
+                                    <option value="-">- เลือก -</option>
+                                    <option value="Clear Glass">กระจกใส</option>
+                                    <option value="Frosted Glass">กระจกฝ้า</option>
+                                    <option value="Mirror">กระจกเงา</option>
+                                    <option value="Profile">เส้นหน้าตัด</option>
+                                    <option value="Sheet">แผ่นเรียบ</option>
+                                 </select>
+                             </div>
+                             <div class="col-md-2">
+                                 <label class="form-label">กลุ่มย่อย</label>
+                                 <select class="form-select" id="moqSub">
+                                    <option value="-">- เลือก -</option>
+                                    <option value="Standard">ธรรมดา</option>
+                                    <option value="Tempered">อบเทมเปอร์</option>
+                                 </select>
+                             </div>
+                         </div>
+                         <div class="row g-3">
+                             <div class="col-md-2">
+                                 <label class="form-label">สีของสินค้า</label>
+                                 <select class="form-select" id="moqColor">
+                                    <option value="-">- เลือก -</option>
+                                    <option value="Clear">ใส (Clear)</option>
+                                    <option value="Green">เขียว (Green)</option>
+                                    <option value="Tea">ชา (Tea)</option>
+                                    <option value="Black">ดำ (Black)</option>
+                                    <option value="White">อบขาว (White)</option>
+                                 </select>
+                             </div>
+                             <div class="col-md-2">
+                                 <label class="form-label">รหัสแม่พิมพ์</label>
+                                 <select class="form-select" id="moqMold">
+                                     <option value="-">- เลือก -</option>
+                                     <option value="M-001">M-001</option>
+                                     <option value="M-002">M-002</option>
+                                     <option value="A-101">A-101</option>
+                                 </select>
+                             </div>
+                             <div class="col-md-2">
+                                 <label class="form-label">ความหนา</label>
+                                 <select class="form-select" id="moqThick">
+                                     <option value="-">- เลือก -</option>
+                                     <option value="3mm">3mm</option>
+                                     <option value="5mm">5mm</option>
+                                     <option value="6mm">6mm</option>
+                                     <option value="10mm">10mm</option>
+                                     <option value="1.2mm">1.2mm (Alum)</option>
+                                 </select>
+                             </div>
+                             <div class="col-md-2"><label class="form-label text-muted">SKU</label><input type="text" class="form-control" id="moqSku" placeholder="Optional"></div>
+                         </div>
+
+                         <div class="section-header"><i class="bi bi-list-check"></i> 3. เงื่อนไขในการสั่งสินค้า</div>
+                         <div class="row g-3 align-items-end">
+                             <div class="col-md-2"><label class="form-label">ประเภทเงื่อนไข</label><select class="form-select" id="moqType"><option value="ผลิต">ผลิต</option><option value="นำเข้า">นำเข้า</option><option value="ขนส่ง">ขนส่ง</option></select></div>
+                             <div class="col-md-2"><label class="form-label">ประเภทรถ</label><select class="form-select" id="moqVehicle"><option value="-">-</option><option value="เทรลเลอร์">เทรลเลอร์</option><option value="6 ล้อ">6 ล้อ</option><option value="กระบะ">กระบะ</option></select></div>
+                             <div class="col-md-2"><label class="form-label">ประเภทตัววัด</label><select class="form-select" id="moqMeasure"><option value="รายน้ำหนัก">รายน้ำหนัก</option><option value="มูลค่ารวม">มูลค่ารวม</option></select></div>
+                             <div class="col-md-3">
+                                 <label class="form-label">จำนวน / หน่วย <span class="text-danger">*</span></label>
+                                 <div class="input-group"><input type="number" class="form-control" id="moqQty" required placeholder="0.00"><select class="form-select" id="moqUnit" style="max-width: 90px; background: #f8f9fa;"><option value="kg">kg</option><option value="บาท">บาท</option><option value="ชิ้น">ชิ้น</option></select></div>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+                <!-- ================== ACTION BAR ================== -->
+  <div class="d-flex justify-content-end gap-2 form-action-bar">
+    <button type="button"
+            class="btn btn-secondary"
+            onclick="resetDealForm()">
+      <i class="bi bi-arrow-counterclockwise"></i> ล้างค่า
+    </button>
+
+    <button type="submit"
+            class="btn btn-primary fw-bold px-4"
+            id="submitDealBtn">
+      <i class="bi bi-save"></i> บันทึก
+    </button>
+  </div>
+            </form>
+
+            <div class="card card-table">
+                <div class="card-header bg-white py-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="btn-group" role="group">
+                            <input type="radio" class="btn-check" name="moqFilter" id="moqFilterActive" value="active" autocomplete="off" checked onchange="renderMoqTable()">
+                            <label class="btn btn-sm btn-outline-success" for="moqFilterActive"><i class="bi bi-check-circle"></i> รายการปกติ</label>
+                            <input type="radio" class="btn-check" name="moqFilter" id="moqFilterCancel" value="cancelled" autocomplete="off" onchange="renderMoqTable()">
+                            <label class="btn btn-sm btn-outline-danger" for="moqFilterCancel"><i class="bi bi-x-circle"></i> รายการที่ยกเลิก</label>
+                        </div>
+                        <span class="badge bg-light text-dark border" id="moqRecordCount">0 รายการ</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>สถานะ</th>
+                                <th>ข้อมูล MOQ</th>
+                                <th style="width: 35%;">Scope รายละเอียด</th>
+                                <th>เงื่อนไข</th>
+                                <th>แก้ไขล่าสุด</th>
+                                <th class="text-center" style="width: 120px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="moqTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<datalist id="sharedBranchList">
+    <option value="00TR">
+    <option value="01TJ">
+    <option value="02TN">
+    <option value="03TS">
+    <option value="04TP">
+    <option value="05AY">
+    <option value="06RY">
+    <option value="07RB">
+    <option value="08NR">
+    <option value="09UB">
+    <option value="10KK">
+    <option value="11PL">
+    <option value="12CM">
+    <option value="13SR">
+    <option value="14HY">
+    <option value="15CB">
+    <option value="16PK">
+    <option value="17CR">
+    <option value="18UD">
+    <option value="19PC">
+    <option value="20SK">
+    <option value="21BS">
+    <option value="22BP">
+    <option value="23NS">
+    <option value="24TL">
+    <option value="25SB">
+</datalist>
+<datalist id="sharedProvince">
+    <option value="เชียงใหม่">
+    <option value="เชียงราย">
+    <option value="ตาก">
+    <option value="นครสวรรค์">
+    <option value="น่าน">
+    <option value="อุตรดิตถ์">
+    <option value="กรุงเทพฯ">
+    <option value="เลย">
+    <option value="พัทลุง">
+    <option value="ชัยนาท">
+    <option value="แพร่">
+    <option value="น่าน">
+</datalist>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // ================= GLOBAL DATA =================
+    
+    // 1. Mock Data: Contact
+    let contactList = [
+        { 
+            id: 1, type: 'บุคคล', name: 'คุณวิชัย จัดซื้อ', position: 'Procurement Mgr.', startDate: '2023-01-15', brand: 'DIAMOND-Glas', group: 'Glass', email: 'wichai@thaidiamond.co.th', lineId: 'wichai_procure',
+            phones: [ { country: '+66', flag: '🇹🇭', number: '081-999-8888' }, { country: '+66', flag: '🇹🇭', number: '02-777-6666' } ]
+        },
+        { 
+            id: 2, type: 'บริษัท', name: 'บจก. เอส.เค. ขนส่ง', position: 'Logistic Partner', startDate: '2024-03-10', brand: '-', group: 'Acc', email: 'support@sk-trans.com', lineId: '@sktrans',
+            phones: [ { country: '+66', flag: '🇹🇭', number: '02-555-4444' } ]
+        }
+    ];
+
+    // 2. Mock Data: Target
+    let targetList = [
+        {
+            id: 'TG-25-001', status: 'CLOSED', providerId: 1,
+            name: 'เป้ายอดซื้อกระจกใส ประจำปี 2025',
+            region: 'BKK', branch: '-', cat: 'Glass', brand: 'DIAMOND-Glas', group: 'Clear Glass', sub: 'Standard', color: 'Clear', thick: '6mm', mold: '-', sku: '-', 
+            qty: '12000000', unit: 'บาท', 
+            tgType: 'รายปี', tgBenefit: 'ทุกสิ้นปี', startDate: '2025-01-01', endDate: '2025-12-31'
+        },
+        {
+            id: 'TG-25-002', status: 'CLOSED', providerId: 1,
+            name: 'Target อลูมิเนียม สาขาเชียงใหม่ Q1',
+            region: 'North', branch: '12CM', cat: 'Aluminum', brand: 'ALU-Pro', group: 'Profile', sub: '-', color: 'Black', thick: '1.2mm', mold: 'AL-BOX-04', sku: '-', 
+            qty: '5000', unit: 'ตัน',
+            tgType: 'รายเดือน', tgBenefit: 'ทุกสิ้นเดือน', startDate: '2025-01-01', endDate: '2025-03-31'
+        }
+    ];
+
+    // 3. Mock Data: MOQ
+let moqList = [
+    {
+        id: 'MOQ-25-001',
+        status: 'CLOSED',
+        name: 'ขั้นต่ำสั่งผลิตกระจกอบเทมเปอร์',
+
+        region: 'BKK',
+        branch: '-',
+        cat: 'Glass',
+        brand: 'DIAMOND-Glas',
+        group: 'Clear Glass',
+        sub: 'Tempered',
+        color: 'Clear',
+        mold: '-',
+        thick: '10mm',
+        sku: '-',
+
+        condType: 'ผลิต',
+        vehicle: '-',
+        measure: 'รายน้ำหนัก',
+        qty: '1000',
+        unit: 'kg',
+
+        updatedAt: '04/01/2026 18:14:03'
+    }
+];
+
+    // 4. Mock Data: Deal (NEW)
+    let dealList = [
+        {
+            id: 'DL-25-001', status: 'CLOSED', providerId: 1,
+            name: 'โปรโมชั่นเปิดสาขาใหม่ (กระจกเงา)',
+            region: 'NE', branch: '09UB', cat: 'Glass', brand: 'DIAMOND-Glas', group: 'Mirror', sub: '-', color: '-', thick: '5mm', mold: '-', sku: '-',
+            priceType: 'Net Price', price: '450', unit: 'บาท/ชิ้น', note: 'เฉพาะสีใส'
+        }
+    ];
+    
+    // Running IDs
+    let tgRunningId = 3;
+    let moqRunningId = 2;
+    let dealRunningId = 2;
+    let ctRunningId = 3; 
+
+    const countryOptions = `<option value="+66">🇹🇭 (+66)</option><option value="+1">🇺🇸 (+1)</option><option value="+86">🇨🇳 (+86)</option><option value="+81">🇯🇵 (+81)</option><option value="+44">🇬🇧 (+44)</option>`;
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        resetContactForm(); 
+        updateProviderOptions(); 
+        resetTargetForm();
+        resetMoqForm();
+        resetDealForm(); // Init Deal
+        renderContactTable();
+    });
+
+    // ==================== 0. CONTACT LOGIC ====================
+    function addPhoneRow(country = "+66", number = "") {
+        const container = document.getElementById('phoneContainer');
+        const div = document.createElement('div');
+        div.className = 'input-group phone-row';
+        div.innerHTML = `<select class="form-select flag-select text-center" name="ctPhoneCountry">${countryOptions}</select><input type="text" class="form-control" name="ctPhoneNumber" value="${number}" placeholder="ระบุเบอร์">${container.children.length > 0 ? '<button type="button" class="btn btn-outline-danger" onclick="this.parentElement.remove()"><i class="bi bi-x-lg"></i></button>' : ''}`;
+        div.querySelector('select').value = country;
+        container.appendChild(div);
+    }
+    
+    function resetContactForm() {
+        const form = document.getElementById('contactForm'); form.reset(); form.dataset.mode = 'add'; form.dataset.editId = '';
+        document.getElementById('ctTypePerson').checked = true; document.getElementById('phoneContainer').innerHTML = ''; addPhoneRow(); 
+        const btn = document.getElementById('submitCtBtn'); btn.innerHTML = '<i class="bi bi-save"></i> บันทึกข้อมูลผู้ติดต่อ'; btn.classList.replace('btn-warning', 'btn-primary'); renderContactTable();
+    }
+
+    const ctForm = document.getElementById('contactForm');
+    ctForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const type = document.querySelector('input[name="ctType"]:checked').value;
+        const name = document.getElementById('ctName').value; const position = document.getElementById('ctPosition').value;
+        const startDate = document.getElementById('ctStartDate').value; const brand = document.getElementById('ctBrand').value;
+        const group = document.getElementById('ctGroup').value; const email = document.getElementById('ctEmail').value; const lineId = document.getElementById('ctLine').value;
+        const phoneNumbers = document.getElementsByName('ctPhoneNumber');
+        if(Array.from(phoneNumbers).every(p => p.value.trim() === "")) { alert('กรุณาระบุเบอร์โทรศัพท์อย่างน้อย 1 เบอร์'); return; }
+        
+        let phones = [];
+        const phoneCountries = document.getElementsByName('ctPhoneCountry');
+        for(let i=0; i<phoneNumbers.length; i++) {
+            if(phoneNumbers[i].value.trim() !== "") { 
+                const sel = phoneCountries[i]; 
+                phones.push({ country: sel.value, flag: sel.options[sel.selectedIndex].text.split(' ')[0], number: phoneNumbers[i].value }); 
+            }
+        }
+
+        const rawData = { type, name, position, startDate, brand, group, email, lineId, phones };
+        if (ctForm.dataset.mode === 'edit') { 
+            const index = contactList.findIndex(x => x.id === parseInt(ctForm.dataset.editId)); 
+            if(index !== -1) contactList[index] = { ...contactList[index], ...rawData }; 
+        } else { 
+            contactList.push({ id: ctRunningId++, ...rawData }); 
+        }
+        updateProviderOptions(); 
+        resetContactForm();
+    });
+
+    function renderContactTable() {
+        const tbody = document.getElementById('ctTableBody'); tbody.innerHTML = '';
+        document.getElementById('ctRecordCount').innerText = `${contactList.length} รายการ`;
+        const editingId = parseInt(document.getElementById('contactForm').dataset.editId);
+        if (contactList.length === 0) { tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">ไม่พบข้อมูลผู้ติดต่อ</td></tr>`; return; }
+        contactList.forEach((item, index) => {
+            const rowClass = (item.id === editingId) ? 'row-editing' : '';
+            let typeBadge = item.type === 'บริษัท' ? `<span class="badge bg-info bg-opacity-10 text-dark border border-info-subtle mb-1"><i class="bi bi-building"></i> บริษัท</span>` : `<span class="badge bg-light text-dark border mb-1"><i class="bi bi-person"></i> บุคคล</span>`;
+            let phoneHtml = item.phones.map(p => `<div>${p.flag} <span class="fw-bold">${p.number}</span></div>`).join('');
+            let dateHtml = item.startDate ? `<div class="small text-muted"><i class="bi bi-calendar"></i> เริ่ม: ${item.startDate}</div>` : '';
+            let respHtml = ''; if(item.brand && item.brand !== '-') respHtml += `<span class="badge bg-secondary mb-1 me-1">${item.brand}</span>`; if(item.group && item.group !== '-') respHtml += `<span class="badge bg-info text-dark mb-1">${item.group}</span>`; if(respHtml === '') respHtml = '-';
+            let chanHtml = ''; if(item.email) chanHtml += `<div><i class="bi bi-envelope text-primary"></i> ${item.email}</div>`; if(item.lineId) chanHtml += `<div><i class="bi bi-line text-success"></i> ${item.lineId}</div>`; if(chanHtml === '') chanHtml = '-';
+            tbody.innerHTML += `<tr class="${rowClass}"><td class="text-center align-top pt-3">${index + 1}</td><td class="align-top pt-3">${typeBadge}<div class="fw-bold text-dark fs-6">${item.name}</div><div class="text-muted small">${item.position || '-'}</div>${dateHtml}</td><td class="align-top pt-3">${respHtml}</td><td class="align-top pt-3">${chanHtml}</td><td class="align-top pt-3">${phoneHtml}</td><td class="text-center align-top pt-3"><button class="btn btn-sm btn-warning me-1" onclick="editContact(${item.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContact(${item.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+        });
+    }
+    window.editContact = function(id) {
+        const item = contactList.find(x => x.id === id); if(!item) return;
+        const form = document.getElementById('contactForm'); form.dataset.mode = 'edit'; form.dataset.editId = id;
+        document.querySelector(`input[name="ctType"][value="${item.type}"]`).checked = true;
+        document.getElementById('ctName').value = item.name; document.getElementById('ctPosition').value = item.position; document.getElementById('ctStartDate').value = item.startDate;
+        document.getElementById('ctBrand').value = item.brand; document.getElementById('ctGroup').value = item.group; document.getElementById('ctEmail').value = item.email; document.getElementById('ctLine').value = item.lineId;
+        const container = document.getElementById('phoneContainer'); container.innerHTML = ''; item.phones.forEach(p => { addPhoneRow(p.country, p.number); });
+        const btn = document.getElementById('submitCtBtn'); btn.innerHTML = '<i class="bi bi-save"></i> บันทึกแก้ไข'; btn.classList.replace('btn-primary', 'btn-warning'); renderContactTable(); form.scrollIntoView({ behavior: 'smooth' });
+    }
+    window.deleteContact = function(id) { if(confirm('ต้องการลบรายชื่อนี้หรือไม่?')) { contactList = contactList.filter(x => x.id !== id); updateProviderOptions(); if (parseInt(ctForm.dataset.editId) === id) { resetContactForm(); } else { renderContactTable(); } } }
+
+    // ==================== SHARED: UPDATE PROVIDER SELECT ====================
+    function updateProviderOptions() {
+        const targetIds = ['tgProvider', 'dealProvider']; // Updated list
+        targetIds.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">- เลือกผู้ติดต่อ -</option>';
+            contactList.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.id;
+                option.text = `${c.name} (${c.type === 'บริษัท' ? c.name : c.position || 'บุคคล'})`;
+                select.appendChild(option);
+            });
+            select.value = currentVal;
+        });
+    }
+
+    // ==================== 1. TARGET LOGIC ==================== 
+    const tgForm = document.getElementById('targetForm');
+    function getNextTgId() { return `TG-25-${String(tgRunningId).padStart(3, '0')}`; }
+    function resetTargetForm() { tgForm.reset(); tgForm.dataset.mode = 'add'; tgForm.dataset.editId = ''; document.getElementById('tgCode').value = getNextTgId(); const st = document.getElementById('tgStatus'); st.innerText = "CLOSED"; st.className = "status-text status-closed-text"; const btn = document.getElementById('submitTgBtn'); btn.innerHTML = '<i class="bi bi-plus-lg"></i> บันทึก'; btn.classList.replace('btn-warning', 'btn-primary'); renderTargetTable(); }
+    tgForm.addEventListener('submit', (e) => { e.preventDefault(); const mode = tgForm.dataset.mode; const editId = tgForm.dataset.editId; const rawData = { id: (mode === 'edit' ? editId : document.getElementById('tgCode').value), status: 'CLOSED', providerId: parseInt(document.getElementById('tgProvider').value), name: document.getElementById('tgName').value, region: document.getElementById('tgRegion').value, branch: document.getElementById('tgBranch').value, cat: document.getElementById('tgCat').value, brand: document.getElementById('tgBrand').value, group: document.getElementById('tgGroup').value, sub: document.getElementById('tgSub').value, color: document.getElementById('tgColor').value, sku: document.getElementById('tgSku').value, thick: document.getElementById('tgThick').value, mold: document.getElementById('tgMold').value, tgType: document.getElementById('tgType').value, tgBenefit: document.getElementById('tgBenefit').value, startDate: document.getElementById('tgStart').value, endDate: document.getElementById('tgEnd').value, qty: document.getElementById('tgQty').value, unit: document.getElementById('tgUnit').value }; if (mode === 'edit') { const index = targetList.findIndex(x => x.id === editId); if(index !== -1) targetList[index] = { ...targetList[index], ...rawData }; } else { targetList.push(rawData); tgRunningId++; } renderTargetTable(); resetTargetForm(); });
+    function renderTargetTable() { const tbody = document.getElementById('tgTableBody'); tbody.innerHTML = ''; const showCancelled = document.getElementById('tgFilterCancel').checked; const filterStatus = showCancelled ? 'CANCELLED' : 'CLOSED'; const filteredData = targetList.filter(item => item.status === filterStatus); const editingId = tgForm.dataset.editId; document.getElementById('tgRecordCount').innerText = `${filteredData.length} รายการ`; if (filteredData.length === 0) { tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-5">ไม่พบข้อมูล (${showCancelled ? 'ยกเลิก' : 'ปกติ'})</td></tr>`; return; } filteredData.forEach(item => { const rowClass = (item.id === editingId) ? 'row-editing' : ''; const b = (val) => val && val !== '-' ? `<span class="badge badge-scope">${val}</span>` : ''; let moldHtml = (item.mold && item.mold !== '-' && item.mold !== '') ? `<span class="badge bg-secondary text-white border">Mold: ${item.mold}</span>` : ''; const scopeHtml = `<div class="d-flex flex-wrap gap-1">${b(item.region)} ${b(item.branch)} ${b(item.cat)} ${b(item.thick)} ${moldHtml}</div>`; const provider = contactList.find(c => c.id == item.providerId); const providerName = provider ? `<div class="text-dark small"><i class="bi bi-person-check"></i> ${provider.name}</div>` : '<div class="text-muted small">- ไม่ระบุ -</div>'; let statusBadge = item.status === 'CLOSED' ? 'bg-dark' : 'bg-danger'; let actions = item.status === 'CLOSED' ? `<button class="btn btn-sm btn-warning me-1" onclick="editTarget('${item.id}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="cancelTarget('${item.id}')"><i class="bi bi-trash"></i></button>` : `<button class="btn btn-sm btn-primary" onclick="restoreTarget('${item.id}')"><i class="bi bi-arrow-counterclockwise"></i> กู้คืน</button>`; const dateRange = (item.startDate && item.endDate) ? `${item.startDate} ถึง ${item.endDate}` : '-'; const amountHtml = `<div class="fw-bold">${parseFloat(item.qty || 0).toLocaleString()}</div><div class="small text-muted">${item.unit}</div>`; tbody.innerHTML += `<tr class="${rowClass}"><td class="text-center text-muted small">${item.id.split('-').pop()}</td><td><span class="badge ${statusBadge}">${item.status}</span></td><td><div class="fw-bold text-primary">${item.id}</div><div class="small fw-bold mb-1">${item.name}</div>${providerName}</td><td>${scopeHtml}</td><td><div class="badge bg-success bg-opacity-10 text-success border border-success-subtle mb-1">${item.tgType}</div><div class="small">ผลปย: ${item.tgBenefit}</div><div class="small text-muted" style="font-size: 0.75rem;">${dateRange}</div></td><td class="text-end">${amountHtml}</td><td class="text-center">${actions}</td></tr>`; }); }
+    window.editTarget = function(id) { const item = targetList.find(x => x.id === id); if(!item) return; document.getElementById('tgCode').value = item.id; document.getElementById('tgProvider').value = item.providerId || ""; document.getElementById('tgName').value = item.name; document.getElementById('tgRegion').value = item.region; document.getElementById('tgBranch').value = item.branch; document.getElementById('tgCat').value = item.cat; document.getElementById('tgBrand').value = item.brand; document.getElementById('tgGroup').value = item.group; document.getElementById('tgSub').value = item.sub; document.getElementById('tgColor').value = item.color; document.getElementById('tgSku').value = item.sku; document.getElementById('tgThick').value = item.thick || '-'; document.getElementById('tgMold').value = item.mold || ''; document.getElementById('tgType').value = item.tgType; document.getElementById('tgBenefit').value = item.tgBenefit; document.getElementById('tgStart').value = item.startDate || ""; document.getElementById('tgEnd').value = item.endDate || ""; document.getElementById('tgQty').value = item.qty; document.getElementById('tgUnit').value = item.unit; const st = document.getElementById('tgStatus'); st.value = "CLOSED"; st.className = "form-control text-center fw-bold status-closed"; tgForm.dataset.mode = 'edit'; tgForm.dataset.editId = id; document.getElementById('submitTgBtn').innerHTML = '<i class="bi bi-save"></i> บันทึกแก้ไข'; document.getElementById('submitTgBtn').classList.replace('btn-primary', 'btn-warning'); renderTargetTable(); tgForm.scrollIntoView({ behavior: 'smooth' }); }
+    window.cancelTarget = function(id) { if(confirm('ยืนยันการยกเลิก?')) { targetList.find(x => x.id === id).status = 'CANCELLED'; renderTargetTable(); } }
+    window.restoreTarget = function(id) { if(confirm('กู้คืน?')) { window.editTarget(id); const st = document.getElementById('tgStatus'); st.value = "OPEN"; st.className = "form-control text-center fw-bold status-open"; document.getElementById('tgFilterActive').checked = true; renderTargetTable(); } }
+
+    // ==================== 2. MOQ LOGIC ====================
+    const moqForm = document.getElementById('moqForm');
+    function getNextMoqId() { return `MOQ-25-${String(moqRunningId).padStart(3, '0')}`; }
+    function resetMoqForm() { moqForm.reset(); document.getElementById('moqCode').value = getNextMoqId(); const st = document.getElementById('moqStatus'); st.value = "OPEN"; st.className = "form-control text-center fw-bold status-open"; moqForm.dataset.mode = 'add'; moqForm.dataset.editId = ''; const btn = document.getElementById('submitMoqBtn'); btn.innerHTML = '<i class="bi bi-plus-lg"></i> บันทึก'; btn.classList.replace('btn-warning', 'btn-primary'); renderMoqTable(); }
+    moqForm.addEventListener('submit', (e) => { e.preventDefault(); const mode = moqForm.dataset.mode; const id = mode === 'edit' ? moqForm.dataset.editId : document.getElementById('moqCode').value; const raw = { id: id, status: 'CLOSED', name: document.getElementById('moqName').value, region: document.getElementById('moqRegion').value, branch: document.getElementById('moqBranch').value, cat: document.getElementById('moqCat').value, brand: document.getElementById('moqBrand').value, group: document.getElementById('moqGroup').value, sub: document.getElementById('moqSub').value, color: document.getElementById('moqColor').value, sku: document.getElementById('moqSku').value || '-', mold: document.getElementById('moqMold').value, thick: document.getElementById('moqThick').value, condType: document.getElementById('moqType').value, measure: document.getElementById('moqMeasure').value, qty: document.getElementById('moqQty').value, unit: document.getElementById('moqUnit').value }; if(mode === 'edit') { const idx = moqList.findIndex(x => x.id === id); moqList[idx] = raw; } else { moqList.push(raw); moqRunningId++; } renderMoqTable(); resetMoqForm(); });
+    function renderMoqTable() { const tbody = document.getElementById('moqTableBody'); tbody.innerHTML = ''; const showCancel = document.getElementById('moqFilterCancel').checked; const filterStatus = showCancel ? 'CANCELLED' : 'CLOSED'; const data = moqList.filter(x => x.status === filterStatus); const editingId = moqForm.dataset.editId; document.getElementById('moqRecordCount').innerText = `${data.length} รายการ`; if(data.length === 0) { tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-5">ไม่พบข้อมูล</td></tr>`; return; } data.forEach(item => { const rowClass = (item.id === editingId) ? 'row-editing' : ''; const b = (val) => val && val !== '-' ? `<span class="badge badge-scope">${val}</span>` : ''; const scopeHtml = `<div class="d-flex flex-wrap gap-1">${b('ภาค: '+item.region)} ${b('สาขา: '+item.branch)} ${b(item.cat)} ${b(item.brand)} ${item.sku !== '-' ? `<span class="badge bg-warning text-dark border">SKU: ${item.sku}</span>` : ''}</div>`; let statusBadge = item.status === 'CLOSED' ? 'bg-dark' : 'bg-danger'; let btn = item.status === 'CLOSED' ? `<button class="btn btn-sm btn-warning me-1" onclick="editMoq('${item.id}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="cancelMoq('${item.id}')"><i class="bi bi-trash"></i></button>` : `<button class="btn btn-sm btn-primary" onclick="restoreMoq('${item.id}')"><i class="bi bi-arrow-counterclockwise"></i> กู้คืน</button>`; tbody.innerHTML += `<tr class="${rowClass}"><td class="text-muted small text-center">${item.id.split('-').pop()}</td><td><span class="badge ${statusBadge}">${item.status}</span></td><td><div class="fw-bold text-primary">${item.id}</div><small>${item.name}</small></td><td>${scopeHtml}</td><td><div class="fw-bold text-success">${item.qty} ${item.unit}</div><small class="text-muted">${item.condType} / ${item.measure}</small></td><td class="text-center">${btn}</td></tr>`; }); }
+    window.editMoq = function(id) { const item = moqList.find(x => x.id === id); if(!item) return; document.getElementById('moqCode').value = item.id; document.getElementById('moqName').value = item.name; document.getElementById('moqRegion').value = item.region; document.getElementById('moqBranch').value = item.branch; document.getElementById('moqCat').value = item.cat; document.getElementById('moqBrand').value = item.brand; document.getElementById('moqGroup').value = item.group; document.getElementById('moqSub').value = item.sub; document.getElementById('moqColor').value = item.color; document.getElementById('moqMold').value = item.mold || '-'; document.getElementById('moqThick').value = item.thick || '-'; document.getElementById('moqSku').value = item.sku === '-' ? '' : item.sku; document.getElementById('moqQty').value = item.qty; document.getElementById('moqUnit').value = item.unit; document.getElementById('moqType').value = item.condType; document.getElementById('moqMeasure').value = item.measure; document.getElementById('moqVehicle').value = item.vehicle || '-'; const st = document.getElementById('moqStatus'); st.value = "CLOSED"; st.className = "form-control text-center fw-bold status-closed"; moqForm.dataset.mode = 'edit'; moqForm.dataset.editId = id; document.getElementById('submitMoqBtn').innerHTML = '<i class="bi bi-save"></i> บันทึกแก้ไข'; document.getElementById('submitMoqBtn').classList.replace('btn-primary', 'btn-warning'); renderMoqTable(); moqForm.scrollIntoView({ behavior: 'smooth' }); }
+    window.cancelMoq = function(id) { if(confirm('ยืนยันการยกเลิก?')) { moqList.find(x=>x.id===id).status = 'CANCELLED'; renderMoqTable(); } }
+    window.restoreMoq = function(id) { if(confirm('กู้คืน?')) { window.editMoq(id); const st = document.getElementById('moqStatus'); st.value = "OPEN"; st.className = "form-control text-center fw-bold status-open"; document.getElementById('moqFilterActive').checked = true; renderMoqTable(); } }
+
+    // ==================== 3. DEAL LOGIC (NEW) ====================
+    const dealForm = document.getElementById('dealForm');
+    function getNextDealId() { return `DL-25-${String(dealRunningId).padStart(3, '0')}`; }
+    
+    function resetDealForm() {
+        dealForm.reset(); 
+        dealForm.dataset.mode = 'add'; 
+        dealForm.dataset.editId = '';
+        document.getElementById('dealCode').value = getNextDealId();
+        
+        const st = document.getElementById('dealStatus');
+        st.value = "OPEN"; st.className = "form-control text-center fw-bold status-open";
+        
+        const btn = document.getElementById('submitDealBtn');
+        btn.innerHTML = '<i class="bi bi-plus-lg"></i> บันทึก'; btn.classList.replace('btn-warning', 'btn-primary');
+        renderDealTable();
+    }
+
+    dealForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const mode = dealForm.dataset.mode;
+        const editId = dealForm.dataset.editId;
+        
+        const rawData = {
+            id: (mode === 'edit' ? editId : document.getElementById('dealCode').value),
+            status: 'CLOSED',
+            providerId: parseInt(document.getElementById('dealProvider').value),
+            name: document.getElementById('dealName').value,
+            region: document.getElementById('dealRegion').value,
+            branch: document.getElementById('dealBranch').value,
+            cat: document.getElementById('dealCat').value,
+            brand: document.getElementById('dealBrand').value,
+            group: document.getElementById('dealGroup').value,
+            sub: document.getElementById('dealSub').value,
+            color: document.getElementById('dealColor').value,
+            thick: document.getElementById('dealThick').value,
+            mold: document.getElementById('dealMold').value,
+            sku: document.getElementById('dealSku').value,
+            priceType: document.getElementById('dealType').value,
+            price: document.getElementById('dealPrice').value,
+            unit: document.getElementById('dealUnit').value,
+            note: document.getElementById('dealNote').value
+        };
+
+        if (mode === 'edit') {
+            const index = dealList.findIndex(x => x.id === editId);
+            if(index !== -1) dealList[index] = { ...dealList[index], ...rawData };
+        } else {
+            dealList.push(rawData);
+            dealRunningId++;
+        }
+        renderDealTable();
+        resetDealForm();
+    });
+
+    function renderDealTable() {
+        const tbody = document.getElementById('dealTableBody');
+        tbody.innerHTML = '';
+        const showCancelled = document.getElementById('dealFilterCancel').checked;
+        const filterStatus = showCancelled ? 'CANCELLED' : 'CLOSED';
+        const filteredData = dealList.filter(item => item.status === filterStatus);
+        const editingId = dealForm.dataset.editId;
+
+        document.getElementById('dealRecordCount').innerText = `${filteredData.length} รายการ`;
+        if (filteredData.length === 0) { tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-5">ไม่พบข้อมูล (${showCancelled ? 'ยกเลิก' : 'ปกติ'})</td></tr>`; return; }
+
+        filteredData.forEach(item => {
+            const rowClass = (item.id === editingId) ? 'row-editing' : '';
+            const b = (val) => val && val !== '-' ? `<span class="badge badge-scope">${val}</span>` : '';
+            let moldHtml = (item.mold && item.mold !== '-' && item.mold !== '') ? `<span class="badge bg-secondary text-white border">Mold: ${item.mold}</span>` : '';
+            const scopeHtml = `<div class="d-flex flex-wrap gap-1">${b(item.region)} ${b(item.branch)} ${b(item.cat)} ${b(item.thick)} ${moldHtml}</div>`;
+            
+            const provider = contactList.find(c => c.id == item.providerId);
+            const providerName = provider ? `<div class="text-dark small"><i class="bi bi-person-check"></i> ${provider.name}</div>` : '<div class="text-muted small">- ไม่ระบุ -</div>';
+            
+            let statusBadge = item.status === 'CLOSED' ? 'bg-dark' : 'bg-danger';
+            let actions = item.status === 'CLOSED' ? 
+                `<button class="btn btn-sm btn-warning me-1" onclick="editDeal('${item.id}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="cancelDeal('${item.id}')"><i class="bi bi-trash"></i></button>` : 
+                `<button class="btn btn-sm btn-primary" onclick="restoreDeal('${item.id}')"><i class="bi bi-arrow-counterclockwise"></i> กู้คืน</button>`;
+
+            tbody.innerHTML += `
+                <tr class="${rowClass}">
+                    <td class="text-center text-muted small">${item.id.split('-').pop()}</td>
+                    <td><span class="badge ${statusBadge}">${item.status}</span></td>
+                    <td><div class="fw-bold text-primary">${item.id}</div><div class="small fw-bold mb-1">${item.name}</div>${providerName}</td>
+                    <td>${scopeHtml}</td>
+                    <td class="text-end">
+                        <div class="fw-bold">${parseFloat(item.price || 0).toLocaleString()} ${item.unit}</div>
+                        <div class="badge bg-info text-dark border border-info-subtle">${item.priceType}</div>
+                    </td>
+                    <td class="text-center">${actions}</td>
+                </tr>`;
+        });
+    }
+
+    window.editDeal = function(id) {
+        const item = dealList.find(x => x.id === id); if(!item) return;
+        document.getElementById('dealCode').value = item.id;
+        document.getElementById('dealProvider').value = item.providerId || "";
+        document.getElementById('dealName').value = item.name;
+        document.getElementById('dealRegion').value = item.region; document.getElementById('dealBranch').value = item.branch;
+        document.getElementById('dealCat').value = item.cat; document.getElementById('dealBrand').value = item.brand;
+        document.getElementById('dealGroup').value = item.group; document.getElementById('dealSub').value = item.sub;
+        document.getElementById('dealColor').value = item.color; document.getElementById('dealThick').value = item.thick;
+        document.getElementById('dealMold').value = item.mold; document.getElementById('dealSku').value = item.sku;
+        document.getElementById('dealType').value = item.priceType;
+        document.getElementById('dealPrice').value = item.price;
+        document.getElementById('dealUnit').value = item.unit;
+        document.getElementById('dealNote').value = item.note || "";
+
+        const st = document.getElementById('dealStatus'); st.value = "CLOSED"; st.className = "form-control text-center fw-bold status-closed";
+        dealForm.dataset.mode = 'edit'; dealForm.dataset.editId = id;
+        document.getElementById('submitDealBtn').innerHTML = '<i class="bi bi-save"></i> บันทึกแก้ไข'; document.getElementById('submitDealBtn').classList.replace('btn-primary', 'btn-warning');
+        renderDealTable(); dealForm.scrollIntoView({ behavior: 'smooth' });
+    }
+    window.cancelDeal = function(id) { if(confirm('ยืนยันการยกเลิก?')) { dealList.find(x => x.id === id).status = 'CANCELLED'; renderDealTable(); } }
+    window.restoreDeal = function(id) { if(confirm('กู้คืน?')) { window.editDeal(id); const st = document.getElementById('dealStatus'); st.value = "OPEN"; st.className = "form-control text-center fw-bold status-open"; document.getElementById('dealFilterActive').checked = true; renderDealTable(); } }
+    // ==================== 4. DOCUMENT LOGIC (NEW) ====================
+    let docList = [
+        { id: 1, name: 'Price_List_2025.pdf', size: '1.2 MB', type: 'Catalog', providerId: 1, note: 'อัปเดต ม.ค.', date: '2025-01-02' },
+        { id: 2, name: 'Quotation_Glass_Q1.xlsx', size: '450 KB', type: 'Quotation', providerId: 1, note: 'ราคาโปรเจกต์ A', date: '2025-01-05' }
+    ];
+
+    // Helper: แสดงชื่อไฟล์เมื่อเลือก
+    window.displayFileName = function(input) {
+        const display = document.getElementById('fileNameDisplay');
+        if (input.files && input.files[0]) {
+            display.innerText = input.files[0].name;
+            display.classList.add('text-primary', 'fw-bold');
+            display.classList.remove('text-muted');
+        } else {
+            display.innerText = '- ยังไม่ได้เลือกไฟล์ -';
+            display.classList.remove('text-primary', 'fw-bold');
+            display.classList.add('text-muted');
+        }
+    }
+
+    // Helper: เลือกไอคอนตามนามสกุลไฟล์
+    function getFileIcon(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        if (['pdf'].includes(ext)) return '<i class="bi bi-file-earmark-pdf text-danger file-icon-sm"></i>';
+        if (['xls', 'xlsx', 'csv'].includes(ext)) return '<i class="bi bi-file-earmark-excel text-success file-icon-sm"></i>';
+        if (['doc', 'docx'].includes(ext)) return '<i class="bi bi-file-earmark-word text-primary file-icon-sm"></i>';
+        if (['jpg', 'png', 'jpeg'].includes(ext)) return '<i class="bi bi-file-earmark-image text-warning file-icon-sm"></i>';
+        return '<i class="bi bi-file-earmark-text text-secondary file-icon-sm"></i>';
+    }
+
+    // Function Render Table
+    function renderDocTable() {
+        const tbody = document.getElementById('docTableBody');
+        tbody.innerHTML = '';
+        document.getElementById('docCount').innerText = `${docList.length} ไฟล์`;
+
+        if (docList.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-5">ยังไม่มีเอกสาร</td></tr>`;
+            return;
+        }
+
+        docList.forEach(item => {
+            const provider = contactList.find(c => c.id == item.providerId);
+            const providerName = provider ? provider.name : 'Unknown';
+            const icon = getFileIcon(item.name);
+            
+            // Badge สีตามประเภท
+            let badgeClass = 'bg-secondary';
+            if(item.type === 'Quotation') badgeClass = 'bg-primary';
+            if(item.type === 'Contract') badgeClass = 'bg-dark';
+            if(item.type === 'Catalog') badgeClass = 'bg-info text-dark';
+
+            tbody.innerHTML += `
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            ${icon}
+                            <div>
+                                <div class="fw-bold text-dark">${item.name}</div>
+                                <div class="small text-muted" style="font-size: 0.75rem;">${item.size} • ${item.note || '-'}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td><span class="badge ${badgeClass} bg-opacity-75">${item.type}</span></td>
+                    <td><div class="small text-dark"><i class="bi bi-person"></i> ${providerName}</div></td>
+                    <td class="small text-muted">${item.date}</td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary border-0"><i class="bi bi-download"></i></button>
+                        <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteDoc(${item.id})"><i class="bi bi-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    // Handle Submit
+    const docForm = document.getElementById('docForm');
+    docForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('docFile');
+        const file = fileInput.files[0];
+        if(!file) return;
+
+        // Simulate Upload
+        const newItem = {
+            id: Date.now(),
+            name: file.name,
+            size: (file.size / 1024).toFixed(0) + ' KB', // Mock size calculate
+            type: document.getElementById('docType').value,
+            providerId: parseInt(document.getElementById('docProvider').value),
+            note: document.getElementById('docNote').value,
+            date: new Date().toISOString().split('T')[0]
+        };
+
+        docList.unshift(newItem); // Add to top
+        renderDocTable();
+        
+        // Reset Form
+        docForm.reset();
+        document.getElementById('fileNameDisplay').innerText = '- ยังไม่ได้เลือกไฟล์ -';
+        document.getElementById('fileNameDisplay').className = 'text-muted small mt-1';
+    });
+
+    window.deleteDoc = function(id) {
+        if(confirm('ต้องการลบไฟล์นี้ใช่ไหม?')) {
+            docList = docList.filter(x => x.id !== id);
+            renderDocTable();
+        }
+    }
+
+    function getNowTimestamp() {
+    const now = new Date();
+    return now.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
+</script>
+
+</body>
+</html>

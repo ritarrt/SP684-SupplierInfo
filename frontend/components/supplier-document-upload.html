@@ -1,0 +1,54 @@
+<div class="card mb-4">
+  <div class="card-body">
+
+    <div class="section-header first-section">
+      <i class="bi bi-paperclip"></i>
+      เอกสารที่เกี่ยวข้องกับ Supplier
+    </div>
+
+    <div class="grid grid-cols-12 gap-3 items-end">
+
+      <!-- upload -->
+      <div class="col-span-12 md:col-span-2">
+        <label class="form-label">เลือกไฟล์เอกสาร</label>
+        <input
+          type="file"
+          id="supplierDocFile_basic"
+          class="form-control"
+        >
+      </div>
+
+      <!-- description -->
+      <div class="col-span-12 md:col-span-3">
+        <label class="form-label">เอกสารนี้คืออะไร</label>
+        <input
+          type="text"
+          id="supplierDocDesc_basic"
+          class="form-control"
+          placeholder="เช่น หนังสือรับรองบริษัท / สัญญาซื้อขาย"
+        >
+      </div>
+
+      <!-- button -->
+      <div class="col-span-12 md:col-span-2">
+        <button
+          type="button"
+          class="btn btn-outline-primary w-full"
+          onclick="addSupplierDocument()"
+        >
+          <i class="bi bi-upload"></i> บันทึกเอกสาร
+        </button>
+      </div>
+
+    </div>
+
+    <!-- uploaded list -->
+    <div class="mt-4">
+      <div class="text-sm text-gray-600 mb-2">
+        เอกสารที่อัปโหลดแล้ว
+      </div>
+      <ul id="supplierDocumentList" class="space-y-1 text-sm"></ul>
+    </div>
+
+  </div>
+</div>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Supplier Information</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 text-gray-900">
+
+  <!-- HEADER -->
+  <header class="w-full h-16 bg-stone-900 flex items-center px-4">
+    <div class="text-white font-bold text-lg">Supplier Information</div>
+  </header>
+
+  <!-- CONTENT -->
+  <main class="max-w-7xl mx-auto bg-white mt-6 rounded shadow p-6">
+
+    <h1 class="text-2xl font-bold mb-6">Supplier Information</h1>
+
+    <!-- SEARCH INPUT -->
+    <div class="mb-6">
+      <input
+        id="searchInput"
+        placeholder="ค้นหา"
+        class="border px-4 py-2 rounded w-64 text-sm"
+      />
+    </div>
+
+    <!-- LOADING STATE (ยังไม่ทำงานจนกว่าจะเขียน JS) -->
+    <div id="loadingBox" class="w-full flex justify-center py-10 hidden">
+      <div class="animate-spin rounded-full h-10 w-10 border-4 border-gray-300 border-t-blue-600"></div>
+    </div>
+
+    <!-- TABLE -->
+    <table id="supplierTable" class="w-full text-sm">
+      <thead class="border-b text-gray-400">
+        <tr>
+          <th class="text-left py-3">No.</th>
+          <th class="text-left">Name</th>
+          <th class="text-left">Category</th>
+          <!-- <th class="text-left">Phone no.</th>
+          <th class="text-left">Contact</th> -->
+        </tr>
+      </thead>
+      <tbody id="supplierTableBody"></tbody>
+    </table>
+
+    <!-- EMPTY STATE -->
+    <div id="emptyState" class="text-center text-gray-400 py-4 hidden">
+      ไม่พบข้อมูล Supplier
+    </div>
+
+    <!-- PAGINATION -->
+    <div id="pagination" class="flex justify-center mt-4 gap-2"></div>
+
+  </main>
+
+  <!-- JS: ทำงานภายหลัง -->
+  <script src="supplier-list.js"></script>
+
+</body>
+</html>
+

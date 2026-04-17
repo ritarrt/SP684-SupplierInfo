@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Supplier Information</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+
+<body class="bg-gray-100 text-gray-900">
+
+<!-- ================= HEADER ================= -->
+<header class="w-full h-16 bg-stone-900 flex items-center px-4">
+    <div class="flex items-center gap-6">
+      <img src="img/TangnamLogo.png" alt="Logo" class="h-11" />
+      <nav class="flex items-center gap-8 text-xs text-white">
+        <a href="stock-status.html" class="font-bold">STOCK STATUS - AP</a>
+        <a href="lead-time-supplier.html">Replenishment Cycle </a>
+        <span>Stock Item Property</span>
+        <span>New SKU Request</span>
+        <span>Item Movement</span>
+        <a href="supplier-info.html" class="font-bold opacity-100">PURCHASE ORDER PLAN</a>
+        <a href="supplier-info.html" class="font-bold opacity-100">Supplier Information</a>
+      </nav>
+    </div>
+    <div class="ml-auto text-stone-400 text-xl font-bold">Name</div>
+  </header>
+
+<!-- ================= MAIN ================= -->
+<main class="max-w-7xl mx-auto bg-white mt-6 rounded shadow p-6 md:p-10">
+
+  <!-- TITLE -->
+  <h1
+  id="pageTitle"
+  class="text-2xl md:text-3xl font-bold mb-6"
+></h1>
+
+  <div
+  id="statusBox"
+  class="hidden text-sm mb-4"
+></div>
+
+
+  <!-- ================= TABS ================= -->
+  <div class="flex flex-wrap gap-2 border-b mb-8">
+  <button
+    class="tab-btn px-4 py-2 rounded-t bg-orange-300 font-medium"
+    data-tab="general">
+    ข้อมูลพื้นฐาน
+  </button>
+
+  <button
+    class="tab-btn px-4 py-2 rounded-t bg-gray-200"
+    data-tab="target">
+    Target
+  </button>
+
+  <button
+    class="tab-btn px-4 py-2 rounded-t bg-gray-200"
+    data-tab="moq">
+    MOQ
+  </button>
+
+  <button
+    class="tab-btn px-4 py-2 rounded-t bg-gray-200"
+    data-tab="deal">
+    ดีลราคา
+  </button>
+</div>
+
+
+  <!-- ================= FORM ================= -->
+  <form class="space-y-10">
+
+    <div id="tab-general" class="tab-content">
+
+    <!-- ===== GENERAL + INVOICING ===== -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+
+      <!-- LEFT -->
+      <section class="space-y-4">
+        <h2 class="text-xl font-semibold border-b pb-2">
+          General Information
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label class="font-semibold">รหัสผู้ขาย</label>
+<input
+  id="supplierNo"
+  class="md:col-span-2 border rounded px-3 py-2 w-full bg-gray-100"
+  disabled
+/>
+
+
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label class="font-semibold">ชื่อบริษัท</label>
+          <input
+  id="name"
+  class="md:col-span-2 border rounded px-3 py-2 w-full bg-gray-100"
+/>
+
+        </div>
+
+        <div class="flex items-center  max-w-md">
+  <span class="font-semibold">ระบุว่าเป็นสำนักงานใหญ่</span>
+
+  <label class="relative inline-flex items-center cursor-pointer ml-9">
+    <input type="checkbox" class="sr-only peer" />
+
+    <!-- track -->
+    <div
+      class="w-11 h-6 bg-gray-300 rounded-full
+             peer-checked:bg-orange-400
+             transition-colors duration-300">
+    </div>
+
+    <!-- knob -->
+    <div
+      class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full
+             peer-checked:translate-x-5
+             transition-transform duration-300">
+    </div>
+  </label>
+</div>
+
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label class="font-semibold">เลขสาขา</label>
+          <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label class="font-semibold">เบอร์โทรศัพท์</label>
+          <input
+  id="phone"
+  class="md:col-span-2 border rounded px-3 py-2 w-full bg-gray-100"
+/>
+
+
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label class="font-semibold">ข้อมูลผู้ติดต่อ</label>
+          <input
+  id="contact"
+  class="md:col-span-2 border rounded px-3 py-2 w-full bg-gray-100"
+/>
+
+        </div>
+      </section>
+
+      <!-- RIGHT -->
+      <section class="space-y-4">
+        <h2 class="text-xl font-semibold border-b pb-2">
+          Invoicing
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label class="font-semibold">เลขประจำตัวผู้เสียภาษี</label>
+          <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label class="font-semibold">เงื่อนไขเครดิต</label>
+          <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+        </div>
+
+        <h2 class="text-xl font-semibold border-b pb-2 mt-6">
+          Receiving
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label class="font-semibold">ระยะเวลานำเข้า / รอของ</label>
+          <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== ADDRESS ===== -->
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold border-b pb-4">
+        Address
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div>
+        <label class="font-semibold block mb-1">ที่อยู่</label>
+        <input class="w-full border rounded px-3 py-2" />
+      </div>
+
+        <div>
+          <label class="font-semibold block mb-1">รหัสไปรษณีย์</label>
+          <input class="w-full border rounded px-3 py-2" />
+        </div>
+
+        <div>
+          <label class="font-semibold block mb-1">แขวง/ตำบล</label>
+          <input class="w-full border rounded px-3 py-2" />
+        </div>
+
+        <div>
+          <label class="font-semibold block mb-1">เขต/อำเภอ</label>
+          <input class="w-full border rounded px-3 py-2" />
+        </div>
+
+        <div>
+          <label class="font-semibold block mb-1">จังหวัด</label>
+          <input class="w-full border rounded px-3 py-2" />
+        </div>
+
+        <div>
+          <label class="font-semibold block mb-1">เบอร์โทรศัพท์</label>
+          <input class="w-full border rounded px-3 py-2" />
+        </div>
+
+        <div>
+          <label class="font-semibold block mb-1">เบอร์โทรสาร</label>
+          <input class="w-full border rounded px-3 py-2" />
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SAVE ===== -->
+    <div class="flex justify-end">
+      <button
+  id="saveBtn"
+  type="button"
+  class="px-6 py-2 bg-gray-300 rounded font-bold hover:bg-gray-400">
+  บันทึก
+</button>
+
+    </div>
+    </div>
+
+    <div id="tab-target" class="tab-content hidden space-y-10">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <h2 class="text-xl font-semibold">Target</h2>
+
+    <div class="flex items-center gap-4 text-sm">
+      <button class="text-cyan-500 font-medium">สร้างใหม่</button>
+      <button class="text-gray-600">ประวัติเป้า</button>
+    </div>
+  </div>
+
+  <!-- ===== MAIN GRID ===== -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+
+    <!-- LEFT -->
+    <section class="space-y-4">
+
+      <h2 class="text-xl font-semibold border-b pb-2">
+        General Information
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">รหัสเป้า</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ชื่อเป้า</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">วันเริ่มต้น</label>
+        <input type="date" class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">วันสิ้นสุด</label>
+        <input type="date" class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">สถานะ</label>
+        <span class="inline-block bg-lime-300 text-black text-xs font-bold px-3 py-1 rounded">
+          OPEN
+        </span>
+      </div>
+
+      <h2 class="text-xl font-semibold border-b pb-4 mt-6">
+        Measurement Method
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ประเภทเป้า</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full">
+          <option>ยอดขาย</option>
+          <option>จำนวน</option>
+          <option>มูลค่า</option>
+        </select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">จำนวน</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">หน่วย</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full">
+          <option>บาท</option>
+          <option>ชิ้น</option>
+          <option>แผ่น</option>
+        </select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <label class="font-semibold">หมายเหตุ</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+    </section>
+
+    <!-- RIGHT -->
+    <section class="space-y-4">
+
+      <h2 class="text-xl font-semibold border-b pb-2">
+        Target Scope
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ภาค</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">สาขา</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ประเภทสินค้า</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">แบรนด์</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <label class="font-semibold">หมายเหตุ</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="flex justify-end pt-6">
+    <button class="px-6 py-2 bg-gray-300 rounded font-bold hover:bg-gray-400">
+      บันทึก
+    </button>
+  </div>
+
+</div>
+
+
+<div id="tab-moq" class="tab-content hidden space-y-10">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <h2 class="text-xl font-semibold">MOQ</h2>
+
+    <div class="flex items-center gap-4 text-sm">
+      <button class="text-cyan-500 font-medium">สร้างใหม่</button>
+      <button class="text-gray-600">ประวัติการได้ MOQ</button>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+
+    <!-- LEFT -->
+    <section class="space-y-4">
+
+      <h2 class="text-xl font-semibold border-b pb-2">
+        General Information
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">รหัส MOQ</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ชื่อเงื่อนไข</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ประเภทรถ</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">วิธีการขนส่ง</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <h2 class="text-xl font-semibold border-b pb-2 mt-6">
+        Measurement Method
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ประเภท MOQ</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full">
+          <option>จำนวน</option>
+          <option>น้ำหนัก</option>
+          <option>มูลค่า</option>
+        </select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">จำนวน</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">หน่วยวัด</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <label class="font-semibold">หมายเหตุ</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+    </section>
+
+    <!-- RIGHT -->
+    <section class="space-y-4">
+
+      <h2 class="text-xl font-semibold border-b pb-2">
+        MOQ Scope
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ภาค</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">สาขา</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ประเภทสินค้า</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">แบรนด์</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">กลุ่มสินค้า</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">กลุ่มย่อยสินค้า</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">สี</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">รหัสแม่พิมพ์</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ความหนา</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <label class="font-semibold">หมายเหตุ</label>
+       <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="flex justify-end pt-6">
+    <button class="px-6 py-2 bg-gray-300 rounded font-bold hover:bg-gray-400">
+      บันทึก
+    </button>
+  </div>
+
+</div>
+
+
+<div id="tab-deal" class="tab-content hidden space-y-10">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <h2 class="text-xl font-semibold">ดีลราคา</h2>
+
+    <div class="flex items-center gap-4 text-sm">
+      <button class="text-cyan-500 font-medium">สร้างใหม่</button>
+      <button class="text-gray-600">ประวัติการได้ราคา</button>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+
+    <!-- LEFT : Scope -->
+    <section class="space-y-4">
+
+      <h2 class="text-xl font-semibold border-b pb-2">
+        Scope
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ภาค</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">สาขา</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ประเภทสินค้า</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">แบรนด์</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">กลุ่มสินค้า</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">กลุ่มย่อยสินค้า</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">สี</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ความหนา</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <label class="font-semibold">หมายเหตุ</label>
+       <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+    </section>
+
+    <!-- RIGHT : Pricing Rule -->
+    <section class="space-y-4">
+
+      <h2 class="text-xl font-semibold border-b pb-2">
+        Pricing Rule
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ราคาจาก D365</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ราคาใหม่จากผู้ขาย</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ส่วนลดจากราคาเดิม (%)</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ระยะเวลาการใช้งานราคา</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">สถานะการใช้งานราคา</label>
+        <span class="inline-block bg-lime-300 text-black text-xs font-bold px-3 py-1 rounded">
+          OPEN
+        </span>
+      </div>
+
+      <h2 class="text-xl font-semibold border-b pb-2 mt-6">
+        Measurement Method
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">ประเภทที่ได้ราคาพิเศษ</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">จำนวนที่ได้ราคาพิเศษ</label>
+        <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <label class="font-semibold">หน่วยวัด</label>
+        <select class="md:col-span-2 border rounded px-3 py-2 w-full"></select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <label class="font-semibold">หมายเหตุ</label>
+       <input class="md:col-span-2 border rounded px-3 py-2 w-full" />
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="flex justify-end pt-6">
+    <button class="px-6 py-2 bg-gray-300 rounded font-bold hover:bg-gray-400">
+      บันทึก
+    </button>
+  </div>
+
+</div>
+
+  </form>
+</main>
+
+</body>
+<script src="supplier-info.js"></script>
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const contents = document.querySelectorAll('.tab-content');
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+
+      // reset ปุ่ม
+      buttons.forEach(b => {
+        b.classList.remove('bg-orange-300');
+        b.classList.add('bg-gray-200');
+      });
+
+      // reset content
+      contents.forEach(c => c.classList.add('hidden'));
+
+      // active ปุ่ม
+      btn.classList.remove('bg-gray-200');
+      btn.classList.add('bg-orange-300');
+
+      // show content
+      document
+        .getElementById(`tab-${tab}`)
+        .classList.remove('hidden');
+    });
+  });
+</script>
+
+
+
+</html>
