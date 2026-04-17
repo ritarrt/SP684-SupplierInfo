@@ -824,8 +824,11 @@ function renderDealTable() {
         } else if (limitUnit === 'บาท') {
           // Use actual_value which is already set to actual_amount by backend
           actualDisplay = `${Number(r.actual_value || 0).toLocaleString()} บาท`;
+        } else if (limitUnit === 'ตร.ฟ.' || limitUnit === 'sqft' || limitUnit === 'sq ft') {
+          // Square feet
+          actualDisplay = `${Number(r.actual_value || 0).toLocaleString()} ตร.ฟ.`;
         } else {
-          // Default: use actual_value which is already set to actual_qty by backend
+          // Default: use actual_value which is already set to actual_qty by backend (ชิ้น, เส้น, แผ่น)
           actualDisplay = `${Number(r.actual_value || 0).toLocaleString()} ${limitUnit}`;
         }
         
