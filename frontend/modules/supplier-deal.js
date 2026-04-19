@@ -296,7 +296,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ============================================================
-  // 🔥 Auto-set condition mode to limited when project_no is filled
+  // 🔥 Auto-set condition mode when project_no is filled
   // ============================================================
   const projectNoInput = document.getElementById("dealProjectNo");
   const conditionModeSelect = document.getElementById("dealConditionMode");
@@ -304,10 +304,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (projectNoInput && conditionModeSelect) {
     projectNoInput.addEventListener("input", () => {
       if (projectNoInput.value.trim()) {
-        // When project_no is filled, set condition mode to limited
-        conditionModeSelect.value = "limited";
+        // When project_no is filled, set condition mode to normal
+        conditionModeSelect.value = "normal";
         toggleDealConditionMode();
-        // Disable condition mode selector
+        // Disable condition mode selector when project is selected
         conditionModeSelect.disabled = true;
       } else {
         // When project_no is cleared, enable condition mode selector
@@ -431,7 +431,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (btn) {
     btn.addEventListener("click", async () => {
 
-      const conditionMode = document.getElementById("dealConditionMode")?.value || "limited";
+      const conditionMode = document.getElementById("dealConditionMode")?.value || "normal";
 
       // Validate required fields
       const dealName = document.getElementById("dealName")?.value;
@@ -515,13 +515,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           showSaveMessage("กรุณาเลือกหน่วยราคา", true);
           return;
         }
-      } else if (conditionMode === "limited") {
-        // Limited mode - validate limited_qty
-        const limitedQty = parseFloat(document.getElementById("dealLimitedQty")?.value);
-        if (isNaN(limitedQty) || limitedQty <= 0) {
-          showSaveMessage("กรุณากรอกจำนวนจำกัดที่ถูกต้อง", true);
-          return;
-        }
       } else if (conditionMode === "stepped") {
         // Stepped mode - validate steps
         const steps = getDealSteps();
@@ -559,18 +552,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         mold: document.getElementById("dealMold")?.value,
         sku: document.getElementById("dealSku")?.value,
         deal_type: dealType,
-        price_value: (conditionMode === "normal" || conditionMode === "limited") ? priceValue : null,
-        price_unit: (conditionMode === "normal" || conditionMode === "limited") ? priceUnit : null,
+        price_value: conditionMode === "normal" ? priceValue : null,
+        price_unit: conditionMode === "normal" ? priceUnit : null,
         condition_mode: conditionMode,
-        limited_qty: conditionMode === "limited" ? parseFloat(document.getElementById("dealLimitedQty")?.value) || 0 : null,
-        limited_unit: conditionMode === "limited" ? document.getElementById("dealLimitedUnit")?.value : null,
-        limited_type: conditionMode === "limited" ? document.getElementById("dealLimitedType")?.value : null,
-        limited_discount_value: conditionMode === "limited" ? parseFloat(document.getElementById("dealLimitedDiscount")?.value) || 0 : null,
-        limited_discount_unit: conditionMode === "limited" ? document.getElementById("dealLimitedDiscountUnit")?.value : null,
         steps: conditionMode === "stepped" ? getDealSteps() : null,
         start_date: document.getElementById("dealStart")?.value || null,
         end_date: document.getElementById("dealEnd")?.value || null,
-        note: document.getElementById("dealNote")?.value
+        note: document.getElementById("dealNote")?.value,
+        require_pallet: document.getElementById("dealRequirePallet")?.checked ?? true
       };
 
       try {
@@ -845,7 +834,7 @@ function renderDealTable() {
           <div class="text-muted">จำกัด: ${limitQty.toLocaleString()} ${limitUnit}</div>
           <div style="font-size:13px;margin-top:2px;">
             รับแล้ว: ${actualDisplay}
-            ${achievementPercent !== null && achievementPercent !== undefined ? `<span style="color:#6c757d;font-size:12px;">(${Number(achievementPercent).toFixed(0)}%)</span>` : ''}
+            ${achievementPercent !== null && achievementPercent !== undefined ? `<span style="color:#6c757d;font-size:12px;">(${achievementPercent > 100 ? `<span class="text-danger">${Number(achievementPercent).toFixed(0)}%</span>` : `${Number(achievementPercent).toFixed(0)}%`})</span>` : ''}
             ${statusBadge}
           </div>
           ${isLimitExceeded ? `<div style="font-size:11px;color:#dc3545;margin-top:2px;">⚠️ รับมาเกิน ${(Number(actualValue) - Number(limitQty)).toLocaleString()} ${limitUnit}</div>` : ''}
@@ -997,6 +986,12 @@ function renderDealTable() {
   <div class="text-muted">
     ${r.note || ""}
   </div>
+
+  <div class="mt-1">
+    ${r.require_pallet === false 
+      ? `<span class="badge bg-warning text-dark">ไม่ลงลัง</span>` 
+      : `<span class="badge bg-success">ต้องลงลัง</span>`}
+  </div>
 </td>
 
 
@@ -1131,14 +1126,18 @@ function openEditDealModal(dealId) {
   document.getElementById("dealProvider").value = deal.contact_person || '';
   document.getElementById("dealProjectNo").value = deal.project_no || '';
   document.getElementById("dealType").value = deal.deal_type || '';
-  document.getElementById("dealConditionMode").value = deal.condition_mode || 'limited';
+  document.getElementById("dealConditionMode").value = deal.condition_mode || 'normal';
   document.getElementById("dealPrice").value = deal.price_value || '';
   document.getElementById("dealUnit").value = deal.price_unit || '';
-  document.getElementById("dealLimitedQty").value = deal.limited_qty || '';
-  document.getElementById("dealLimitedUnit").value = deal.limited_unit || '';
   document.getElementById("dealStart").value = convertDateFormat(deal.start_date);
   document.getElementById("dealEnd").value = convertDateFormat(deal.end_date);
   document.getElementById("dealNote").value = deal.note || '';
+
+  // Set require_pallet checkbox (default true if not set)
+  const requirePalletCheckbox = document.getElementById("dealRequirePallet");
+  if (requirePalletCheckbox) {
+    requirePalletCheckbox.checked = deal.require_pallet !== false;
+  }
 
   // Set category, brand, group, sub, color, thickness, mold, sku
   if (deal.category) {
@@ -1276,6 +1275,10 @@ function cancelDealEdit() {
   if (colorSelect) colorSelect.value = "";
   const thickSelect = document.getElementById("dealThick");
   if (thickSelect) thickSelect.value = "";
+  
+  // Reset require_pallet checkbox to default (checked)
+  const requirePalletCheckbox = document.getElementById("dealRequirePallet");
+  if (requirePalletCheckbox) requirePalletCheckbox.checked = true;
   
   showSaveMessage("ยกเลิกการแก้ไขแล้ว");
 }
@@ -1531,14 +1534,12 @@ window.toggleDealConditionMode = function() {
 
   // Hide all modes first
   normalDiv?.classList.add("hidden");
-  limitedDiv?.classList.add("hidden");
+  if (limitedDiv) limitedDiv.classList.add("hidden");
   steppedDiv?.classList.add("hidden");
 
   // Show selected mode
   if (mode === "normal") {
     normalDiv?.classList.remove("hidden");
-  } else if (mode === "limited") {
-    limitedDiv?.classList.remove("hidden");
   } else if (mode === "stepped") {
     steppedDiv?.classList.remove("hidden");
   }
@@ -1628,6 +1629,7 @@ function getDealSteps() {
 
 // Expose renderDealTable to global scope for onchange handlers
 window.renderDealTable = renderDealTable;
+window.openDealModal = openDealModal;
 
 // Mark module as loaded
 window.dealModuleLoaded = true;

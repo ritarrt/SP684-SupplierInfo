@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <style>
         body { background-color: #ffffff; font-family: 'Sarabun', sans-serif; color: #333; }
@@ -144,6 +145,17 @@
         <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-target" type="button">เป้าการสังสินค้า</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-moq" type="button">เงื่อนไขการสั่ง/ส่งสินค้า</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-deal" type="button">ดีลราคา</button></li>
+        <li class="nav-item ms-auto">
+            <div class="d-flex gap-2">
+                <button class="btn btn-success btn-sm" onclick="exportToExcel()">
+                    <i class="bi bi-file-earmark-excel"></i> Export
+                </button>
+                <label class="btn btn-warning btn-sm mb-0">
+                    <i class="bi bi-file-earmark-arrow-up"></i> Import
+                    <input type="file" class="d-none" accept=".xlsx,.xls" onchange="importFromExcel(this)">
+                </label>
+            </div>
+        </li>
     </ul>
 
     <hr class="mt-0 mb-4 text-muted">
@@ -264,7 +276,34 @@
   </div>
 
 </form>
-<!-- ================= CARD 3 : เพิ่มข้อมูลผู้ติดต่อ (New Contact) ================= -->
+
+            <div class="card card-table">
+                <div class="card-header bg-white py-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-success"><i class="bi bi-box-seam"></i> รายการสินค้าที่บริษัทดูแล</span>
+                        <span class="badge bg-light text-dark border" id="cpRecordCount">0 รายการ</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered mb-0">
+                        <thead>
+                            <tr>
+                                <th class="text-center" style="width: 50px;">#</th>
+                                <th>ประเภทสินค้า</th>
+                                <th>แบรนด์ที่ดูแล</th>
+                                <th>กลุ่มสินค้า</th>
+                                <th>กลุ่มย่อย</th>
+                                <th>SKU</th>
+                                <th class="text-center" style="width: 100px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cpTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= CARD 3 : เพิ่มข้อมูลผู้ติดต่อ (New Contact) ================= -->
 <form id="contactForm">
 
   <div class="card shadow-sm border-0 bg-light mb-4">
@@ -1302,6 +1341,7 @@ let moqList = [
         resetMoqForm();
         resetDealForm(); // Init Deal
         renderContactTable();
+        renderCompanyProductTable();
     });
 
     // ==================== 0. CONTACT LOGIC ====================
@@ -1652,6 +1692,174 @@ let moqList = [
         minute: '2-digit',
         second: '2-digit'
     });
+}
+
+// ==================== EXPORT/IMPORT EXCEL ====================
+function exportToExcel() {
+    const wb = XLSX.utils.book_new();
+    
+    // Sheet 1: ข้อมูลบริษัท (Company Info - read only)
+    const companyData = [
+        ['รหัสผู้ขาย', 'ประเภทสถานที่', 'เลขประจำตัวผู้เสียภาษี', 'เงื่อนไขเครดิต', 'ที่อยู่จดทะเบียน'],
+        [
+            document.querySelector('input[value="VEN-2034-TH"]')?.value || 'VEN-2034-TH',
+            document.querySelector('input[value="สำนักงานใหญ่ (Head Office)"]')?.value || 'สำนักงานใหญ่ (Head Office)',
+            document.querySelector('input[value="0105558099123"]')?.value || '0105558099123',
+            document.querySelector('input[value="Credit 30 Days"]')?.value || 'Credit 30 Days',
+            '88/9 หมู่ 4 นิคมอุตสาหกรรมบางพลี ต.บางเสาธง อ.บางเสาธง จ.สมุทรปราการ 10540'
+        ]
+    ];
+    const wsCompany = XLSX.utils.aoa_to_sheet(companyData);
+    XLSX.utils.book_append_sheet(wb, wsCompany, 'ข้อมูลบริษัท');
+
+    // Sheet 2: ผู้ติดต่อ (Contacts)
+    const contactHeaders = ['ประเภท', 'ชื่อ-นามสกุล/บริษัท', 'ตำแหน่ง', 'แบรนด์ที่ดูแล', 'กลุ่มสินค้า', 'วันที่เริ่มติดต่อ', 'อีเมล', 'ไอดีไลน์', 'เบอร์ 1', 'เบอร์ 2', 'เบอร์ 3'];
+    const contactRows = contactList.map(c => {
+        const phone1 = c.phones[0]?.number || '';
+        const phone2 = c.phones[1]?.number || '';
+        const phone3 = c.phones[2]?.number || '';
+        return [c.type, c.name, c.position, c.brand, c.group, c.startDate, c.email, c.lineId, phone1, phone2, phone3];
+    });
+    const wsContacts = XLSX.utils.aoa_to_sheet([contactHeaders, ...contactRows]);
+    XLSX.utils.book_append_sheet(wb, wsContacts, 'ผู้ติดต่อ');
+
+    // Sheet 3: สินค้าที่บริษัทดูแล (Company Products)
+    const prodHeaders = ['ประเภทสินค้า', 'แบรนด์ที่ดูแล', 'กลุ่มสินค้า', 'กลุ่มย่อย', 'SKU'];
+    const prodRows = companyProductList.map(p => [p.category, p.brand, p.group, p.subGroup, p.sku]);
+    const wsProducts = XLSX.utils.aoa_to_sheet([prodHeaders, ...prodRows]);
+    XLSX.utils.book_append_sheet(wb, wsProducts, 'สินค้าที่ดูแล');
+
+    // Download
+    XLSX.writeFile(wb, 'Supplier_2034_BasicInfo.xlsx');
+}
+
+function importFromExcel(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        // Import Contacts
+        const contactSheet = workbook.Sheets['ผู้ติดต่อ'];
+        if (contactSheet) {
+            const contactData = XLSX.utils.sheet_to_json(contactSheet, { header: 1 });
+            if (contactData.length > 1) {
+                const headers = contactData[0];
+                for (let i = 1; i < contactData.length; i++) {
+                    const row = contactData[i];
+                    if (row[1]) { // มีชื่อ
+                        const phones = [];
+                        if (row[8]) phones.push({ country: '+66', flag: '🇹🇭', number: row[8] });
+                        if (row[9]) phones.push({ country: '+66', flag: '🇹🇭', number: row[9] });
+                        if (row[10]) phones.push({ country: '+66', flag: '🇹🇭', number: row[10] });
+
+                        contactList.push({
+                            id: ctRunningId++,
+                            type: row[0] || 'บุคคล',
+                            name: row[1] || '',
+                            position: row[2] || '',
+                            brand: row[3] || '',
+                            group: row[4] || '',
+                            startDate: row[5] || '',
+                            email: row[6] || '',
+                            lineId: row[7] || '',
+                            phones: phones.length > 0 ? phones : [{ country: '+66', flag: '🇹🇭', number: '' }]
+                        });
+                    }
+                }
+                renderContactTable();
+                updateProviderOptions();
+            }
+        }
+
+        // Import Products
+        const prodSheet = workbook.Sheets['สินค้าที่ดูแล'];
+        if (prodSheet) {
+            const prodData = XLSX.utils.sheet_to_json(prodSheet, { header: 1 });
+            if (prodData.length > 1) {
+                for (let i = 1; i < prodData.length; i++) {
+                    const row = prodData[i];
+                    if (row[0] || row[1] || row[2]) { // มีข้อมูลบางอย่าง
+                        companyProductList.push({
+                            id: cpRunningId++,
+                            category: row[0] || '',
+                            brand: row[1] || '',
+                            group: row[2] || '',
+                            subGroup: row[3] || '',
+                            sku: row[4] || ''
+                        });
+                    }
+                }
+                renderCompanyProductTable();
+            }
+        }
+
+        alert('นำเข้าข้อมูลสำเร็จ!');
+    };
+    reader.readAsArrayBuffer(file);
+    input.value = '';
+}
+
+// ================= COMPANY PRODUCTS =================
+let companyProductList = [
+    { id: 1, category: 'Glass', brand: 'Diamond', group: 'Clear Glass', subGroup: 'Tempered', sku: 'GL-TEM-001' }
+];
+let cpRunningId = 2;
+
+// Company Product Form Handler
+const cpForm = document.getElementById('companyProductForm');
+cpForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const newProduct = {
+        id: cpRunningId++,
+        category: document.getElementById('cpCategory').value,
+        brand: document.getElementById('cpBrand').value,
+        group: document.getElementById('cpGroup').value,
+        subGroup: document.getElementById('cpSubGroup').value,
+        sku: document.getElementById('cpSku').value
+    };
+    companyProductList.push(newProduct);
+    cpForm.reset();
+    renderCompanyProductTable();
+});
+
+function renderCompanyProductTable() {
+    const tbody = document.getElementById('cpTableBody');
+    tbody.innerHTML = '';
+    document.getElementById('cpRecordCount').innerText = `${companyProductList.length} รายการ`;
+    
+    if (companyProductList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">ไม่พบข้อมูลสินค้า</td></tr>`;
+        return;
+    }
+    
+    companyProductList.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="text-center">${index + 1}</td>
+            <td>${item.category || '-'}</td>
+            <td>${item.brand || '-'}</td>
+            <td>${item.group || '-'}</td>
+            <td>${item.subGroup || '-'}</td>
+            <td>${item.sku || '-'}</td>
+            <td class="text-center">
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteCompanyProduct(${item.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function deleteCompanyProduct(id) {
+    if (confirm('ต้องการลบรายการนี้ใช่ไหม?')) {
+        companyProductList = companyProductList.filter(p => p.id !== id);
+        renderCompanyProductTable();
+    }
 }
 
 </script>

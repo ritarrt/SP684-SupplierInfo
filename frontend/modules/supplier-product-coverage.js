@@ -548,6 +548,9 @@ SUBGROUP_NAME:
 
 // expose
 window.collectProductCoverage = collectProductCoverage;
+window.loadBrandsForRow = loadBrandsForRow;
+window.loadGroupsForRow = loadGroupsForRow;
+window.loadSubGroupsForRow = loadSubGroupsForRow;
 
 
 async function saveProductCoverageOnly() {

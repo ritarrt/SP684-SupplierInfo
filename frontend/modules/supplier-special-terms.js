@@ -85,6 +85,7 @@ async function saveProductAndSpecialTerms() {
 window.collectSpecialTerms = collectSpecialTerms;
 window.saveSpecialTermsOnly = saveSpecialTermsOnly;
 window.saveProductAndSpecialTerms = saveProductAndSpecialTerms;
+window.addPaymentMethodRow = addPaymentMethodRow;
 
 async function loadSpecialTermsCurrent(supplierNo) {
   if (!supplierNo) return;

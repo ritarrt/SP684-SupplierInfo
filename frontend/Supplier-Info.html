@@ -20,6 +20,9 @@
   <!-- ✅ Tailwind (แทน Bootstrap) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
+  <!-- ✅ SheetJS for Excel Export/Import -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
   <!-- ✅ Icons (ใช้ได้ ไม่ใช่ Bootstrap CSS) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
@@ -201,26 +204,12 @@
     .bg-success { background:#198754; color:#fff; }
 
     .table-wrap { overflow:auto; }
-    table.table {
-      width:100%;
-      border-collapse: collapse;
-      background:#fff;
-    }
-    .table th {
-      font-size: 0.85rem;
-      background-color: #f8f9fa;
-      white-space: nowrap;
-      text-align:left;
-      border:1px solid #dee2e6;
-      padding:.6rem .75rem;
-    }
-    .table td {
-      font-size: 0.85rem;
-      vertical-align: middle;
-      border:1px solid #dee2e6;
-      padding:.6rem .75rem;
-    }
+    .table { width:100%; border-collapse: collapse; background:#fff; }
+    .table th { font-size: 0.85rem; background-color: #f8f9fa; white-space: nowrap; text-align:left; border:1px solid #dee2e6; padding:.6rem .75rem; }
+    .table td { font-size: 0.85rem; vertical-align: middle; border:1px solid #dee2e6; padding:.6rem .75rem; }
     .table-hover tbody tr:hover td { background:#f8f9fa; }
+    .progress { background-color: #e9ecef; border-radius: 4px; overflow: hidden; }
+    .progress-bar { height: 100%; transition: width 0.3s; }
     .text-center { text-align:center; }
     .text-end { text-align:right; }
     .fw-bold { font-weight:700; }
@@ -341,6 +330,9 @@
         <button class="nav-link" data-tab="pills-deal" type="button">ดีลราคา</button>
       </li>
       <li class="nav-item">
+        <button class="nav-link" data-tab="pills-deal-limit" type="button">จำกัดดีลราคา</button>
+      </li>
+      <li class="nav-item">
   <button class="nav-link" data-tab="pills-document" type="button">
     เอกสาร
   </button>
@@ -349,6 +341,18 @@
     </ul>
 
     <hr class="mt-0 mb-4 text-gray-300">
+
+    <!-- Excel Export/Import Buttons for Basic Tab -->
+    <div class="flex gap-2 mb-4 items-center" id="basicExcelButtons" style="display: none;">
+      <span class="text-gray-400 text-sm mr-1">ข้อมูลพื้นฐาน:</span>
+      <button type="button" class="btn btn-outline-success btn-sm" onclick="exportToExcel()">
+        <i class="bi bi-file-earmark-excel"></i> Export Excel
+      </button>
+      <label class="btn btn-outline-primary btn-sm cursor-pointer">
+        <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
+        <input type="file" accept=".xlsx,.xls" onchange="importFromExcel(event)" class="hidden">
+      </label>
+    </div>
 
     <div class="tab-content" id="pills-tabContent">
 
@@ -1003,6 +1007,18 @@
            ========================================================= -->
       <div class="tab-pane" id="pills-target">
 
+        <!-- Excel Export/Import Buttons for Target -->
+        <div class="flex gap-2 mb-4 items-center" id="targetExcelButtons" style="display: none;">
+          <span class="text-gray-400 text-sm mr-1">เป้าการสั่งสินค้า:</span>
+          <button type="button" class="btn btn-outline-success btn-sm" onclick="exportTargetToExcel()">
+            <i class="bi bi-file-earmark-excel"></i> Export Excel
+          </button>
+          <label class="btn btn-outline-primary btn-sm cursor-pointer">
+            <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
+            <input type="file" accept=".xlsx,.xls" onchange="importTargetFromExcel(event)" class="hidden">
+          </label>
+        </div>
+
         <form id="targetForm">
           <!-- hidden fields required by JS (เดิมคุณเรียก แต่ไม่มี element) -->
           <input type="hidden" id="tgCode">
@@ -1337,6 +1353,18 @@
            TAB: MOQ
            ========================================================= -->
       <div class="tab-pane" id="pills-moq">
+
+        <!-- Excel Export/Import Buttons for MOQ -->
+        <div class="flex gap-2 mb-4 items-center" id="moqExcelButtons" style="display: none;">
+          <span class="text-gray-400 text-sm mr-1">เงื่อนไขการสั่ง/ส่งสินค้า:</span>
+          <button type="button" class="btn btn-outline-success btn-sm" onclick="exportMoqToExcel()">
+            <i class="bi bi-file-earmark-excel"></i> Export Excel
+          </button>
+          <label class="btn btn-outline-primary btn-sm cursor-pointer">
+            <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
+            <input type="file" accept=".xlsx,.xls" onchange="importMoqFromExcel(event)" class="hidden">
+          </label>
+        </div>
 
         <form id="moqForm">
           <input type="hidden" id="moqCode">
@@ -1784,9 +1812,16 @@
   <div class="mb-3">
     <select class="form-select" id="dealConditionMode" onchange="toggleDealConditionMode()">
       <option value="normal">ราคาปกติ</option>
-      <option value="limited">จำกัดจำนวน</option>
       <option value="stepped">ขั้นบันได</option>
     </select>
+  </div>
+
+  <div class="mb-3">
+    <label class="inline-flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" id="dealRequirePallet" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" checked>
+      <span class="text-sm font-medium text-gray-700">ราคานี้ต้องลงลัง</span>
+    </label>
+    <div class="text-xs text-gray-500 mt-1">ถ้าไม่เช็ค = ราคาไม่ลงลัง</div>
   </div>
 
   <!-- NORMAL PRICE MODE -->
@@ -1800,51 +1835,6 @@
         <option value="บาท/ชิ้น">บาท/ชิ้น</option>
         <option value="บาท/กก.">บาท/กก.</option>
       </select>
-    </div>
-  </div>
-
-  <!-- LIMITED QUANTITY MODE -->
-  <div id="dealLimitedMode" class="hidden">
-    <div class="grid grid-cols-12 gap-2">
-      <div class="col-span-4">
-        <label class="form-label text-muted text-xs mb-1">จำนวนจำกัด</label>
-        <input type="number" class="form-control" id="dealLimitedQty" placeholder="0">
-      </div>
-      <div class="col-span-4">
-        <label class="form-label text-muted text-xs mb-1">หน่วย</label>
-        <select class="form-select" id="dealLimitedUnit">
-          <option value="ชิ้น">ชิ้น</option>
-          <option value="บาท">บาท</option>
-          <option value="ตัน">ตัน</option>
-          <option value="เส้น">เส้น</option>
-          <option value="แผ่น">แผ่น</option>
-          <option value="ตร.ฟ.">ตร.ฟุต</option>
-        </select>
-      </div>
-      <div class="col-span-4">
-        <label class="form-label text-muted text-xs mb-1">ประเภทของดีลจำนวนจำกัด</label>
-        <select class="form-select" id="dealLimitedType" onchange="updateLimitedDiscountDisplay()">
-          <option value="amount">จำนวน (บาท)</option>
-          <option value="percent">เปอร์เซ็นต์ (%)</option>
-        </select>
-      </div>
-    </div>
-    <div class="grid grid-cols-12 gap-2 mt-2">
-      <div class="col-span-6">
-        <label class="form-label text-muted text-xs mb-1">ราคาที่ได้รับ</label>
-        <div class="flex">
-          <input type="number" class="form-control" id="dealLimitedDiscount" placeholder="0.00" oninput="updateLimitedDiscountDisplay()">
-          <select class="form-select" id="dealLimitedDiscountUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;" onchange="updateLimitedDiscountDisplay()">
-            <option value="บาท">บาท</option>
-            <option value="%">%</option>
-            <option value="บาท/ชิ้น">บาท/ชิ้น</option>
-          </select>
-        </div>
-      </div>
-      <div class="col-span-6">
-        <label class="form-label text-muted text-xs mb-1">ราคาที่ได้รับ (แสดงผล)</label>
-        <div id="dealLimitedDiscountDisplay" class="form-control bg-light text-success fw-bold">-</div>
-      </div>
     </div>
   </div>
 
@@ -1922,6 +1912,274 @@
             </table>
           </div>
         </div>
+      </div>
+
+      <!-- =========================================================
+           TAB: DEAL LIMIT
+           ========================================================= -->
+      <div class="tab-pane" id="pills-deal-limit">
+        
+        <!-- FORM: Create/Edit Deal Limit -->
+        <form id="dealLimitForm">
+          <input type="hidden" id="dealLimitCode">
+
+          <div class="card">
+            <div class="card-body">
+
+              <div class="flex justify-between items-center section-header first-section">
+                <div><i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐานดีลจำกัดราคา</div>
+                <div class="last-updated" id="dealLimitLastUpdated">
+                  <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+                </div>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สถานะ</label>
+                  <div id="dealLimitStatusText" class="status-text status-open-text">OPEN</div>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ผู้ให้ราคา (จาก Contact)</label>
+                  <select class="form-select" id="dealLimitProvider">
+                    <option value="">- เลือกผู้ติดต่อ -</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ชื่อดีลจำกัดราคา <span class="text-red-600">*</span></label>
+                  <input type="text" class="form-control" id="dealLimitName" required placeholder="เช่น ดีลจำกัดกระจก Q1">
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">Project No.</label>
+                  <input type="text" class="form-control" id="dealLimitProjectNo" placeholder="พิมพ์เพื่อค้นหา">
+                </div>
+              </div>
+
+              <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขต (Scope)</div>
+
+              <div class="grid grid-cols-12 gap-3">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ภาค<span class="text-red-600">*</span></label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealLimitRegionDropdown')">
+                      <span id="dealLimitRegionText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealLimitRegionDropdown" class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2"></div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">จังหวัด<span class="text-red-600">*</span></label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealLimitProvinceDropdown')">
+                      <span id="dealLimitProvinceText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealLimitProvinceDropdown" class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2"></div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สาขา<span class="text-red-600">*</span></label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('dealLimitBranchDropdown')">
+                      <span id="dealLimitBranchText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="dealLimitBranchDropdown" class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2"></div>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทสินค้า<span class="text-red-600">*</span></label>
+                  <select class="form-select" id="dealLimitCat">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">แบรนด์<span class="text-red-600">*</span></label>
+                  <select class="form-select" id="dealLimitBrand">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">กลุ่มสินค้า</label>
+                  <select class="form-select" id="dealLimitGroup">
+                    <option value="-">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">กลุ่มย่อย</label>
+                  <select class="form-select" id="dealLimitSub">
+                    <option value="-">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สีของสินค้า</label>
+                  <select class="form-select" id="dealLimitColor">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ความหนา</label>
+                  <select class="form-select" id="dealLimitThick">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">รหัสแม่พิมพ์</label>
+                  <select class="form-select" id="dealLimitMold">
+                    <option value="-">ทั้งหมด</option>
+                    <option value="M-001">M-001</option>
+                    <option value="M-002">M-002</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">SKU</label>
+                  <input type="text" class="form-control" id="dealLimitSku" placeholder="ระบุ SKU">
+                </div>
+              </div>
+
+              <div class="section-header"><i class="bi bi-rulers"></i> 3. จำกัดจำนวนและเงื่อนไข</div>
+
+              <div class="grid grid-cols-12 gap-3 items-end">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทดีล <span class="text-red-600">*</span></label>
+                  <select class="form-select" id="dealLimitType">
+                    <option value="Discount">ส่วนลด (Discount)</option>
+                    <option value="New Price">ราคาใหม่จากผู้ขาย (New Price)</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ประเภทจำกัดจำนวน <span class="text-red-600">*</span></label>
+                  <select class="form-select" id="dealLimitDiscountType" onchange="updateDealLimitDiscountDisplay()">
+                    <option value="amount">จำนวน (บาท)</option>
+                    <option value="percent">เปอร์เซ็นต์ (%)</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">จำนวนจำกัด <span class="text-red-600">*</span></label>
+                  <input type="number" class="form-control" id="dealLimitQty" placeholder="0" required>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">หน่วย <span class="text-red-600">*</span></label>
+                  <select class="form-select" id="dealLimitUnit">
+                    <option value="ชิ้น">ชิ้น</option>
+                    <option value="บาท">บาท</option>
+                    <option value="ตัน">ตัน</option>
+                    <option value="เส้น">เส้น</option>
+                    <option value="แผ่น">แผ่น</option>
+                    <option value="ตร.ฟ.">ตร.ฟุต</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">ราคาที่ได้รับ</label>
+                  <div class="flex">
+                    <input type="number" class="form-control" id="dealLimitDiscount" placeholder="0.00" oninput="updateDealLimitDiscountDisplay()">
+                    <select class="form-select" id="dealLimitDiscountUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;" onchange="updateDealLimitDiscountDisplay()">
+                      <option value="บาท">บาท</option>
+                      <option value="%">%</option>
+                      <option value="บาท/ชิ้น">บาท/ชิ้น</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ราคาที่ได้รับ (แสดงผล)</label>
+                  <div id="dealLimitDiscountDisplay" class="form-control bg-light text-success fw-bold">-</div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3 items-end mt-3">
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label text-muted">วันที่เริ่มใช้ราคา <span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="dealLimitStart" required min="2016-01-01" max="2046-12-31">
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label text-muted">วันที่สิ้นสุด <span class="text-red-600">*</span></label>
+                  <input type="date" class="form-control" id="dealLimitEnd" required min="2016-01-01" max="2046-12-31">
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="dealLimitRequirePallet" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" checked>
+                    <span class="text-sm font-medium text-gray-700">ราคานี้ต้องลงลัง</span>
+                  </label>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">หมายเหตุ</label>
+                  <input type="text" class="form-control" id="dealLimitNote" placeholder="ระบุเงื่อนไขเพิ่มเติม...">
+                </div>
+              </div>
+
+            </div>
+
+            <div class="flex justify-end gap-2 form-action-bar">
+              <button type="button" class="btn btn-secondary fw-bold px-4 hidden" id="cancelDealLimitEditBtn">
+                <i class="bi bi-x-circle"></i> ยกเลิกการแก้ไข
+              </button>
+              <button type="button" class="btn btn-primary fw-bold px-4" id="submitDealLimitBtn">
+                <i class="bi bi-save"></i> บันทึก
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- DEAL LIMIT TABLE -->
+        <div class="card card-table mt-4">
+          <div class="card-header">
+            <div class="flex justify-between items-center">
+              <div class="inline-flex" role="group" style="gap:6px;">
+                <input type="radio" class="hidden" name="dealLimitFilter" id="dealLimitFilterActive" value="active" checked onchange="renderDealLimitTable()">
+                <label class="btn btn-sm btn-outline-success" for="dealLimitFilterActive"><i class="bi bi-check-circle"></i> รายการปกติ</label>
+
+                <input type="radio" class="hidden" name="dealLimitFilter" id="dealLimitFilterClosed" value="closed" onchange="renderDealLimitTable()">
+                <label class="btn btn-sm btn-outline-primary" for="dealLimitFilterClosed"><i class="bi bi-clock-history"></i> รายการที่หมดอายุ</label>
+
+                <input type="radio" class="hidden" name="dealLimitFilter" id="dealLimitFilterCancel" value="cancelled" onchange="renderDealLimitTable()">
+                <label class="btn btn-sm btn-outline-danger" for="dealLimitFilterCancel"><i class="bi bi-x-circle"></i> รายการที่ยกเลิก</label>
+              </div>
+              <span class="badge bg-light text-dark border" id="dealLimitRecordCount">0 รายการ</span>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table table-hover table-bordered mb-0">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>สถานะ</th>
+                  <th>ชื่อดีล / ผู้ให้ราคา</th>
+                  <th>Scope</th>
+                  <th class="text-center">จำกัดจำนวน</th>
+                  <th style="width:200px;">ความคืบหน้า</th>
+                  <th>วันที่</th>
+                </tr>
+              </thead>
+              <tbody id="dealLimitTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
 
 
@@ -2144,10 +2402,12 @@
 <script src="modules/supplier-product-coverage.js"></script>
 <script src="modules/supplier-contact.js"></script>
 <script src="modules/supplier-special-terms.js"></script>
+<script src="modules/supplier-excel-handler.js"></script>
 <script src="./components/supplier-history.js" defer></script>
 <script src="./components/supplier-document.js"></script>
 <script type="module" src="modules/supplier-moq.js"></script>
 <script type="module" src="modules/supplier-deal.js"></script>
+<script type="module" src="modules/supplier-deal-limit.js"></script>
 <script type="module" src="modules/supplier-target.js"></script>
 
 
