@@ -342,18 +342,6 @@
 
     <hr class="mt-0 mb-4 text-gray-300">
 
-    <!-- Excel Export/Import Buttons for Basic Tab -->
-    <div class="flex gap-2 mb-4 items-center" id="basicExcelButtons" style="display: none;">
-      <span class="text-gray-400 text-sm mr-1">ข้อมูลพื้นฐาน:</span>
-      <button type="button" class="btn btn-outline-success btn-sm" onclick="exportToExcel()">
-        <i class="bi bi-file-earmark-excel"></i> Export Excel
-      </button>
-      <label class="btn btn-outline-primary btn-sm cursor-pointer">
-        <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
-        <input type="file" accept=".xlsx,.xls" onchange="importFromExcel(event)" class="hidden">
-      </label>
-    </div>
-
     <div class="tab-content" id="pills-tabContent">
 
       <!-- =========================================================
@@ -1007,18 +995,6 @@
            ========================================================= -->
       <div class="tab-pane" id="pills-target">
 
-        <!-- Excel Export/Import Buttons for Target -->
-        <div class="flex gap-2 mb-4 items-center" id="targetExcelButtons" style="display: none;">
-          <span class="text-gray-400 text-sm mr-1">เป้าการสั่งสินค้า:</span>
-          <button type="button" class="btn btn-outline-success btn-sm" onclick="exportTargetToExcel()">
-            <i class="bi bi-file-earmark-excel"></i> Export Excel
-          </button>
-          <label class="btn btn-outline-primary btn-sm cursor-pointer">
-            <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
-            <input type="file" accept=".xlsx,.xls" onchange="importTargetFromExcel(event)" class="hidden">
-          </label>
-        </div>
-
         <form id="targetForm">
           <!-- hidden fields required by JS (เดิมคุณเรียก แต่ไม่มี element) -->
           <input type="hidden" id="tgCode">
@@ -1354,18 +1330,6 @@
            ========================================================= -->
       <div class="tab-pane" id="pills-moq">
 
-        <!-- Excel Export/Import Buttons for MOQ -->
-        <div class="flex gap-2 mb-4 items-center" id="moqExcelButtons" style="display: none;">
-          <span class="text-gray-400 text-sm mr-1">เงื่อนไขการสั่ง/ส่งสินค้า:</span>
-          <button type="button" class="btn btn-outline-success btn-sm" onclick="exportMoqToExcel()">
-            <i class="bi bi-file-earmark-excel"></i> Export Excel
-          </button>
-          <label class="btn btn-outline-primary btn-sm cursor-pointer">
-            <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
-            <input type="file" accept=".xlsx,.xls" onchange="importMoqFromExcel(event)" class="hidden">
-          </label>
-        </div>
-
         <form id="moqForm">
           <input type="hidden" id="moqCode">
           <input type="hidden" id="moqStatus" value="OPEN">
@@ -1610,274 +1574,32 @@
 
       </div>
 
-      <!-- =========================================================
-           TAB: DEAL
-           ========================================================= -->
+<!-- =========================================================
+            TAB: DEAL (SKU by Branch)
+            ========================================================= -->
       <div class="tab-pane" id="pills-deal">
 
-        <form id="dealForm">
-          <input type="hidden" id="dealCode">
-          <input type="hidden" id="dealStatus" value="OPEN">
+        <!-- Branch and Category Filter for Deal -->
+        <div class="flex gap-2 mb-4 items-center" id="dealBranchFilter">
+          <label class="text-sm font-medium">สาขา:</label>
+          <select id="dealBranchSelect" class="form-select form-select-sm" style="width: 150px;" onchange="onDealBranchChange()">
+            <option value="">ทุกสาขา</option>
+          </select>
+          <label class="text-sm font-medium">ประเภทสินค้า:</label>
+          <select id="dealCategorySelect" class="form-select form-select-sm" style="width: 150px;" onchange="onDealCategoryChange()">
+            <option value="">ทุกประเภท</option>
+          </select>
+          <span class="text-gray-400 text-sm mr-1">ดีลราคา:</span>
+          <button type="button" class="btn btn-outline-success btn-sm" onclick="exportDealToExcel()">
+            <i class="bi bi-file-earmark-excel"></i> Export Excel
+          </button>
+          <label class="btn btn-outline-primary btn-sm cursor-pointer">
+            <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
+            <input type="file" accept=".xlsx,.xls" onchange="importDealFromExcel(event)" class="hidden">
+          </label>
+        </div>
 
-          <div class="card">
-            <div class="card-body">
-
-              <div class="flex justify-between items-center section-header first-section">
-                <div><i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐานดีลราคา</div>
-                <div class="last-updated" id="dealLastUpdated">
-                  <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
-                </div>
-              </div>
-
-              <div class="grid grid-cols-12 gap-3">
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">สถานะ</label>
-                  <div id="dealStatusText" class="status-text status-open-text">OPEN</div>
-                </div>
-
-                <div class="col-span-12 md:col-span-3">
-                  <label class="form-label">ผู้ให้ราคา (จาก Contact) </label>
-                  <select class="form-select" id="dealProvider">
-                    <option value="">- เลือกผู้ติดต่อ -</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-3">
-                  <label class="form-label">ชื่อดีลราคา <span class="text-red-600">*</span></label>
-                  <input type="text" class="form-control" id="dealName" required placeholder="เช่น ราคากระจกพิเศษ Q1">
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">Project No. <span class="text-muted small">(กรณีดีลราคาโปรเจค)</span></label>
-                  <input type="text" class="form-control" id="dealProjectNo" placeholder="พิมพ์เพื่อค้นหา">
-                </div>
-              </div>
-
-              <div class="section-header"><i class="bi bi-arrows-fullscreen"></i> 2. ขอบเขต (Scope)</div>
-
-              <div class="grid grid-cols-12 gap-3">
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">ภาค<span class="text-red-600">*</span></label>
-                  <div class="relative">
-                    <div class="form-control flex justify-between items-center cursor-pointer"
-                         onclick="toggleDropdown('dealRegionDropdown')">
-                      <span id="dealRegionText"
-                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
-                        ทั้งหมด
-                      </span>
-                      <i class="bi bi-chevron-down ml-2"></i>
-                    </div>
-                    <div id="dealRegionDropdown"
-                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
-                    </div>
-                  </div>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">จังหวัด<span class="text-red-600">*</span></label>
-                  <div class="relative">
-                    <div class="form-control flex justify-between items-center cursor-pointer"
-                         onclick="toggleDropdown('dealProvinceDropdown')">
-                      <span id="dealProvinceText"
-                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
-                        ทั้งหมด
-                      </span>
-                      <i class="bi bi-chevron-down ml-2"></i>
-                    </div>
-                    <div id="dealProvinceDropdown"
-                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
-                    </div>
-                  </div>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">สาขา<span class="text-red-600">*</span></label>
-                  <div class="relative">
-                    <div class="form-control flex justify-between items-center cursor-pointer"
-                         onclick="toggleDropdown('dealBranchDropdown')">
-                      <span id="dealBranchText"
-                            class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">
-                        ทั้งหมด
-                      </span>
-                      <i class="bi bi-chevron-down ml-2"></i>
-                    </div>
-                    <div id="dealBranchDropdown"
-                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
-                    </div>
-                  </div>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">ประเภทสินค้า<span class="text-red-600">*</span></label>
-                  <select class="form-select" id="dealCat">
-                    <option value="">ทั้งหมด</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">แบรนด์<span class="text-red-600">*</span></label>
-                  <select class="form-select" id="dealBrand">
-                    <option value="">ทั้งหมด</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">กลุ่มสินค้า</label>
-                  <select class="form-select" id="dealGroup">
-                    <option value="-">ทั้งหมด</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">กลุ่มย่อย</label>
-                  <select class="form-select" id="dealSub">
-                    <option value="-">ทั้งหมด</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">สีของสินค้า</label>
-                  <select class="form-select" id="dealColor">
-                    <option value="">ทั้งหมด</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">ความหนา</label>
-                  <select class="form-select" id="dealThick">
-                    <option value="">ทั้งหมด</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">รหัสแม่พิมพ์</label>
-                  <select class="form-select" id="dealMold">
-                    <option value="-">ทั้งหมด</option>
-                    <option value="M-001">M-001</option>
-                    <option value="M-002">M-002</option>
-                    <option value="A-101">A-101</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-  <label class="form-label">
-    โครงสร้างสินค้า (อลูมิเนียม)
-  </label>
-  <select class="form-select" id="dealStructure">
-    <option value="">ทั้งหมด</option>
-    <option value="SOLID">Solid</option>
-    <option value="HOLLOW">Hollow</option>
-  </select>
-</div>
-
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">SKU</label>
-                  <input type="text" class="form-control" id="dealSku" placeholder="ระบุ SKU">
-                </div>
-
-              </div>
-
-              <div class="section-header"><i class="bi bi-currency-dollar"></i> 3. รายละเอียดราคาและเงื่อนไข</div>
-
-              <div class="grid grid-cols-12 gap-3 mb-3">
-                <div class="col-span-12 md:col-span-3">
-                  <label class="form-label">ประเภทของดีล <span class="text-red-600">*</span></label>
-                  <select class="form-select" id="dealType">
-                    <option value="Discount">ส่วนลด (Discount)</option>
-                    <option value="New Price">ราคาใหม่จากผู้ขาย (New Price)</option>
-                  </select>
-                </div>
-
-
-
-                <div class="col-span-12 md:col-span-3">
-                  <label class="form-label text-muted">วันที่เริ่มใช้ราคา <span class="text-red-600">*</span></label>
-                  <input type="date" class="form-control" id="dealStart" required min="2016-01-01" max="2046-12-31">
-                </div>
-
-                <div class="col-span-12 md:col-span-3">
-                  <label class="form-label text-muted">วันที่สิ้นสุด <span class="text-red-600">*</span></label>
-                  <input type="date" class="form-control" id="dealEnd" required min="2016-01-01" max="2046-12-31">
-                </div>
-              </div>
-
-              <div class="grid grid-cols-12 gap-3 items-end">
-                <div class="col-span-12 md:col-span-6">
-  <label class="form-label">
-    กรอบเงื่อนไข <span class="text-red-600">*</span>
-  </label>
-
-  <!-- MODE SELECT -->
-  <div class="mb-3">
-    <select class="form-select" id="dealConditionMode" onchange="toggleDealConditionMode()">
-      <option value="normal">ราคาปกติ</option>
-      <option value="stepped">ขั้นบันได</option>
-    </select>
-  </div>
-
-  <div class="mb-3">
-    <label class="inline-flex items-center gap-2 cursor-pointer">
-      <input type="checkbox" id="dealRequirePallet" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" checked>
-      <span class="text-sm font-medium text-gray-700">ราคานี้ต้องลงลัง</span>
-    </label>
-    <div class="text-xs text-gray-500 mt-1">ถ้าไม่เช็ค = ราคาไม่ลงลัง</div>
-  </div>
-
-  <!-- NORMAL PRICE MODE -->
-  <div id="dealNormalMode">
-    <label class="form-label text-muted text-xs mb-1">ราคา / หน่วย</label>
-    <div class="flex">
-      <input type="number" class="form-control" id="dealPrice" placeholder="0.00" style="border-radius:4px 0 0 4px;">
-      <select class="form-select" id="dealUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;">
-        <option value="บาท">บาท</option>
-        <option value="%">%</option>
-        <option value="บาท/ชิ้น">บาท/ชิ้น</option>
-        <option value="บาท/กก.">บาท/กก.</option>
-      </select>
-    </div>
-  </div>
-
-  <!-- STEPPED PRICING MODE -->
-  <div id="dealSteppedMode" class="hidden">
-    <div id="dealStepsContainer" class="space-y-1 p-2 bg-light rounded border">
-      <!-- Steps will be added here dynamically -->
-    </div>
-    <button type="button" class="btn btn-outline-primary btn-sm mt-1 w-full" onclick="addDealStep()">
-      <i class="bi bi-plus-lg"></i> เพิ่มขั้นบันไดราคา
-    </button>
-  </div>
-</div>
-
-
-                <!-- NOTE: เดิมใน JS มี dealNote แต่ HTML เดิมคอมเมนต์ไว้ ทำให้ error -> ใส่กลับให้ครบ -->
-                <div class="col-span-12 md:col-span-3">
-                  <label class="form-label">หมายเหตุ</label>
-                  <input type="text" class="form-control" id="dealNote" placeholder="ระบุเงื่อนไขเพิ่มเติม...">
-                </div>
-              </div>
-
-            </div>
-
-            <!-- ================= DOCUMENT ATTACHMENT (BALANCED) ================= -->
-<div class="card mt-4">
-  <div id="supplierDocumentContainer_deal"></div>
-</div>
-
-
-          </div>
-
-          <div class="flex justify-end gap-2 form-action-bar">
-            <button type="button" class="btn btn-secondary fw-bold px-4 hidden" id="cancelDealEditBtn">
-              <i class="bi bi-x-circle"></i> ยกเลิกการแก้ไข
-            </button>
-            <button type="button" class="btn btn-primary fw-bold px-4" id="submitDealBtn">
-              <i class="bi bi-save"></i> บันทึก
-            </button>
-          </div>
-        </form>
-
-        <!-- DEAL TABLE -->
+        <!-- DEAL TABLE (List SKU by Branch) -->
         <div class="card card-table">
           <div class="card-header">
             <div class="flex justify-between items-center">
@@ -1901,16 +1623,30 @@
                 <tr>
                   <th>#</th>
                   <th>สถานะ</th>
-                  <th style="width:80px;">แก้ไข</th>
-                  <th>ชื่อดีล / ผู้ให้ราคา</th>
-                  <th>Scope</th>
-                  <th class="text-end">ราคา / เงื่อนไข</th>
-                  <th style="width:140px;">แก้ไขล่าสุด</th>
+                  <th>ผู้ให้ราคา</th>
+                  <th>ชื่อดีลราคา</th>
+                  <th>Project No</th>
+                  <th>SKU</th>
+                  <th>สาขา</th>
+                  <th>ราคาตั้งต้น</th>
+                  <th>กรอบเงื่อนไข</th>
+                  <th>Tier</th>
+                  <th>จาก</th>
+                  <th>ถึง</th>
+                  <th>ราคาดีล/ส่วนลด</th>
+                  <th>หน่วย</th>
+                  <th>ประเภทดีล</th>
+                  <th>วันที่เริ่ม</th>
+                  <th>วันที่สิ้นสุด</th>
+                  <th>ลงลัง</th>
+                  <th>Supplier ส่ง</th>
+                  <th>หมายเหตุ</th>
+                  <th>แก้ไขล่าสุด</th>
                 </tr>
               </thead>
               <tbody id="dealTableBody"></tbody>
             </table>
-          </div>
+</div>
         </div>
       </div>
 
@@ -2402,7 +2138,7 @@
 <script src="modules/supplier-product-coverage.js"></script>
 <script src="modules/supplier-contact.js"></script>
 <script src="modules/supplier-special-terms.js"></script>
-<script src="modules/supplier-excel-handler.js"></script>
+  <script src="modules/supplier-excel-handler.js"></script>
 <script src="./components/supplier-history.js" defer></script>
 <script src="./components/supplier-document.js"></script>
 <script type="module" src="modules/supplier-moq.js"></script>

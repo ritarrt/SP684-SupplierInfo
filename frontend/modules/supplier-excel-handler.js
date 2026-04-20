@@ -1,9 +1,9 @@
 console.log("supplier-excel-handler.js loaded");
 
 // ===================================================
-// EXPORT TO EXCEL
+// DEAL: EXPORT TO EXCEL (SKU by Branch)
 // ===================================================
-async function exportToExcel() {
+async function exportDealToExcel() {
   const supplierNo = new URLSearchParams(location.search).get("id");
   if (!supplierNo) {
     alert("ไม่พบ supplierNo");
@@ -12,688 +12,312 @@ async function exportToExcel() {
 
   const wb = XLSX.utils.book_new();
 
-  // Sheet 1: สินค้าที่บริษัทดูแล
-  const products = window.collectProductCoverage?.() || [];
-  const productData = [
-    ["ประเภทสินค้า", "แบรนด์ที่ดูแล", "กลุ่มสินค้า", "กลุ่มย่อย", "SKU"]
+  // Get all SKU from StockStatusFact
+  let allSkuList = window.cachedSkuData || [];
+  console.log("Excel export - cached data:", allSkuList.length);
+
+  if (allSkuList.length === 0) {
+    try {
+      console.log("Loading SKU data from API...");
+      const skuRes = await fetch(`${window.API_BASE}/api/master/sku-by-branch`);
+      if (skuRes.ok) {
+        allSkuList = await skuRes.json();
+        console.log("Loaded SKU:", allSkuList.length);
+      } else {
+        alert("ไม่สามารถโหลดข้อมูล SKU ได้");
+        return;
+      }
+    } catch (err) {
+      alert("ไม่สามารถโหลดข้อมูล SKU ได้: " + err.message);
+      return;
+    }
+  }
+
+  if (allSkuList.length === 0) {
+    alert("ไม่พบข้อมูล SKU");
+    return;
+  }
+
+  // Get selected branch and category from dropdown
+  const selectedBranch = document.getElementById("dealBranchSelect")?.value;
+  const selectedCategory = document.getElementById("dealCategorySelect")?.value;
+
+  // Fetch existing deals from database
+  let existingDeals = [];
+  try {
+    const dealsRes = await fetch(`${window.API_BASE}/api/suppliers/${supplierNo}/deals-simple`);
+    if (dealsRes.ok) {
+      existingDeals = await dealsRes.json();
+    }
+  } catch (err) {
+    console.error("Failed to load existing deals:", err);
+  }
+
+  // Create map of SKU|branch -> deal data
+  const dealMap = {};
+  existingDeals.forEach(d => {
+    const key = (d.sku || "") + "|" + (d.branch || "");
+    dealMap[key] = d;
+  });
+
+  // Filter SKU by selected branch and category
+  let filteredSkuList = allSkuList;
+  if (selectedBranch) {
+    filteredSkuList = filteredSkuList.filter(s => s.branchCode === selectedBranch);
+  }
+  if (selectedCategory) {
+    filteredSkuList = filteredSkuList.filter(s => s.category === selectedCategory);
+  }
+
+  // Main headers
+  const mainHeaders = [
+    "สาขา", "ประเภทสินค้า", "SKU", "ชื่อสินค้า", "แบรนด์", "หน่วย",
+    "ราคาตั้งต้น", "ชื่อดีลราคา", "Project No",
+    "กรอบเงื่อนไข", "Tier", "จาก", "ถึง",
+    "ราคาดีล/ส่วนลด", "หน่วย", "ประเภทดีล",
+    "วันที่เริ่ม", "วันที่สิ้นสุด",
+    "ลงลัง", "Supplier ส่ง", "หมายเหตุ"
   ];
-  products.forEach(p => {
-    productData.push([
-      p.category_name || "",
-      p.brand_name || "",
-      p.group_name || "",
-      p.SUBGROUP_NAME || "",
-      p.sku || ""
+
+  // Build rows with instructions
+  const mainRows = [
+    [`📋 สาขา: ${selectedBranch || "ทุกสาขา"} | ประเภท: ${selectedCategory || "ทุกประเภท"}`, ...Array(20).fill("")],
+    ["📋 คำแนะนำ: กรอกข้อมูลดีลราคาในตารางด้านล่าง", ...Array(20).fill("")],
+    ["1. กรอบเงื่อนไข: ราคาปกติ หรือ ขั้นบันได", ...Array(20).fill("")],
+    ["2. ประเภทดีล: ส่วนลด (จำนวนส่วนลด) หรือ ราคาใหม่", ...Array(20).fill("")],
+    ["3. ลงลัง/Supplier ส่ง: ใช่ หรือ ไม่", ...Array(20).fill("")],
+    Array(21).fill(""),
+    mainHeaders
+  ];
+
+  // Add SKU rows with existing deal data
+  filteredSkuList.forEach(s => {
+    const branchCode = selectedBranch || s.branchCode || "";
+    const dealKey = (s.sku || "") + "|" + branchCode;
+    const deal = dealMap[dealKey] || {};
+
+    mainRows.push([
+      branchCode,
+      s.category || "",
+      s.sku || "",
+      s.productName || "",
+      s.brandName || "",
+      s.baseUnit || "",
+      deal.base_price || "",
+      deal.deal_name || "",
+      deal.project_no || "",
+      deal.condition_mode === "stepped" ? "ขั้นบันได" : (deal.condition_mode === "normal" ? "ราคาปกติ" : ""),
+      "",  // Tier
+      "",  // จาก
+      "",  // ถึง
+      deal.price_value || "",
+      deal.price_unit || "",
+      deal.deal_type === "Discount" ? "ส่วนลด" : deal.deal_type === "New Price" ? "ราคาใหม่" : "",
+      formatDateForExcel(deal.start_date),
+      formatDateForExcel(deal.end_date),
+      deal.require_pallet === false ? "ไม่" : (deal.require_pallet === true ? "ใช่" : ""),
+      deal.supplier_delivery === false ? "ไม่" : (deal.supplier_delivery === true ? "ส่ง" : ""),
+      ""   // หมายเหตุ
     ]);
   });
-  const wsProducts = XLSX.utils.aoa_to_sheet(productData);
-  XLSX.utils.book_append_sheet(wb, wsProducts, "สินค้าที่ดูแล");
 
-  // Sheet 2: เงื่อนไขเครดิต
-  const terms = window.collectSpecialTerms?.() || {};
-  const finance = terms.finance || {};
-  const creditData = [
-    ["รูปแบบการวางบิล", finance.billingCycle || ""],
-    ["เงื่อนไขเครดิต", finance.creditTerm || ""],
-    ["วงเงินเครดิต", finance.creditLimit || ""],
-    ["หน่วยวงเงิน", finance.creditLimitUnit || ""]
+  const wsMain = XLSX.utils.aoa_to_sheet(mainRows);
+
+  wsMain["!cols"] = [
+    { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 35 }, { wch: 15 }, { wch: 8 },
+    { wch: 12 }, { wch: 20 }, { wch: 15 },
+    { wch: 12 }, { wch: 8 },  { wch: 8 },  { wch: 8 },
+    { wch: 12 }, { wch: 8 },  { wch: 12 },
+    { wch: 12 }, { wch: 12 },
+    { wch: 10 }, { wch: 12 }, { wch: 20 }
   ];
-  const wsCredit = XLSX.utils.aoa_to_sheet(creditData);
-  XLSX.utils.book_append_sheet(wb, wsCredit, "เงื่อนไขเครดิต");
 
-  // Sheet 3: วิธีการชำระเงิน
-  const paymentMethods = terms.paymentMethods || [];
-  const paymentData = [
-    ["วิธีชำระ", "ธนาคาร", "เลขบัญชี", "ชื่อบัญชี"]
-  ];
-  paymentMethods.forEach(pm => {
-    paymentData.push([
-      pm.method || "",
-      pm.bank || "",
-      pm.account || "",
-      pm.accountName || ""
-    ]);
-  });
-  const wsPayment = XLSX.utils.aoa_to_sheet(paymentData);
-  XLSX.utils.book_append_sheet(wb, wsPayment, "วิธีชำระเงิน");
-
-  // Sheet 4: เงื่อนไขการเคลม/คืนสินค้า
-  const claim = terms.claim || {};
-  const claimData = [
-    ["ระยะเวลารับเคลม", claim.period || ""],
-    ["เงื่อนไขการรับเคลม", claim.condition || ""],
-    ["หมายเหตุเพิ่มเติม", claim.note || ""]
-  ];
-  const wsClaim = XLSX.utils.aoa_to_sheet(claimData);
-  XLSX.utils.book_append_sheet(wb, wsClaim, "เงื่อนไขเคลม");
-
-  // Sheet 5: ข้อมูลผู้ติดต่อ
-  const contactsRes = await fetch(`${window.API_BASE}/api/suppliers/${supplierNo}/contacts`);
-  const contacts = contactsRes.ok ? await contactsRes.json() : [];
-  const contactData = [
-    ["ประเภท", "ชื่อ-นามสกุล", "ตำแหน่ง", "ภาค", "จังหวัด", "แบรนด์", "กลุ่มสินค้า", "วันที่เริ่ม", "อีเมล", "Line ID", "เบอร์โทร"]
-  ];
-  contacts.forEach(c => {
-    contactData.push([
-      c.contact_type || c.contactType || "",
-      c.name || "",
-      c.position || "",
-      c.region || "",
-      c.province || "",
-      c.brand || "",
-      c.product_group || c.productGroup || "",
-      c.start_date || c.startDate || "",
-      c.email || "",
-      c.line_id || c.lineId || "",
-      c.phones || ""
-    ]);
-  });
-  const wsContact = XLSX.utils.aoa_to_sheet(contactData);
-  XLSX.utils.book_append_sheet(wb, wsContact, "ผู้ติดต่อ");
-
-  // Download
-  XLSX.writeFile(wb, `Supplier_${supplierNo}_BasicData.xlsx`);
+  XLSX.utils.book_append_sheet(wb, wsMain, "ดีลราคา");
+  XLSX.writeFile(wb, `ดีลราคา_${supplierNo}.xlsx`);
 }
 
 // ===================================================
-// IMPORT FROM EXCEL
+// DEAL: IMPORT FROM EXCEL
 // ===================================================
-async function importFromExcel(event) {
+
+// แปลง ISO date string → yyyy-MM-dd สำหรับใส่ใน Excel cell
+function formatDateForExcel(dateStr) {
+  if (!dateStr) return "";
+  const datePart = String(dateStr).split("T")[0].split(" ")[0];
+  return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : (datePart || "");
+}
+
+// แปลง Excel serial date หรือ string date → yyyy-MM-dd
+function parseExcelDate(val) {
+  if (!val) return "";
+  if (typeof val === "number") {
+    const date = XLSX.SSF.parse_date_code(val);
+    if (!date) return "";
+    return `${date.y}-${String(date.m).padStart(2,"0")}-${String(date.d).padStart(2,"0")}`;
+  }
+  const s = String(val).trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+    const [d, m, y] = s.split("/");
+    return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+  }
+  return s;
+}
+
+async function importDealFromExcel(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
+  const supplierNo = new URLSearchParams(location.search).get("id");
+  if (!supplierNo) {
+    alert("ไม่พบ supplierNo");
+    return;
+  }
+
   try {
     const data = await file.arrayBuffer();
-    const wb = XLSX.read(data);
+    const wb = XLSX.read(data, { cellDates: false });
 
-    // 1. Import สินค้าที่บริษัทดูแล
-    const productsSheet = wb.Sheets["สินค้าที่ดูแล"];
-    if (productsSheet) {
-      const products = XLSX.utils.sheet_to_json(productsSheet, { header: 1 });
-      if (products.length > 1) {
-        await applyImportedProducts(products.slice(1));
+    // หา sheet "ดีลราคา" ก่อน ถ้าไม่มีใช้ sheet แรก
+    const sheetName = wb.SheetNames.includes("ดีลราคา") ? "ดีลราคา" : wb.SheetNames[0];
+    const dealSheet = wb.Sheets[sheetName];
+
+    if (!dealSheet) {
+      alert("ไม่พบข้อมูลใน Excel");
+      return;
+    }
+
+    const jsonData = XLSX.utils.sheet_to_json(dealSheet, { header: 1, defval: "" });
+    console.log("Sheet:", sheetName, "| Rows:", jsonData.length);
+
+    // หา header row — row ที่มี cell เป็น "SKU"
+    let headerRowIdx = -1;
+    for (let i = 0; i < Math.min(jsonData.length, 15); i++) {
+      if (jsonData[i] && jsonData[i].some(cell => String(cell).trim() === "SKU")) {
+        headerRowIdx = i;
+        break;
       }
     }
 
-    // 2. Import เงื่อนไขเครดิต
-    const creditSheet = wb.Sheets["เงื่อนไขเครดิต"];
-    if (creditSheet) {
-      const creditData = XLSX.utils.sheet_to_json(creditSheet, { header: 1 });
-      applyImportedCredit(creditData);
+    if (headerRowIdx === -1) {
+      alert("ไม่พบ header row (ต้องมีคอลัมน์ 'SKU') กรุณาใช้ไฟล์ที่ Export จากระบบ");
+      return;
     }
 
-    // 3. Import วิธีการชำระเงิน
-    const paymentSheet = wb.Sheets["วิธีชำระเงิน"];
-    if (paymentSheet) {
-      const paymentData = XLSX.utils.sheet_to_json(paymentSheet, { header: 1 });
-      if (paymentData.length > 1) {
-        applyImportedPaymentMethods(paymentData.slice(1));
-      }
+    const header = jsonData[headerRowIdx].map(h => String(h).trim());
+    const dataRows = jsonData.slice(headerRowIdx + 1).filter(r => r.some(cell => cell !== ""));
+
+    console.log("Header:", header);
+    console.log("Data rows:", dataRows.length);
+
+    if (dataRows.length === 0) {
+      alert("ไม่พบข้อมูลในไฟล์ Excel");
+      return;
     }
 
-    // 4. Import เงื่อนไขการเคลม
-    const claimSheet = wb.Sheets["เงื่อนไขเคลม"];
-    if (claimSheet) {
-      const claimData = XLSX.utils.sheet_to_json(claimSheet, { header: 1 });
-      applyImportedClaim(claimData);
-    }
+    const result = await processImportedDealRows(dataRows, header, supplierNo);
 
-    // 5. Import ข้อมูลผู้ติดต่อ
-    const contactSheet = wb.Sheets["ผู้ติดต่อ"];
-    if (contactSheet) {
-      const contacts = XLSX.utils.sheet_to_json(contactSheet, { header: 1 });
-      if (contacts.length > 1) {
-        applyImportedContacts(contacts.slice(1));
-      }
+    if (result.successCount > 0 || result.errorCount > 0) {
+      const msg = `นำเข้าสำเร็จ ${result.successCount} รายการ${result.errorCount > 0 ? ` | ผิดพลาด ${result.errorCount} รายการ` : ""}`;
+      window.showSaveMessage ? window.showSaveMessage(msg) : alert(msg);
+      if (window.loadDealList) window.loadDealList(supplierNo);
+    } else {
+      alert("ไม่พบแถวที่มีข้อมูลดีล (ต้องกรอก 'ชื่อดีลราคา' หรือ 'ราคาดีล/ส่วนลด')");
     }
-
-    showSaveMessage("นำเข้าข้อมูลจาก Excel เรียบร้อยแล้ว");
 
   } catch (err) {
-    console.error("Import error:", err);
-    alert("เกิดข้อผิดพลาดในการนำเข้าข้อมูล: " + err.message);
+    console.error("Import Deal error:", err);
+    alert("เกิดข้อผิดพลาด: " + err.message);
   }
 
   event.target.value = "";
 }
 
-// ===================================================
-// APPLY IMPORTED DATA TO FORM
-// ===================================================
-async function applyImportedProducts(products) {
-  if (!products.length) return;
+async function processImportedDealRows(rows, header, supplierNo) {
+  const idx = {};
+  header.forEach((h, i) => { if (h) idx[h] = i; });
 
-  // ล้างแถวเดิม
-  const container = document.getElementById("productCoverageContainer");
-  const firstRow = container.querySelector(".product-row");
-  container.innerHTML = "";
-  container.appendChild(firstRow.cloneNode(true));
-
-  const categoryMap = {
-    "กระจก": "Glass",
-    "อลูมิเนียม": "Aluminum",
-    "ยิปซัม": "Gypsum",
-    "อุปกรณ์": "Accessories",
-    "ซีลาย": "C-Line",
-    "กาวยาแนว": "Sealant"
-  };
-
-  for (let i = 0; i < products.length; i++) {
-    if (i > 0) window.addProductRow?.();
-
-    const row = document.querySelectorAll(".product-row")[i];
-    if (!row) continue;
-
-    const [catName, brandName, groupName, subGroupName, sku] = products[i];
-
-    // Category
-    if (catName) {
-      const cat = categoryMap[catName] || catName;
-      row.dataset.category = cat;
-      row.querySelector(".category-display span").textContent = catName;
-
-      // Load brands/groups
-      await window.loadBrandsForRow?.(row);
-      await window.loadGroupsForRow?.(row);
-      await window.loadSubGroupsForRow?.(row);
-    }
-
-    // Brand
-    if (brandName) {
-      const brandDD = row.querySelector(".brand-dropdown");
-      const brandInput = brandDD?.querySelector(`input[value="${brandName}"]`);
-      if (brandInput) {
-        row.dataset.brand = brandName;
-        row.querySelector(".brand-display span").textContent = brandName;
-      }
-    }
-
-    // Group
-    if (groupName) {
-      const groupDD = row.querySelector(".group-dropdown");
-      const groupInput = groupDD?.querySelector(`input[value="${groupName}"]`);
-      if (groupInput) {
-        row.dataset.group = groupName;
-        row.querySelector(".group-display span").textContent = groupName;
-      }
-    }
-
-    // SubGroup
-    if (subGroupName) {
-      const subDD = row.querySelector(".subgroup-dropdown");
-      const subInput = subDD?.querySelector(`input[value="${subGroupName}"]`);
-      if (subInput) {
-        row.dataset.subGroup = subGroupName;
-        row.querySelector(".subgroup-display span").textContent = subGroupName;
-      }
-    }
-
-    // SKU
-    if (sku) {
-      row.querySelector(".sku-input").value = sku;
-    }
-  }
-}
-
-function applyImportedCredit(creditData) {
-  creditData.forEach(([label, value]) => {
-    if (!value) return;
-
-    if (label === "รูปแบบการวางบิล") {
-      document.getElementById("spBillingCycle").value = value;
-    } else if (label === "เงื่อนไขเครดิต") {
-      document.getElementById("spCreditTerm").value = value;
-    } else if (label === "วงเงินเครดิต") {
-      document.getElementById("spCreditLimit").value = value;
-    } else if (label === "หน่วยวงเงิน") {
-      document.getElementById("spCreditLimitUnit").value = value;
-    }
-  });
-}
-
-function applyImportedPaymentMethods(paymentData) {
-  const container = document.getElementById("paymentMethodContainer");
-  const template = container.querySelector(".payment-row");
-
-  // ล้างแถวเก่า (ยกเว้น template)
-  Array.from(container.querySelectorAll(".payment-row")).slice(1).forEach(r => r.remove());
-
-  paymentData.forEach((pm, idx) => {
-    const [method, bank, account, accountName] = pm;
-    if (!method && !bank) return;
-
-    if (idx === 0) {
-      template.querySelector(".payment-method-select").value = method || "";
-      template.querySelector(".bank-input").value = bank || "";
-      template.querySelector(".account-input").value = account || "";
-      template.querySelector(".account-name-input").value = accountName || "";
-    } else {
-      window.addPaymentMethodRow?.({
-        method: method || "",
-        bank: bank || "",
-        account: account || "",
-        accountName: accountName || ""
-      });
-    }
-  });
-}
-
-function applyImportedClaim(claimData) {
-  claimData.forEach(([label, value]) => {
-    if (!value) return;
-
-    if (label === "ระยะเวลารับเคลม") {
-      document.getElementById("spClaimPeriod").value = value;
-    } else if (label === "เงื่อนไขการรับเคลม") {
-      document.getElementById("spClaimCondition").value = value;
-    } else if (label === "หมายเหตุเพิ่มเติม") {
-      document.getElementById("spClaimNote").value = value;
-    }
-  });
-}
-
-function applyImportedContacts(contacts) {
-  // สำหรับ contacts จะใส่ใน form แถวแรกเท่านั้น (ตาม UI ปัจจุบัน)
-  if (!contacts.length) return;
-
-  const [c] = contacts;
-  const [type, name, position, region, province, brand, productGroup, startDate, email, lineId, phones] = c;
-
-  if (name) document.getElementById("ctName").value = name;
-  if (position) document.getElementById("ctPosition").value = position;
-  if (startDate) document.getElementById("ctStartDate").value = startDate;
-  if (email) document.getElementById("ctEmail").value = email;
-  if (lineId) document.getElementById("ctLine").value = lineId;
-  if (phones) {
-    document.getElementById("phoneContainer").innerHTML = `
-      <div class="phone-row">
-        <input type="text" class="form-control phone-input" value="${phones}">
-        <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.parentElement.remove()">
-          <i class="bi bi-x"></i>
-        </button>
-      </div>
-    `;
+  if (idx["SKU"] === undefined) {
+    console.error("ไม่พบคอลัมน์ SKU ใน header:", header);
+    return { successCount: 0, errorCount: 0, errors: ["ไม่พบคอลัมน์ SKU"] };
   }
 
-  if (type === "บริษัท") {
-    document.getElementById("ctTypeCompany").checked = true;
-  } else {
-    document.getElementById("ctTypePerson").checked = true;
+  let successCount = 0;
+  let errorCount = 0;
+  const errors = [];
+
+  for (const row of rows) {
+    const sku      = String(row[idx["SKU"]] ?? "").trim();
+    const dealName = String(row[idx["ชื่อดีลราคา"]] ?? "").trim();
+    const priceVal = row[idx["ราคาดีล/ส่วนลด"]];
+
+    // ข้ามแถวที่ไม่มีข้อมูลดีล
+    if (!sku || (!dealName && (priceVal === "" || priceVal == null))) continue;
+
+    try {
+      const branchRaw        = String(row[idx["สาขา"]] ?? "").trim();
+      const conditionModeRaw = String(row[idx["กรอบเงื่อนไข"]] ?? "").trim();
+      const conditionMode    = conditionModeRaw === "ขั้นบันได" ? "stepped" : "normal";
+      const dealTypeRaw      = String(row[idx["ประเภทดีล"]] ?? "").trim();
+      const dealType         = dealTypeRaw === "ราคาใหม่" ? "New Price" : "Discount";
+      const requirePallet    = String(row[idx["ลงลัง"]] ?? "ใช่").trim() !== "ไม่";
+      const supplierDelivery = String(row[idx["Supplier ส่ง"]] ?? "ส่ง").trim() !== "ไม่";
+      const startDate        = parseExcelDate(row[idx["วันที่เริ่ม"]]);
+      const endDate          = parseExcelDate(row[idx["วันที่สิ้นสุด"]]);
+
+      const payload = {
+        sku,
+        branch:            branchRaw,
+        base_price:        parseFloat(row[idx["ราคาตั้งต้น"]]) || 0,
+        deal_name:         dealName,
+        project_no:        String(row[idx["Project No"]] ?? "").trim(),
+        note:              String(row[idx["หมายเหตุ"]] ?? "").trim(),
+        condition_mode:    conditionMode,
+        deal_type:         dealType,
+        price_value:       parseFloat(priceVal) || 0,
+        price_unit:        String(row[idx["หน่วย"]] ?? "บาท").trim() || "บาท",
+        start_date:        startDate || null,
+        end_date:          endDate || null,
+        require_pallet:    requirePallet,
+        supplier_delivery: supplierDelivery
+      };
+
+      if (conditionMode === "stepped") {
+        payload.steps = [{
+          tier:        parseInt(row[idx["Tier"]]) || 1,
+          from_qty:    parseFloat(row[idx["จาก"]]) || 0,
+          to_qty:      parseFloat(row[idx["ถึง"]]) || 0,
+          price_value: parseFloat(priceVal) || 0,
+          price_unit:  payload.price_unit
+        }];
+      }
+
+      const res = await fetch(
+        `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-simple`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+      );
+
+      if (res.ok) {
+        successCount++;
+      } else {
+        const errText = await res.text();
+        errorCount++;
+        errors.push(`SKU ${sku} (${branchRaw}): ${errText}`);
+        console.error("Import row error:", errText, payload);
+      }
+    } catch (err) {
+      errorCount++;
+      errors.push(`SKU ${sku}: ${err.message}`);
+      console.error("Import row exception:", err);
+    }
   }
+
+  return { successCount, errorCount, errors };
 }
 
 // ===================================================
 // EXPOSE
 // ===================================================
-window.exportToExcel = exportToExcel;
-window.importFromExcel = importFromExcel;
-
-// ===================================================
-// TARGET: EXPORT TO EXCEL
-// ===================================================
-async function exportTargetToExcel() {
-  const supplierNo = new URLSearchParams(location.search).get("id");
-  if (!supplierNo) {
-    alert("ไม่พบ supplierNo");
-    return;
-  }
-
-  const wb = XLSX.utils.book_new();
-
-  // Sheet 1: ข้อมูลเป้าหมาย (Form Data)
-  const targetFormData = collectTargetFormData();
-  const formData = [
-    ["สถานะ", targetFormData.status || ""],
-    ["ผู้ให้เป้า", targetFormData.provider || ""],
-    ["ชื่อเป้าหมาย", targetFormData.name || ""],
-    ["เป้าหลัก (Parent)", targetFormData.parent || ""],
-    ["", ""],
-    ["--- ขอบเขตเป้าหมาย (Scope) ---", ""],
-    ["ภาค", targetFormData.region || ""],
-    ["จังหวัด", targetFormData.province || ""],
-    ["สาขา", targetFormData.branch || ""],
-    ["ประเภทสินค้า", targetFormData.category || ""],
-    ["แบรนด์", targetFormData.brand || ""],
-    ["กลุ่มสินค้า", targetFormData.group || ""],
-    ["กลุ่มย่อย", targetFormData.subgroup || ""],
-    ["สีของสินค้า", targetFormData.color || ""],
-    ["ความหนา", targetFormData.thickness || ""],
-    ["รหัสแม่พิมพ์", targetFormData.mold || ""],
-    ["SKU", targetFormData.sku || ""],
-    ["", ""],
-    ["--- เงื่อนไขในการให้เป้าหมาย ---", ""],
-    ["ระยะเวลาได้รับผลประโยชน์", targetFormData.benefit || ""],
-    ["ประเภทเป้า", targetFormData.type || ""],
-    ["เป้าหมาย", targetFormData.qty || ""],
-    ["หน่วย", targetFormData.unit || ""],
-    ["วันที่เริ่มเป้า", targetFormData.startDate || ""],
-    ["วันที่สิ้นสุดเป้า", targetFormData.endDate || ""]
-  ];
-  const wsForm = XLSX.utils.aoa_to_sheet(formData);
-  XLSX.utils.book_append_sheet(wb, wsForm, "ข้อมูลเป้าหมาย");
-
-  // Sheet 2: รายการเป้าที่บันทึกแล้ว
-  const targetsRes = await fetch(`${window.API_BASE}/api/suppliers/${supplierNo}/targets?status=OPEN`);
-  const targets = targetsRes.ok ? await targetsRes.json() : [];
-  const targetListData = [
-    ["สถานะ", "ชื่อเป้าหมาย", "ผู้ให้เป้า", "Scope", "ประเภท", "เป้าหมาย", "หน่วย", "วันที่เริ่ม", "วันที่สิ้นสุด"]
-  ];
-  targets.forEach(t => {
-    targetListData.push([
-      t.status || "",
-      t.name || "",
-      t.provider || "",
-      t.scope || "",
-      t.type || "",
-      t.qty || "",
-      t.unit || "",
-      t.startDate || "",
-      t.endDate || ""
-    ]);
-  });
-  const wsList = XLSX.utils.aoa_to_sheet(targetListData);
-  XLSX.utils.book_append_sheet(wb, wsList, "รายการเป้า");
-
-  // Download
-  XLSX.writeFile(wb, `Supplier_${supplierNo}_Target.xlsx`);
-}
-
-function collectTargetFormData() {
-  return {
-    status: document.getElementById("tgStatusText")?.textContent || "",
-    provider: document.getElementById("tgProvider")?.value || "",
-    name: document.getElementById("tgName")?.value || "",
-    parent: document.getElementById("tgParent")?.value || "",
-    region: document.getElementById("regionText")?.textContent || "",
-    province: document.getElementById("provinceText")?.textContent || "",
-    branch: document.getElementById("branchText")?.textContent || "",
-    category: document.getElementById("tgCat")?.value || "",
-    brand: document.getElementById("tgBrand")?.value || "",
-    group: document.getElementById("tgGroup")?.value || "",
-    subgroup: document.getElementById("tgSub")?.value || "",
-    color: document.getElementById("tgColor")?.value || "",
-    thickness: document.getElementById("tgThick")?.value || "",
-    mold: document.getElementById("tgMold")?.value || "",
-    sku: document.getElementById("tgSku")?.value || "",
-    benefit: document.getElementById("tgBenefit")?.value || "",
-    type: document.getElementById("tgType")?.value || "",
-    qty: document.getElementById("tgQty")?.value || "",
-    unit: document.getElementById("tgUnit")?.value || "",
-    startDate: document.getElementById("tgStart")?.value || "",
-    endDate: document.getElementById("tgEnd")?.value || ""
-  };
-}
-
-// ===================================================
-// TARGET: IMPORT FROM EXCEL
-// ===================================================
-async function importTargetFromExcel(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  try {
-    const data = await file.arrayBuffer();
-    const wb = XLSX.read(data);
-
-    // Import ข้อมูลเป้าหมาย
-    const formSheet = wb.Sheets["ข้อมูลเป้าหมาย"];
-    if (formSheet) {
-      const formData = XLSX.utils.sheet_to_json(formSheet, { header: 1 });
-      applyImportedTargetForm(formData);
-    }
-
-    showSaveMessage("นำเข้าข้อมูลเป้าหมายจาก Excel เรียบร้อยแล้ว");
-
-  } catch (err) {
-    console.error("Import Target error:", err);
-    alert("เกิดข้อผิดพลาดในการนำเข้าข้อมูล: " + err.message);
-  }
-
-  event.target.value = "";
-}
-
-function applyImportedTargetForm(formData) {
-  const map = {};
-  formData.forEach(([key, value]) => {
-    if (key) map[key] = value;
-  });
-
-  // ผู้ให้เป้า
-  if (map["ผู้ให้เป้า"]) {
-    const providerSelect = document.getElementById("tgProvider");
-    const option = Array.from(providerSelect.options).find(opt => opt.text === map["ผู้ให้เป้า"]);
-    if (option) providerSelect.value = option.value;
-  }
-
-  // ชื่อเป้าหมาย
-  if (map["ชื่อเป้าหมาย"]) {
-    document.getElementById("tgName").value = map["ชื่อเป้าหมาย"];
-  }
-
-  // เป้าหลัก
-  if (map["เป้าหลัก (Parent)"]) {
-    document.getElementById("tgParent").value = map["เป้าหลัก (Parent)"];
-  }
-
-  // Scope
-  if (map["ประเภทสินค้า"]) {
-    document.getElementById("tgCat").value = map["ประเภทสินค้า"];
-  }
-  if (map["แบรนด์"]) {
-    document.getElementById("tgBrand").value = map["แบรนด์"];
-  }
-  if (map["กลุ่มสินค้า"]) {
-    document.getElementById("tgGroup").value = map["กลุ่มสินค้า"];
-  }
-  if (map["กลุ่มย่อย"]) {
-    document.getElementById("tgSub").value = map["กลุ่มย่อย"];
-  }
-  if (map["สีของสินค้า"]) {
-    document.getElementById("tgColor").value = map["สีของสินค้า"];
-  }
-  if (map["ความหนา"]) {
-    document.getElementById("tgThick").value = map["ความหนา"];
-  }
-  if (map["รหัสแม่พิมพ์"]) {
-    document.getElementById("tgMold").value = map["รหัสแม่พิมพ์"];
-  }
-  if (map["SKU"]) {
-    document.getElementById("tgSku").value = map["SKU"];
-  }
-
-  // เงื่อนไข
-  if (map["ระยะเวลาได้รับผลประโยชน์"]) {
-    document.getElementById("tgBenefit").value = map["ระยะเวลาได้รับผลประโยชน์"];
-  }
-  if (map["ประเภทเป้า"]) {
-    document.getElementById("tgType").value = map["ประเภทเป้า"];
-  }
-  if (map["เป้าหมาย"]) {
-    document.getElementById("tgQty").value = map["เป้าหมาย"];
-  }
-  if (map["หน่วย"]) {
-    document.getElementById("tgUnit").value = map["หน่วย"];
-  }
-  if (map["วันที่เริ่มเป้า"]) {
-    document.getElementById("tgStart").value = map["วันที่เริ่มเป้า"];
-  }
-  if (map["วันที่สิ้นสุดเป้า"]) {
-    document.getElementById("tgEnd").value = map["วันที่สิ้นสุดเป้า"];
-  }
-}
-
-// Expose Target functions
-window.exportTargetToExcel = exportTargetToExcel;
-window.importTargetFromExcel = importTargetFromExcel;
-
-// ===================================================
-// MOQ: EXPORT TO EXCEL
-// ===================================================
-async function exportMoqToExcel() {
-  const supplierNo = new URLSearchParams(location.search).get("id");
-  if (!supplierNo) {
-    alert("ไม่พบ supplierNo");
-    return;
-  }
-
-  const wb = XLSX.utils.book_new();
-
-  // Sheet 1: ข้อมูล MOQ (Form Data)
-  const moqFormData = collectMoqFormData();
-  const formData = [
-    ["สถานะ", moqFormData.status || ""],
-    ["ชื่อเงื่อนไข", moqFormData.name || ""],
-    ["", ""],
-    ["--- ขอบเขตของเงื่อนไข (Scope) ---", ""],
-    ["ภาค", moqFormData.region || ""],
-    ["สาขา", moqFormData.branch || ""],
-    ["ประเภทสินค้า", moqFormData.category || ""],
-    ["แบรนด์", moqFormData.brand || ""],
-    ["กลุ่มสินค้า", moqFormData.group || ""],
-    ["กลุ่มย่อย", moqFormData.subgroup || ""],
-    ["สีของสินค้า", moqFormData.color || ""],
-    ["รหัสแม่พิมพ์", moqFormData.mold || ""],
-    ["ความหนา", moqFormData.thickness || ""],
-    ["SKU", moqFormData.sku || ""],
-    ["", ""],
-    ["--- เงื่อนไขในการสั่งสินค้า ---", ""],
-    ["ประเภทเงื่อนไข", moqFormData.type || ""],
-    ["ประเภทรถ", moqFormData.vehicle || ""],
-    ["ประเภทตัววัด", moqFormData.measure || ""],
-    ["จำนวน", moqFormData.qty || ""],
-    ["หน่วย", moqFormData.unit || ""]
-  ];
-  const wsForm = XLSX.utils.aoa_to_sheet(formData);
-  XLSX.utils.book_append_sheet(wb, wsForm, "ข้อมูล MOQ");
-
-  // Sheet 2: รายการ MOQ ที่บันทึกแล้ว
-  const moqsRes = await fetch(`${window.API_BASE}/api/suppliers/${supplierNo}/moqs?status=active`);
-  const moqs = moqsRes.ok ? await moqsRes.json() : [];
-  const moqListData = [
-    ["สถานะ", "ชื่อเงื่อนไข", "Scope", "ประเภท", "จำนวน", "หน่วย"]
-  ];
-  moqs.forEach(m => {
-    moqListData.push([
-      m.status || "",
-      m.name || "",
-      m.scope || "",
-      m.type || "",
-      m.qty || "",
-      m.unit || ""
-    ]);
-  });
-  const wsList = XLSX.utils.aoa_to_sheet(moqListData);
-  XLSX.utils.book_append_sheet(wb, wsList, "รายการ MOQ");
-
-  // Download
-  XLSX.writeFile(wb, `Supplier_${supplierNo}_MOQ.xlsx`);
-}
-
-function collectMoqFormData() {
-  return {
-    status: document.getElementById("moqStatusText")?.textContent || "",
-    name: document.getElementById("moqName")?.value || "",
-    region: document.getElementById("moqRegionText")?.textContent || "",
-    branch: document.getElementById("moqBranchText")?.textContent || "",
-    category: document.getElementById("moqCat")?.value || "",
-    brand: document.getElementById("moqBrand")?.value || "",
-    group: document.getElementById("moqGroup")?.value || "",
-    subgroup: document.getElementById("moqSub")?.value || "",
-    color: document.getElementById("moqColor")?.value || "",
-    mold: document.getElementById("moqMold")?.value || "",
-    thickness: document.getElementById("moqThick")?.value || "",
-    sku: document.getElementById("moqSku")?.value || "",
-    type: document.getElementById("moqType")?.value || "",
-    vehicle: document.getElementById("moqVehicle")?.value || "",
-    measure: document.getElementById("moqMeasure")?.value || "",
-    qty: document.getElementById("moqQty")?.value || "",
-    unit: document.getElementById("moqUnit")?.value || ""
-  };
-}
-
-// ===================================================
-// MOQ: IMPORT FROM EXCEL
-// ===================================================
-async function importMoqFromExcel(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  try {
-    const data = await file.arrayBuffer();
-    const wb = XLSX.read(data);
-
-    // Import ข้อมูล MOQ
-    const formSheet = wb.Sheets["ข้อมูล MOQ"];
-    if (formSheet) {
-      const formData = XLSX.utils.sheet_to_json(formSheet, { header: 1 });
-      applyImportedMoqForm(formData);
-    }
-
-    showSaveMessage("นำเข้าข้อมูล MOQ จาก Excel เรียบร้อยแล้ว");
-
-  } catch (err) {
-    console.error("Import MOQ error:", err);
-    alert("เกิดข้อผิดพลาดในการนำเข้าข้อมูล: " + err.message);
-  }
-
-  event.target.value = "";
-}
-
-function applyImportedMoqForm(formData) {
-  const map = {};
-  formData.forEach(([key, value]) => {
-    if (key) map[key] = value;
-  });
-
-  // ชื่อเงื่อนไข
-  if (map["ชื่อเงื่อนไข"]) {
-    document.getElementById("moqName").value = map["ชื่อเงื่อนไข"];
-  }
-
-  // Scope
-  if (map["ประเภทสินค้า"]) {
-    document.getElementById("moqCat").value = map["ประเภทสินค้า"];
-  }
-  if (map["แบรนด์"]) {
-    document.getElementById("moqBrand").value = map["แบรนด์"];
-  }
-  if (map["กลุ่มสินค้า"]) {
-    document.getElementById("moqGroup").value = map["กลุ่มสินค้า"];
-  }
-  if (map["กลุ่มย่อย"]) {
-    document.getElementById("moqSub").value = map["กลุ่มย่อย"];
-  }
-  if (map["สีของสินค้า"]) {
-    document.getElementById("moqColor").value = map["สีของสินค้า"];
-  }
-  if (map["รหัสแม่พิมพ์"]) {
-    document.getElementById("moqMold").value = map["รหัสแม่พิมพ์"];
-  }
-  if (map["ความหนา"]) {
-    document.getElementById("moqThick").value = map["ความหนา"];
-  }
-  if (map["SKU"]) {
-    document.getElementById("moqSku").value = map["SKU"];
-  }
-
-  // เงื่อนไขการสั่ง
-  if (map["ประเภทเงื่อนไข"]) {
-    document.getElementById("moqType").value = map["ประเภทเงื่อนไข"];
-  }
-  if (map["ประเภทรถ"]) {
-    document.getElementById("moqVehicle").value = map["ประเภทรถ"];
-  }
-  if (map["ประเภทตัววัด"]) {
-    document.getElementById("moqMeasure").value = map["ประเภทตัววัด"];
-  }
-  if (map["จำนวน"]) {
-    document.getElementById("moqQty").value = map["จำนวน"];
-  }
-  if (map["หน่วย"]) {
-    document.getElementById("moqUnit").value = map["หน่วย"];
-  }
-}
-
-// Expose MOQ functions
-window.exportMoqToExcel = exportMoqToExcel;
-window.importMoqFromExcel = importMoqFromExcel;
+window.exportDealToExcel = exportDealToExcel;
+window.importDealFromExcel = importDealFromExcel;

@@ -17,25 +17,9 @@ console.log("supplier-info-script.js loaded");
       function activate(tabId) {
         tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
         panes.forEach(p => p.classList.toggle('active', p.id === tabId));
-        
-        // Show/hide Excel buttons based on tab
-        const basicExcelButtons = document.getElementById('basicExcelButtons');
-        const targetExcelButtons = document.getElementById('targetExcelButtons');
-        const moqExcelButtons = document.getElementById('moqExcelButtons');
-        
-        if (basicExcelButtons) {
-          basicExcelButtons.style.display = tabId === 'pills-basic' ? 'flex' : 'none';
-        }
-        if (targetExcelButtons) {
-          targetExcelButtons.style.display = tabId === 'pills-target' ? 'flex' : 'none';
-        }
-        if (moqExcelButtons) {
-          moqExcelButtons.style.display = tabId === 'pills-moq' ? 'flex' : 'none';
-        }
-        
+
         // Show loading for target tab when first activated
         if (tabId === 'pills-target' && window.supplierNo) {
-          // Show loading and trigger data load
           if (typeof window.loadTargetTable === 'function') {
             window.loadTargetTable();
           }
@@ -60,10 +44,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (activeTab) {
     sessionStorage.removeItem("activeTab");
     setTimeout(() => activateTab(activeTab), 100);
-  } else {
-    // Show basic tab buttons by default (basic tab is active)
-    const basicExcelButtons = document.getElementById('basicExcelButtons');
-    if (basicExcelButtons) basicExcelButtons.style.display = 'flex';
   }
 
   if (!supplierNo) {
