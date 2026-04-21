@@ -1,59 +1,34 @@
 console.log("supplier-excel-handler.js loaded");
 
 // ===================================================
-// DEAL: EXPORT TO EXCEL (SKU by Branch)
+// DEAL: EXPORT TO EXCEL (ExcelJS — รองรับ styling)
 // ===================================================
 async function exportDealToExcel() {
   const supplierNo = new URLSearchParams(location.search).get("id");
-  if (!supplierNo) {
-    alert("ไม่พบ supplierNo");
-    return;
-  }
+  if (!supplierNo) { alert("ไม่พบ supplierNo"); return; }
 
-  const wb = XLSX.utils.book_new();
-
-  // Get all SKU from StockStatusFact
+  // โหลด SKU
   let allSkuList = window.cachedSkuData || [];
-  console.log("Excel export - cached data:", allSkuList.length);
-
   if (allSkuList.length === 0) {
     try {
-      console.log("Loading SKU data from API...");
-      const skuRes = await fetch(`${window.API_BASE}/api/master/sku-by-branch`);
-      if (skuRes.ok) {
-        allSkuList = await skuRes.json();
-        console.log("Loaded SKU:", allSkuList.length);
-      } else {
-        alert("ไม่สามารถโหลดข้อมูล SKU ได้");
-        return;
-      }
-    } catch (err) {
-      alert("ไม่สามารถโหลดข้อมูล SKU ได้: " + err.message);
-      return;
-    }
+      const r = await fetch(`${window.API_BASE}/api/master/sku-by-branch`);
+      if (!r.ok) { alert("ไม่สามารถโหลดข้อมูล SKU ได้"); return; }
+      allSkuList = await r.json();
+    } catch (e) { alert("โหลด SKU ไม่ได้: " + e.message); return; }
   }
+  if (allSkuList.length === 0) { alert("ไม่พบข้อมูล SKU"); return; }
 
-  if (allSkuList.length === 0) {
-    alert("ไม่พบข้อมูล SKU");
-    return;
-  }
+  const selectedBranch   = document.getElementById("dealBranchSelect")?.value || "";
+  const selectedCategory = document.getElementById("dealCategorySelect")?.value || "";
 
-  // Get selected branch and category from dropdown
-  const selectedBranch = document.getElementById("dealBranchSelect")?.value;
-  const selectedCategory = document.getElementById("dealCategorySelect")?.value;
-
-  // Fetch existing deals from database
+  // โหลด deals เดิม
   let existingDeals = [];
   try {
-    const dealsRes = await fetch(`${window.API_BASE}/api/suppliers/${supplierNo}/deals-simple`);
-    if (dealsRes.ok) {
-      existingDeals = await dealsRes.json();
-    }
-  } catch (err) {
-    console.error("Failed to load existing deals:", err);
-  }
+    const r = await fetch(`${window.API_BASE}/api/suppliers/${supplierNo}/deals-simple`);
+    if (r.ok) existingDeals = await r.json();
+  } catch (e) { console.error("Load deals error:", e); }
 
-  // Create map of SKU|branch -> deal array (รองรับหลาย deal ต่อ SKU เดียวกัน)
+  // map SKU|branch → [deal, ...]
   const dealMap = {};
   existingDeals.forEach(d => {
     const key = (d.sku || "") + "|" + (d.branch || "");
@@ -61,243 +36,149 @@ async function exportDealToExcel() {
     dealMap[key].push(d);
   });
 
-  // Filter SKU by selected branch and category
-  let filteredSkuList = allSkuList;
-  if (selectedBranch) {
-    filteredSkuList = filteredSkuList.filter(s => s.branchCode === selectedBranch);
-  }
-  if (selectedCategory) {
-    filteredSkuList = filteredSkuList.filter(s => s.category === selectedCategory);
-  }
+  // filter SKU
+  let skuList = allSkuList;
+  if (selectedBranch)   skuList = skuList.filter(s => s.branchCode === selectedBranch);
+  if (selectedCategory) skuList = skuList.filter(s => s.category   === selectedCategory);
 
-  // Main headers
-  const mainHeaders = [
-    "สาขา", "ประเภทสินค้า", "SKU", "ชื่อสินค้า", "แบรนด์", "หน่วย",
-    "ราคาตั้งต้น", "ชื่อดีลราคา", "Project No",
-    "กรอบเงื่อนไข", "Tier", "จาก", "ถึง",
-    "ราคาดีล/ส่วนลด", "หน่วย", "ประเภทดีล",
-    "วันที่เริ่ม", "วันที่สิ้นสุด",
-    "ลงลัง", "Supplier ส่ง", "หมายเหตุ"
+  // ===== ExcelJS =====
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("ดีลราคา");
+
+  const headers = [
+    "สาขา","ประเภทสินค้า","SKU","ชื่อสินค้า","แบรนด์","หน่วย",
+    "ราคาตั้งต้น","ชื่อดีลราคา","Project No",
+    "กรอบเงื่อนไข","Tier","จาก","ถึง",
+    "ราคาดีล/ส่วนลด","หน่วย","ประเภทดีล",
+    "วันที่เริ่ม","วันที่สิ้นสุด",
+    "ลงลัง","Supplier ส่ง","หมายเหตุ"
   ];
+  const NCOLS = headers.length;
 
-  // Build rows with instructions
-  const NCOLS = mainHeaders.length; // 21
+  // --- style helpers ---
+  const fillInstruction = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
+  const fillHeader      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1565C0" } };
+  const fillExample     = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8F5E9" } };
+  const fontInstruction = { bold: true,  color: { argb: "FF5D4037" }, name: "Sarabun", size: 10 };
+  const fontHeader      = { bold: true,  color: { argb: "FFFFFFFF" }, name: "Sarabun", size: 10 };
+  const fontExample     = { bold: true, italic: true, color: { argb: "FF1B5E20" }, name: "Sarabun", size: 10 };
+  const fontData        = { name: "Sarabun", size: 10 };
+  const borderThin      = { style: "thin", color: { argb: "FFBDBDBD" } };
+  const allBorders      = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin };
 
-  // แถวตัวอย่าง — ราคาปกติ (row 7)
-  const exampleRow1 = [
-    "BKK01",          // สาขา
-    "Glass",          // ประเภทสินค้า
-    "GL-001-CLR-6",   // SKU
-    "กระจกใส 6mm",    // ชื่อสินค้า
-    "AGC",            // แบรนด์
-    "แผ่น",           // หน่วย
-    250,              // ราคาตั้งต้น
-    "ดีลกระจก Q2/68", // ชื่อดีลราคา
-    "",               // Project No
-    "ราคาปกติ",       // กรอบเงื่อนไข
-    "",               // Tier
-    "",               // จาก
-    "",               // ถึง
-    10,               // ราคาดีล/ส่วนลด
-    "บาท",            // หน่วย
-    "ส่วนลด",         // ประเภทดีล
-    "2025-04-01",     // วันที่เริ่ม
-    "2025-06-30",     // วันที่สิ้นสุด
-    "ใช่",            // ลงลัง
-    "ส่ง",            // Supplier ส่ง
-    "ตัวอย่าง: ราคาปกติ — ลบแถวนี้ก่อน import"
+  const applyRowStyle = (row, fill, font) => {
+    row.eachCell({ includeEmpty: true }, cell => {
+      cell.fill   = fill;
+      cell.font   = font;
+      cell.border = allBorders;
+      cell.alignment = { vertical: "middle", wrapText: false };
+    });
+  };
+
+  // --- คำแนะนำ row 1-6 ---
+  const instructions = [
+    `📋 สาขา: ${selectedBranch || "ทุกสาขา"} | ประเภท: ${selectedCategory || "ทุกประเภท"}`,
+    "📋 คำแนะนำ: กรอกข้อมูลดีลราคาในตารางด้านล่าง",
+    "1. กรอบเงื่อนไข: ราคาปกติ หรือ ขั้นบันได",
+    "2. ประเภทดีล: ส่วนลด (จำนวนส่วนลด) หรือ ราคาใหม่",
+    "3. ลงลัง/Supplier ส่ง: ใช่ หรือ ไม่",
+    "4. ขั้นบันได: ใส่ SKU และชื่อดีลเดียวกันซ้ำหลายแถว แต่ละแถวคือ 1 tier"
   ];
+  instructions.forEach(text => {
+    const r = ws.addRow([text, ...Array(NCOLS - 1).fill("")]);
+    applyRowStyle(r, fillInstruction, fontInstruction);
+    r.height = 18;
+  });
 
-  // แถวตัวอย่าง — ขั้นบันได tier 1 (row 8)
-  const exampleRow2 = [
-    "BKK01",
-    "Glass",
-    "GL-002-CLR-8",
-    "กระจกใส 8mm",
-    "AGC",
-    "แผ่น",
-    320,
-    "ดีลขั้นบันได Q2/68",
-    "",
-    "ขั้นบันได",      // กรอบเงื่อนไข
-    1,                // Tier
-    1,                // จาก (จำนวนขั้นต่ำ)
-    100,              // ถึง (จำนวนสูงสุด)
-    15,               // ราคาดีล/ส่วนลด
-    "บาท",
-    "ส่วนลด",
-    "2025-04-01",
-    "2025-06-30",
-    "ใช่",
-    "ส่ง",
-    "ตัวอย่าง: ขั้นบันได tier 1 (1-100 แผ่น ลด 15 บาท) — ลบแถวนี้ก่อน import"
+  // --- header row 7 ---
+  const headerRow = ws.addRow(headers);
+  applyRowStyle(headerRow, fillHeader, fontHeader);
+  headerRow.eachCell(cell => { cell.alignment = { horizontal: "center", vertical: "middle" }; });
+  headerRow.height = 20;
+
+  // --- ตัวอย่าง row 8-10 ---
+  const examples = [
+    ["⬇ ตัวอย่าง: ราคาปกติ","Glass","GL-001-CLR-6","กระจกใส 6mm","AGC","แผ่น",250,"ดีลกระจก Q2/68","","ราคาปกติ","","","",10,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""],
+    ["⬇ ตัวอย่าง: ขั้นบันได tier 1","Glass","GL-002-CLR-8","กระจกใส 8mm","AGC","แผ่น",320,"ดีลขั้นบันได Q2/68","","ขั้นบันได",1,1,100,15,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""],
+    ["⬇ ตัวอย่าง: ขั้นบันได tier 2","Glass","GL-002-CLR-8","กระจกใส 8mm","AGC","แผ่น",320,"ดีลขั้นบันได Q2/68","","ขั้นบันได",2,101,999,25,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""]
   ];
+  examples.forEach(data => {
+    const r = ws.addRow(data);
+    applyRowStyle(r, fillExample, fontExample);
+    r.height = 18;
+  });
 
-  // แถวตัวอย่าง — ขั้นบันได tier 2 (row 9) SKU เดียวกัน ดีลเดียวกัน
-  const exampleRow3 = [
-    "BKK01",
-    "Glass",
-    "GL-002-CLR-8",
-    "กระจกใส 8mm",
-    "AGC",
-    "แผ่น",
-    320,
-    "ดีลขั้นบันได Q2/68",
-    "",
-    "ขั้นบันได",
-    2,                // Tier
-    101,              // จาก
-    999,              // ถึง
-    25,               // ราคาดีล/ส่วนลด (tier 2 ลดมากกว่า)
-    "บาท",
-    "ส่วนลด",
-    "2025-04-01",
-    "2025-06-30",
-    "ใช่",
-    "ส่ง",
-    "ตัวอย่าง: ขั้นบันได tier 2 (101+ แผ่น ลด 25 บาท) — ลบแถวนี้ก่อน import"
-  ];
-
-  const mainRows = [
-    [`📋 สาขา: ${selectedBranch || "ทุกสาขา"} | ประเภท: ${selectedCategory || "ทุกประเภท"}`, ...Array(NCOLS - 1).fill("")],
-    ["📋 คำแนะนำ: กรอกข้อมูลดีลราคาในตารางด้านล่าง", ...Array(NCOLS - 1).fill("")],
-    ["1. กรอบเงื่อนไข: ราคาปกติ หรือ ขั้นบันได", ...Array(NCOLS - 1).fill("")],
-    ["2. ประเภทดีล: ส่วนลด (จำนวนส่วนลด) หรือ ราคาใหม่", ...Array(NCOLS - 1).fill("")],
-    ["3. ลงลัง/Supplier ส่ง: ใช่ หรือ ไม่", ...Array(NCOLS - 1).fill("")],
-    ["4. ขั้นบันได: ใส่ SKU และชื่อดีลเดียวกันซ้ำหลายแถว แต่ละแถวคือ 1 tier", ...Array(NCOLS - 1).fill("")],
-    mainHeaders,
-    exampleRow1,  // row 7 — ตัวอย่างราคาปกติ
-    exampleRow2,  // row 8 — ตัวอย่างขั้นบันได tier 1
-    exampleRow3   // row 9 — ตัวอย่างขั้นบันได tier 2
-  ];
-
-  // Add SKU rows — ถ้า SKU มีหลาย deal ให้ออก 1 row ต่อ deal, ถ้าไม่มี deal ออก 1 row ว่าง
-  filteredSkuList.forEach(s => {
+  // --- ข้อมูลจริง ---
+  skuList.forEach(s => {
     const branchCode = selectedBranch || s.branchCode || "";
-    const dealKey = (s.sku || "") + "|" + branchCode;
-    const deals = dealMap[dealKey] || [{}]; // ถ้าไม่มี deal ใช้ object ว่าง
+    const key   = (s.sku || "") + "|" + branchCode;
+    const deals = dealMap[key] || [{}];
 
     deals.forEach(deal => {
       const isActive = deal.status === "OPEN" || deal.status === "USE";
-      if (deal.deal_id && !isActive) return; // ข้าม deal ที่ปิดแล้ว
+      if (deal.deal_id && !isActive) return;
 
-      if (deal.condition_mode === "stepped" && deal.steps && deal.steps.length > 0) {
-        // stepped deal — ออก 1 row ต่อ step
+      let dataRows = [];
+      if (deal.condition_mode === "stepped" && deal.steps?.length > 0) {
         deal.steps.forEach(step => {
-          mainRows.push([
-            branchCode,
-            s.category    || "",
-            s.sku         || "",
-            s.productName || "",
-            s.brandName   || "",
-            s.baseUnit    || "",
-            deal.base_price != null ? deal.base_price : "",
-            deal.deal_name  || "",
-            deal.project_no || "",
-            "ขั้นบันได",
-            step.step_number ?? "",
-            step.from_qty    ?? "",
-            step.to_qty      ?? "",
-            step.price_value ?? "",
-            step.price_unit  || deal.price_unit || "",
+          dataRows.push([
+            branchCode, s.category||"", s.sku||"", s.productName||"", s.brandName||"", s.baseUnit||"",
+            deal.base_price ?? "", deal.deal_name||"", deal.project_no||"",
+            "ขั้นบันได", step.step_number??"", step.from_qty??"", step.to_qty??"",
+            step.price_value??"", step.price_unit||deal.price_unit||"",
             deal.deal_type === "Discount" ? "ส่วนลด" : deal.deal_type === "New Price" ? "ราคาใหม่" : "",
-            formatDateForExcel(deal.start_date),
-            formatDateForExcel(deal.end_date),
-            deal.require_pallet    === false ? "ไม่" : (deal.require_pallet    === true ? "ใช่" : ""),
-            deal.supplier_delivery === false ? "ไม่" : (deal.supplier_delivery === true ? "ส่ง"  : ""),
-            deal.note || ""
+            formatDateForExcel(deal.start_date), formatDateForExcel(deal.end_date),
+            deal.require_pallet    === false ? "ไม่" : "ใช่",
+            deal.supplier_delivery === false ? "ไม่" : "ส่ง",
+            deal.note||""
           ]);
         });
       } else {
-        // normal deal — 1 row
-        mainRows.push([
-          branchCode,
-          s.category    || "",
-          s.sku         || "",
-          s.productName || "",
-          s.brandName   || "",
-          s.baseUnit    || "",
-          deal.base_price  != null ? deal.base_price  : "",
-          deal.deal_name   || "",
-          deal.project_no  || "",
-          deal.condition_mode === "normal" ? "ราคาปกติ" : "",
-          "",  // Tier
-          "",  // จาก
-          "",  // ถึง
-          deal.price_value != null ? deal.price_value : "",
-          deal.price_unit  || "",
+        dataRows.push([
+          branchCode, s.category||"", s.sku||"", s.productName||"", s.brandName||"", s.baseUnit||"",
+          deal.base_price ?? "", deal.deal_name||"", deal.project_no||"",
+          deal.condition_mode === "normal" ? "ราคาปกติ" : "", "", "", "",
+          deal.price_value ?? "", deal.price_unit||"",
           deal.deal_type === "Discount" ? "ส่วนลด" : deal.deal_type === "New Price" ? "ราคาใหม่" : "",
-          formatDateForExcel(deal.start_date),
-          formatDateForExcel(deal.end_date),
+          formatDateForExcel(deal.start_date), formatDateForExcel(deal.end_date),
           deal.require_pallet    === false ? "ไม่" : (deal.require_pallet    === true ? "ใช่" : ""),
           deal.supplier_delivery === false ? "ไม่" : (deal.supplier_delivery === true ? "ส่ง"  : ""),
-          deal.note || ""
+          deal.note||""
         ]);
       }
+
+      dataRows.forEach(rowData => {
+        const r = ws.addRow(rowData);
+        r.eachCell({ includeEmpty: true }, cell => {
+          cell.font   = fontData;
+          cell.border = allBorders;
+          cell.alignment = { vertical: "middle" };
+        });
+        r.height = 16;
+      });
     });
   });
 
-  const wsMain = XLSX.utils.aoa_to_sheet(mainRows);
+  // --- column widths ---
+  const colWidths = [18,14,22,36,16,8,12,22,14,14,8,8,8,14,8,12,12,12,8,12,24];
+  colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  // ===== Styling =====
-  const instructionBg   = { fgColor: { rgb: "FFF9C4" } }; // เหลืองอ่อน — คำแนะนำ
-  const headerBg        = { fgColor: { rgb: "1565C0" } }; // น้ำเงินเข้ม — header
-  const exampleBg       = { fgColor: { rgb: "E8F5E9" } }; // เขียวอ่อน — ตัวอย่าง
-  const instructionFont = { bold: true, color: { rgb: "5D4037" } };
-  const headerFont      = { bold: true,  color: { rgb: "FFFFFF" } };
-  const exampleFont     = { bold: true, italic: true, color: { rgb: "1B5E20" } };
-  const border = {
-    top:    { style: "thin", color: { rgb: "BDBDBD" } },
-    bottom: { style: "thin", color: { rgb: "BDBDBD" } },
-    left:   { style: "thin", color: { rgb: "BDBDBD" } },
-    right:  { style: "thin", color: { rgb: "BDBDBD" } }
-  };
+  // --- freeze panes: แถว 1-6 คำแนะนำ + แถว 7 header + แถว 8-10 ตัวอย่าง ---
+  ws.views = [{ state: "frozen", xSplit: 0, ySplit: 10 }];
 
-  const STYLE_NCOLS = mainHeaders.length;
-
-  // Row 0-5: คำแนะนำ — เหลืองอ่อน
-  for (let r = 0; r <= 5; r++) {
-    for (let c = 0; c < STYLE_NCOLS; c++) {
-      const ref = XLSX.utils.encode_cell({ r, c });
-      if (!wsMain[ref]) wsMain[ref] = { t: "s", v: "" };
-      wsMain[ref].s = { fill: instructionBg, font: instructionFont, border };
-    }
-  }
-
-  // Row 6: header — น้ำเงินเข้ม ตัวขาว
-  for (let c = 0; c < STYLE_NCOLS; c++) {
-    const ref = XLSX.utils.encode_cell({ r: 6, c });
-    if (!wsMain[ref]) wsMain[ref] = { t: "s", v: "" };
-    wsMain[ref].s = { fill: headerBg, font: headerFont, border, alignment: { horizontal: "center", wrapText: true } };
-  }
-
-  // Row 7-9: ตัวอย่าง — เขียวอ่อน ตัวเอียง
-  for (let r = 7; r <= 9; r++) {
-    for (let c = 0; c < STYLE_NCOLS; c++) {
-      const ref = XLSX.utils.encode_cell({ r, c });
-      if (!wsMain[ref]) wsMain[ref] = { t: "s", v: "" };
-      wsMain[ref].s = { fill: exampleBg, font: exampleFont, border };
-    }
-  }
-
-  // freeze panes ที่ row 10 (ข้ามคำแนะนำ + header + 3 แถวตัวอย่าง)
-  wsMain["!freeze"] = { xSplit: 0, ySplit: 10 };
-
-  wsMain["!cols"] = [
-    { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 35 }, { wch: 15 }, { wch: 8 },
-    { wch: 12 }, { wch: 20 }, { wch: 15 },
-    { wch: 12 }, { wch: 8 },  { wch: 8 },  { wch: 8 },
-    { wch: 12 }, { wch: 8 },  { wch: 12 },
-    { wch: 12 }, { wch: 12 },
-    { wch: 10 }, { wch: 12 }, { wch: 20 }
-  ];
-
-  XLSX.utils.book_append_sheet(wb, wsMain, "ดีลราคา");
-  XLSX.writeFile(wb, `ดีลราคา_${supplierNo}.xlsx`);
+  // --- download ---
+  const buf  = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `ดีลราคา_${supplierNo}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ===================================================
-// DEAL: IMPORT FROM EXCEL
+// DEAL: IMPORT FROM EXCEL (ยังใช้ SheetJS เหมือนเดิม)
 // ===================================================
 
 // แปลง ISO date string → yyyy-MM-dd สำหรับใส่ใน Excel cell
