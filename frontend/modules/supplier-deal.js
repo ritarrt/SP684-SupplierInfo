@@ -238,55 +238,76 @@ function renderDealTable() {
   });
 
   tbody.innerHTML = "";
+  let rowNum = 0;
 
-  rows.forEach((r, idx) => {
-    const tr = document.createElement("tr");
-
+  rows.forEach((r) => {
     const isExpired = r.end_date && new Date() > new Date(r.end_date);
-    const statusStyle = r.status === "OPEN" 
-      ? isExpired ? "background:#0d6efd;color:#fff;" : "background:#198754;color:#fff;" 
-      : r.status === "USE" 
-        ? isExpired ? "background:#0d6efd;color:#fff;" : "background:#ffc107;color:#000;" 
-        : r.status === "CLOSED" 
-          ? "background:#0d6efd;color:#fff;" 
+    const statusStyle = r.status === "OPEN"
+      ? isExpired ? "background:#0d6efd;color:#fff;" : "background:#198754;color:#fff;"
+      : r.status === "USE"
+        ? isExpired ? "background:#0d6efd;color:#fff;" : "background:#ffc107;color:#000;"
+        : r.status === "CLOSED"
+          ? "background:#0d6efd;color:#fff;"
           : "background:#dc3545;color:#fff;";
 
     const isClosedAndExpired = r.status === "CLOSED" && isExpired;
     const conditionModeText = r.condition_mode === "stepped" ? "ขั้นบันได" : "ราคาปกติ";
-    const tier = r.condition_mode === "stepped" ? (r.tier || "-") : "-";
-    const fromQty = r.condition_mode === "stepped" ? (r.from_qty || "-") : "-";
-    const toQty = r.condition_mode === "stepped" ? (r.to_qty || "-") : "-";
 
-    tr.innerHTML = `
-      <td>${idx + 1}</td>
-      <td>
-        <span class="badge" style="${statusStyle}padding:4px 8px;border-radius:12px;font-size:12px;">
-          ${r.status}
-        </span>
-        ${isClosedAndExpired ? `<br><span class="text-muted small">ปิดแล้ว</span>` : ""}
-      </td>
-      <td>${r.contact_person || "-"}</td>
-      <td><div class="fw-bold">${r.deal_name || "-"}</div></td>
-      <td>${r.project_no || "-"}</td>
-      <td>${r.sku || "-"}</td>
-      <td>${getBranchName(r.branch) || r.branch || "-"}</td>
-      <td class="text-end">${r.base_price ? Number(r.base_price).toLocaleString() : "-"}</td>
-      <td>${conditionModeText}</td>
-      <td>${tier}</td>
-      <td class="text-end">${fromQty}</td>
-      <td class="text-end">${toQty}</td>
-      <td class="text-end">${r.price_value ? Number(r.price_value).toLocaleString() : "-"}</td>
-      <td>${r.price_unit || "-"}</td>
-      <td>${r.deal_type === "Discount" ? "ส่วนลด" : r.deal_type === "New Price" ? "ราคาใหม่" : "-"}</td>
-      <td>${formatDisplayDate(r.start_date)}</td>
-      <td>${formatDisplayDate(r.end_date)}</td>
-      <td>${r.require_pallet === false ? `<span class="badge bg-warning text-dark">ไม่</span>` : `<span class="badge bg-success">ใช่</span>`}</td>
-      <td>${r.supplier_delivery === false ? `<span class="badge bg-secondary">ไปรับ</span>` : `<span class="badge bg-info">ส่ง</span>`}</td>
-      <td>${r.note || "-"}</td>
-      <td class="text-muted small">${formatThaiDateTime(r.updated_at || r.created_at)}</td>
-    `;
+    // สร้าง display rows — stepped deal ออกหลาย row ตาม steps
+    const displayRows = [];
+    if (r.condition_mode === "stepped" && r.steps && r.steps.length > 0) {
+      r.steps.forEach(step => {
+        displayRows.push({
+          tier:        step.step_number ?? "-",
+          from_qty:    step.from_qty    ?? "-",
+          to_qty:      step.to_qty      ?? "-",
+          price_value: step.price_value,
+          price_unit:  step.price_unit || r.price_unit
+        });
+      });
+    } else {
+      displayRows.push({
+        tier:        "-",
+        from_qty:    "-",
+        to_qty:      "-",
+        price_value: r.price_value,
+        price_unit:  r.price_unit
+      });
+    }
 
-    tbody.appendChild(tr);
+    displayRows.forEach((d, dIdx) => {
+      rowNum++;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${rowNum}</td>
+        <td>
+          <span class="badge" style="${statusStyle}padding:4px 8px;border-radius:12px;font-size:12px;">
+            ${r.status}
+          </span>
+          ${isClosedAndExpired ? `<br><span class="text-muted small">ปิดแล้ว</span>` : ""}
+        </td>
+        <td>${dIdx === 0 ? (r.contact_person || "-") : ""}</td>
+        <td>${dIdx === 0 ? `<div class="fw-bold">${r.deal_name || "-"}</div>` : ""}</td>
+        <td>${dIdx === 0 ? (r.project_no || "-") : ""}</td>
+        <td>${dIdx === 0 ? (r.sku || "-") : ""}</td>
+        <td>${dIdx === 0 ? (getBranchName(r.branch) || r.branch || "-") : ""}</td>
+        <td class="text-end">${dIdx === 0 ? (r.base_price ? Number(r.base_price).toLocaleString() : "-") : ""}</td>
+        <td>${dIdx === 0 ? conditionModeText : ""}</td>
+        <td class="text-center">${d.tier}</td>
+        <td class="text-end">${d.from_qty !== "-" ? Number(d.from_qty).toLocaleString() : "-"}</td>
+        <td class="text-end">${d.to_qty   !== "-" ? Number(d.to_qty).toLocaleString()   : "-"}</td>
+        <td class="text-end">${d.price_value != null ? Number(d.price_value).toLocaleString() : "-"}</td>
+        <td>${d.price_unit || "-"}</td>
+        <td>${dIdx === 0 ? (r.deal_type === "Discount" ? "ส่วนลด" : r.deal_type === "New Price" ? "ราคาใหม่" : "-") : ""}</td>
+        <td>${dIdx === 0 ? formatDisplayDate(r.start_date) : ""}</td>
+        <td>${dIdx === 0 ? formatDisplayDate(r.end_date)   : ""}</td>
+        <td>${dIdx === 0 ? (r.require_pallet === false ? `<span class="badge bg-warning text-dark">ไม่</span>` : `<span class="badge bg-success">ใช่</span>`) : ""}</td>
+        <td>${dIdx === 0 ? (r.supplier_delivery === false ? `<span class="badge bg-secondary">ไปรับ</span>` : `<span class="badge bg-info">ส่ง</span>`) : ""}</td>
+        <td>${dIdx === 0 ? (r.note || "-") : ""}</td>
+        <td class="text-muted small">${dIdx === 0 ? formatThaiDateTime(r.updated_at || r.created_at) : ""}</td>
+      `;
+      tbody.appendChild(tr);
+    });
   });
 
   if (countEl) {

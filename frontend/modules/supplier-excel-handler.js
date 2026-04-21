@@ -282,64 +282,90 @@ async function processImportedDealRows(rows, header, supplierNo) {
 
   if (idx["SKU"] === undefined) {
     console.error("ไม่พบคอลัมน์ SKU ใน header:", header);
-    return { successCount: 0, errorCount: 0, errors: ["ไม่พบคอลัมน์ SKU"] };
+    return { successCount: 0, insertedCount: 0, updatedCount: 0, errorCount: 0, errors: ["ไม่พบคอลัมน์ SKU"] };
   }
 
+  // ===== Step 1: Group rows ที่มี SKU+branch+deal_name เดียวกัน =====
+  // key = "SKU|branch|deal_name"
+  const dealGroups = new Map();
+
+  for (const row of rows) {
+    const sku      = String(row[idx["SKU"]]          ?? "").trim();
+    const dealName = String(row[idx["ชื่อดีลราคา"]] ?? "").trim();
+    const priceVal = row[idx["ราคาดีล/ส่วนลด"]];
+    const branchRaw = String(row[idx["สาขา"]]        ?? "").trim();
+
+    // ข้ามแถวที่ไม่มีข้อมูลดีล หรือเป็นแถวตัวอย่าง
+    if (!sku || (!dealName && (priceVal === "" || priceVal == null))) continue;
+    if (branchRaw.startsWith("⬇")) continue;
+
+    const key = `${sku}|${branchRaw}|${dealName}`;
+
+    if (!dealGroups.has(key)) {
+      // เก็บ metadata จาก row แรกของกลุ่ม
+      dealGroups.set(key, {
+        sku, branch: branchRaw, deal_name: dealName,
+        base_price:        parseFloat(row[idx["ราคาตั้งต้น"]]) || 0,
+        project_no:        String(row[idx["Project No"]] ?? "").trim(),
+        note:              String(row[idx["หมายเหตุ"]]   ?? "").trim(),
+        condition_mode:    String(row[idx["กรอบเงื่อนไข"]] ?? "").trim() === "ขั้นบันได" ? "stepped" : "normal",
+        deal_type:         String(row[idx["ประเภทดีล"]]   ?? "").trim() === "ราคาใหม่" ? "New Price" : "Discount",
+        price_value:       parseFloat(priceVal) || 0,
+        price_unit:        String(row[idx["หน่วย"]]       ?? "บาท").trim() || "บาท",
+        start_date:        parseExcelDate(row[idx["วันที่เริ่ม"]]) || null,
+        end_date:          parseExcelDate(row[idx["วันที่สิ้นสุด"]]) || null,
+        require_pallet:    String(row[idx["ลงลัง"]]        ?? "ใช่").trim() !== "ไม่",
+        supplier_delivery: (() => { const v = String(row[idx["Supplier ส่ง"]] ?? "ส่ง").trim(); return v !== "ไม่" && v !== "ไปรับ"; })(),
+        steps: []
+      });
+    }
+
+    const group = dealGroups.get(key);
+
+    // ถ้าเป็น stepped ให้เก็บ step ของ row นี้
+    if (group.condition_mode === "stepped") {
+      const tier     = parseInt(row[idx["Tier"]])    || (group.steps.length + 1);
+      const from_qty = parseFloat(row[idx["จาก"]])  || 0;
+      const to_qty   = parseFloat(row[idx["ถึง"]])   || 0;
+      const stepPrice = parseFloat(priceVal)         || 0;
+      const stepUnit  = String(row[idx["หน่วย"]]    ?? group.price_unit).trim() || group.price_unit;
+
+      // ป้องกัน step ซ้ำ (tier เดียวกัน)
+      if (!group.steps.find(s => s.tier === tier)) {
+        group.steps.push({ tier, from_qty, to_qty, price_value: stepPrice, price_unit: stepUnit });
+      }
+    }
+  }
+
+  // ===== Step 2: ส่ง API ทีละ deal group =====
   let successCount = 0;
   let insertedCount = 0;
   let updatedCount = 0;
   let errorCount = 0;
   const errors = [];
 
-  for (const row of rows) {
-    const sku      = String(row[idx["SKU"]] ?? "").trim();
-    const dealName = String(row[idx["ชื่อดีลราคา"]] ?? "").trim();
-    const priceVal = row[idx["ราคาดีล/ส่วนลด"]];
-
-    // ข้ามแถวที่ไม่มีข้อมูลดีล
-    if (!sku || (!dealName && (priceVal === "" || priceVal == null))) continue;
-
+  for (const [key, group] of dealGroups) {
     try {
-      const branchRaw        = String(row[idx["สาขา"]] ?? "").trim();
-
-      // ข้ามแถวตัวอย่าง (column สาขาขึ้นต้นด้วย ⬇)
-      if (branchRaw.startsWith("⬇")) continue;
-      const conditionModeRaw = String(row[idx["กรอบเงื่อนไข"]] ?? "").trim();
-      const conditionMode    = conditionModeRaw === "ขั้นบันได" ? "stepped" : "normal";
-      const dealTypeRaw      = String(row[idx["ประเภทดีล"]] ?? "").trim();
-      const dealType         = dealTypeRaw === "ราคาใหม่" ? "New Price" : "Discount";
-      const requirePallet    = String(row[idx["ลงลัง"]]        ?? "ใช่").trim() !== "ไม่";
-      // รองรับทั้ง "ส่ง"/"ไปรับ" และ "ใช่"/"ไม่"
-      const supplierDeliveryRaw = String(row[idx["Supplier ส่ง"]] ?? "ส่ง").trim();
-      const supplierDelivery = supplierDeliveryRaw !== "ไม่" && supplierDeliveryRaw !== "ไปรับ";
-      const startDate        = parseExcelDate(row[idx["วันที่เริ่ม"]]);
-      const endDate          = parseExcelDate(row[idx["วันที่สิ้นสุด"]]);
-
       const payload = {
-        sku,
-        branch:            branchRaw,
-        base_price:        parseFloat(row[idx["ราคาตั้งต้น"]]) || 0,
-        deal_name:         dealName,
-        project_no:        String(row[idx["Project No"]] ?? "").trim(),
-        note:              String(row[idx["หมายเหตุ"]] ?? "").trim(),
-        condition_mode:    conditionMode,
-        deal_type:         dealType,
-        price_value:       parseFloat(priceVal) || 0,
-        price_unit:        String(row[idx["หน่วย"]] ?? "บาท").trim() || "บาท",
-        start_date:        startDate || null,
-        end_date:          endDate || null,
-        require_pallet:    requirePallet,
-        supplier_delivery: supplierDelivery
+        sku:               group.sku,
+        branch:            group.branch,
+        base_price:        group.base_price,
+        deal_name:         group.deal_name,
+        project_no:        group.project_no,
+        note:              group.note,
+        condition_mode:    group.condition_mode,
+        deal_type:         group.deal_type,
+        price_value:       group.price_value,
+        price_unit:        group.price_unit,
+        start_date:        group.start_date,
+        end_date:          group.end_date,
+        require_pallet:    group.require_pallet,
+        supplier_delivery: group.supplier_delivery
       };
 
-      if (conditionMode === "stepped") {
-        payload.steps = [{
-          tier:        parseInt(row[idx["Tier"]]) || 1,
-          from_qty:    parseFloat(row[idx["จาก"]]) || 0,
-          to_qty:      parseFloat(row[idx["ถึง"]]) || 0,
-          price_value: parseFloat(priceVal) || 0,
-          price_unit:  payload.price_unit
-        }];
+      // เรียง steps ตาม tier ก่อนส่ง
+      if (group.condition_mode === "stepped" && group.steps.length > 0) {
+        payload.steps = group.steps.sort((a, b) => a.tier - b.tier);
       }
 
       const res = await fetch(
@@ -355,12 +381,12 @@ async function processImportedDealRows(rows, header, supplierNo) {
       } else {
         const errText = await res.text();
         errorCount++;
-        errors.push(`SKU ${sku} (${branchRaw}): ${errText}`);
+        errors.push(`SKU ${group.sku} (${group.branch}): ${errText}`);
         console.error("Import row error:", errText, payload);
       }
     } catch (err) {
       errorCount++;
-      errors.push(`SKU ${sku}: ${err.message}`);
+      errors.push(`SKU ${group.sku}: ${err.message}`);
       console.error("Import row exception:", err);
     }
   }
