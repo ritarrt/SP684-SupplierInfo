@@ -82,7 +82,8 @@ async function exportDealToExcel() {
     "1. กรอบเงื่อนไข: ราคาปกติ หรือ ขั้นบันได",
     "2. ประเภทดีล: ส่วนลด (จำนวนส่วนลด) หรือ ราคาใหม่",
     "3. ลงลัง/Supplier ส่ง: ใช่ หรือ ไม่",
-    "4. ขั้นบันได: ใส่ SKU และชื่อดีลเดียวกันซ้ำหลายแถว แต่ละแถวคือ 1 tier"
+    "4. ขั้นบันได: ใส่ SKU และชื่อดีลเดียวกันซ้ำหลายแถว แต่ละแถวคือ 1 tier",
+    "5. หน่วย (คอลัมน์ก่อนประเภทดีล): หน่วยของราคาดีล เช่น บาท, บาท/ชิ้น, บาท/ตัน, %"
   ];
   instructions.forEach(text => {
     const r = ws.addRow([text, ...Array(NCOLS - 1).fill("")]);
@@ -163,8 +164,8 @@ async function exportDealToExcel() {
   const colWidths = [18,14,22,36,16,8,12,22,14,14,8,8,8,14,8,12,12,12,8,12,24];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  // --- freeze panes: แถว 1-6 คำแนะนำ + แถว 7 header + แถว 8-10 ตัวอย่าง ---
-  ws.views = [{ state: "frozen", xSplit: 0, ySplit: 10 }];
+  // --- freeze panes: แถว 1-7 คำแนะนำ + แถว 8 header + แถว 9-11 ตัวอย่าง ---
+  ws.views = [{ state: "frozen", xSplit: 0, ySplit: 11 }];
 
   // --- download ---
   const buf  = await wb.xlsx.writeBuffer();
