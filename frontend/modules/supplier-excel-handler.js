@@ -81,7 +81,7 @@ async function exportDealToExcel() {
     "📋 คำแนะนำ: กรอกข้อมูลดีลราคาในตารางด้านล่าง",
     "1. กรอบเงื่อนไข: ราคาปกติ หรือ ขั้นบันได",
     "2. ประเภทดีล: ส่วนลด (จำนวนส่วนลด) หรือ ราคาใหม่",
-    "3. ลงลัง/Supplier ส่ง: ใช่ หรือ ไม่",
+    "3. ลงลัง: ใช่ หรือ ไม่  |  Supplier ส่ง: ส่ง หรือ ไปรับ",
     "4. ขั้นบันได: ใส่ SKU และชื่อดีลเดียวกันซ้ำหลายแถว แต่ละแถวคือ 1 tier",
     "5. หน่วย (คอลัมน์ก่อนประเภทดีล): หน่วยของราคาดีล เช่น บาท, บาท/ชิ้น, บาท/ตัน, %"
   ];
@@ -130,7 +130,7 @@ async function exportDealToExcel() {
             deal.deal_type === "Discount" ? "ส่วนลด" : deal.deal_type === "New Price" ? "ราคาใหม่" : "",
             formatDateForExcel(deal.start_date), formatDateForExcel(deal.end_date),
             deal.require_pallet    === false ? "ไม่" : "ใช่",
-            deal.supplier_delivery === false ? "ไม่" : "ส่ง",
+            deal.supplier_delivery === false ? "ไปรับ" : "ส่ง",
             deal.note||""
           ]);
         });
@@ -142,8 +142,8 @@ async function exportDealToExcel() {
           deal.price_value ?? "", deal.price_unit||"",
           deal.deal_type === "Discount" ? "ส่วนลด" : deal.deal_type === "New Price" ? "ราคาใหม่" : "",
           formatDateForExcel(deal.start_date), formatDateForExcel(deal.end_date),
-          deal.require_pallet    === false ? "ไม่" : (deal.require_pallet    === true ? "ใช่" : ""),
-          deal.supplier_delivery === false ? "ไม่" : (deal.supplier_delivery === true ? "ส่ง"  : ""),
+          deal.require_pallet    === false ? "ไม่" : (deal.require_pallet    === true ? "ใช่"   : ""),
+          deal.supplier_delivery === false ? "ไปรับ" : (deal.supplier_delivery === true ? "ส่ง" : ""),
           deal.note||""
         ]);
       }
@@ -308,8 +308,10 @@ async function processImportedDealRows(rows, header, supplierNo) {
       const conditionMode    = conditionModeRaw === "ขั้นบันได" ? "stepped" : "normal";
       const dealTypeRaw      = String(row[idx["ประเภทดีล"]] ?? "").trim();
       const dealType         = dealTypeRaw === "ราคาใหม่" ? "New Price" : "Discount";
-      const requirePallet    = String(row[idx["ลงลัง"]] ?? "ใช่").trim() !== "ไม่";
-      const supplierDelivery = String(row[idx["Supplier ส่ง"]] ?? "ส่ง").trim() !== "ไม่";
+      const requirePallet    = String(row[idx["ลงลัง"]]        ?? "ใช่").trim() !== "ไม่";
+      // รองรับทั้ง "ส่ง"/"ไปรับ" และ "ใช่"/"ไม่"
+      const supplierDeliveryRaw = String(row[idx["Supplier ส่ง"]] ?? "ส่ง").trim();
+      const supplierDelivery = supplierDeliveryRaw !== "ไม่" && supplierDeliveryRaw !== "ไปรับ";
       const startDate        = parseExcelDate(row[idx["วันที่เริ่ม"]]);
       const endDate          = parseExcelDate(row[idx["วันที่สิ้นสุด"]]);
 
