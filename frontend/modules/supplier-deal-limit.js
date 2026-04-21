@@ -86,30 +86,31 @@ function getBrandName(code) {
 
 function formatThaiDate(dateStr) {
   if (!dateStr) return "-";
-  let fixedDate;
-  if (dateStr.includes('/')) {
-    const parts = dateStr.split('/');
-    if (parts.length === 3) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const year = parseInt(parts[2], 10);
-      fixedDate = new Date(year, month, day);
-    }
-  } else {
-    fixedDate = new Date(dateStr.replace("T", " ").replace("Z", ""));
+  try {
+    const datePart = String(dateStr).split("T")[0].split(" ")[0];
+    if (!datePart || datePart.length < 10) return String(dateStr);
+    const [y, m, d] = datePart.split("-");
+    if (!y || !m || !d) return String(dateStr);
+    return `${d}/${m}/${y}`;
+  } catch {
+    return String(dateStr);
   }
-  if (!fixedDate || isNaN(fixedDate.getTime())) return "-";
-  return fixedDate.toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
 function formatThaiDateTime(dateStr) {
   if (!dateStr) return "-";
-  const clean = dateStr.replace("T", " ").substring(0, 19);
-  const [datePart, timePart] = clean.split(" ");
-  if (!datePart) return "-";
-  const d = new Date(datePart);
-  if (isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("th-TH") + (timePart ? ` ${timePart.substring(0,5)}` : "");
+  try {
+    const date = new Date(String(dateStr).trim());
+    if (isNaN(date.getTime())) return String(dateStr);
+    const d  = String(date.getDate()).padStart(2, "0");
+    const mo = String(date.getMonth() + 1).padStart(2, "0");
+    const y  = date.getFullYear();
+    const h  = String(date.getHours()).padStart(2, "0");
+    const mi = String(date.getMinutes()).padStart(2, "0");
+    return `<div class="leading-tight"><div class="font-medium">${d}/${mo}/${y}</div><div class="text-xs text-gray-400">${h}:${mi}</div></div>`;
+  } catch {
+    return String(dateStr);
+  }
 }
 
 function showLoadingIndicator(containerId, message = "กำลังโหลด...") {
@@ -394,13 +395,14 @@ window.cancelDealLimitEdit = cancelDealLimitEdit;
 
 function convertDateFormat(dateStr) {
   if (!dateStr) return '';
-  if (dateStr.includes('-') && dateStr.length === 10) return dateStr;
-  const parts = dateStr.split('/');
+  const s = String(dateStr).trim();
+  // yyyy-MM-dd หรือ ISO string
+  if (s.includes('T')) return s.split('T')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // dd/MM/yyyy
+  const parts = s.split('/');
   if (parts.length !== 3) return '';
-  const day = parts[0].padStart(2, '0');
-  const month = parts[1].padStart(2, '0');
-  const year = parts[2];
-  return `${year}-${month}-${day}`;
+  return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
 }
 
 function renderDealLimitRegionDropdown() {
@@ -597,6 +599,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!limitedType) { window.showSaveMessage("กรุณาเลือกประเภทจำกัดจำนวน", true); return; }
       if (!limitedQty || limitedQty <= 0) { window.showSaveMessage("กรุณากรอกจำนวนจำกัดที่ถูกต้อง", true); return; }
       if (!dealStart || !dealEnd) { window.showSaveMessage("กรุณาเลือกวันที่", true); return; }
+      if (dealStart > dealEnd) { window.showSaveMessage("วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด", true); return; }
 
       const payload = {
         deal_name: dealName,
@@ -665,5 +668,70 @@ document.addEventListener("DOMContentLoaded", async () => {
     cancelBtn.addEventListener("click", cancelDealLimitEdit);
   }
 });
+
+// ============================================================
+// DEAL STATUS MODAL (shared by deal-limit and deal tabs)
+// ============================================================
+window.openDealModal = function(dealId, currentStatus, hasBeenUsed) {
+  const modal = document.getElementById("cancelDealModal");
+  const msgEl = document.getElementById("dealModalMessage");
+  if (!modal) return;
+
+  const supplierNo = window.supplierNo;
+  if (!msgEl) return;
+
+  msgEl.textContent = `สถานะปัจจุบัน: ${currentStatus}`;
+
+  // ปรับ button ตาม status ปัจจุบัน
+  const openBtn   = document.getElementById("dealStatusOpenBtn");
+  const useBtn    = document.getElementById("dealStatusUseBtn");
+  const cancelBtn = document.getElementById("dealStatusCancelBtn");
+
+  // ซ่อน/แสดง option ที่ไม่ควรเลือก
+  if (openBtn)   openBtn.style.display   = currentStatus === "OPEN"      ? "none" : "";
+  if (useBtn)    useBtn.style.display    = currentStatus === "USE"       ? "none" : "";
+  if (cancelBtn) cancelBtn.style.display = currentStatus === "CANCELLED" ? "none" : "";
+
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+
+  const closeModal = () => {
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+  };
+
+  const changeStatus = async (newStatus) => {
+    closeModal();
+    try {
+      const res = await fetch(
+        `${window.API_BASE}/api/suppliers/${supplierNo}/deals/${dealId}/status`,
+        { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: newStatus }) }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        window.showSaveMessage("❌ " + (err.error || "เปลี่ยนสถานะไม่สำเร็จ"), true);
+        return;
+      }
+      window.showSaveMessage(`✅ เปลี่ยนสถานะเป็น ${newStatus} สำเร็จ`);
+      await loadDealLimitList(supplierNo);
+    } catch (err) {
+      window.showSaveMessage("❌ " + err.message, true);
+    }
+  };
+
+  // ลบ listener เก่าก่อนเพิ่มใหม่ (ป้องกัน duplicate)
+  const replaceBtn = (id, handler) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.addEventListener("click", handler);
+  };
+
+  replaceBtn("dealStatusOpenBtn",   () => changeStatus("OPEN"));
+  replaceBtn("dealStatusUseBtn",    () => changeStatus("USE"));
+  replaceBtn("dealStatusCancelBtn", () => changeStatus("CANCELLED"));
+  replaceBtn("cancelDealNoBtn",     closeModal);
+};
 
 window.renderDealLimitTable = renderDealLimitTable;
