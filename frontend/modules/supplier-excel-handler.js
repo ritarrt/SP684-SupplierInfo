@@ -189,22 +189,37 @@ function formatDateForExcel(dateStr) {
   return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : (datePart || "");
 }
 
-// แปลง Excel serial date หรือ string date → yyyy-MM-dd
+// แปลง Excel serial date หรือ string date → yyyy-MM-dd (normalize วันที่ไม่มีจริงอัตโนมัติ)
 function parseExcelDate(val) {
   if (!val) return "";
+
+  let y, m, d;
+
   if (typeof val === "number") {
+    // Excel serial date
     const date = XLSX.SSF.parse_date_code(val);
     if (!date) return "";
-    return `${date.y}-${String(date.m).padStart(2,"0")}-${String(date.d).padStart(2,"0")}`;
+    y = date.y; m = date.m; d = date.d;
+  } else {
+    const s = String(val).trim();
+    if (!s) return "";
+
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      [y, m, d] = s.substring(0, 10).split("-").map(Number);
+    } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+      const parts = s.split("/");
+      d = Number(parts[0]); m = Number(parts[1]); y = Number(parts[2]);
+    } else {
+      return s; // รูปแบบไม่รู้จัก ส่งกลับตรงๆ
+    }
   }
-  const s = String(val).trim();
-  if (!s) return "";
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-    const [d, m, y] = s.split("/");
-    return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
-  }
-  return s;
+
+  // ผ่าน Date object เพื่อ normalize วันที่ไม่มีจริง เช่น 31/06 → 01/07
+  const normalized = new Date(y, m - 1, d);
+  const ny = normalized.getFullYear();
+  const nm = String(normalized.getMonth() + 1).padStart(2, "0");
+  const nd = String(normalized.getDate()).padStart(2, "0");
+  return `${ny}-${nm}-${nd}`;
 }
 
 async function importDealFromExcel(event) {
