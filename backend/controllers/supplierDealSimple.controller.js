@@ -82,13 +82,89 @@ export const saveSupplierDealSimple = async (req, res) => {
         AND COLUMN_NAME IN ('require_pallet', 'supplier_delivery', 'project_no', 'note')
     `);
     const existingCols = new Set(colCheck.recordset.map(r => r.COLUMN_NAME));
-
     const hasRequirePallet    = existingCols.has('require_pallet');
     const hasSupplierDelivery = existingCols.has('supplier_delivery');
     const hasProjectNo        = existingCols.has('project_no');
     const hasNote             = existingCols.has('note');
 
-    // Build dynamic INSERT
+    // ตรวจสอบว่ามี deal เดิมที่ยัง active อยู่ (OPEN/USE) สำหรับ SKU+branch+deal_name นี้หรือไม่
+    const existingCheck = await pool.request()
+      .input("supplier_no", sql.NVarChar, supplierNo)
+      .input("sku",         sql.NVarChar, sku || "")
+      .input("branch",      sql.NVarChar, branch || "")
+      .input("deal_name",   sql.NVarChar, deal_name || "")
+      .query(`
+        SELECT TOP 1 deal_id
+        FROM supplier_deal_price
+        WHERE supplier_no = @supplier_no
+          AND sku         = @sku
+          AND branch      = @branch
+          AND deal_name   = @deal_name
+          AND status IN ('OPEN', 'USE')
+        ORDER BY deal_id DESC
+      `);
+
+    const existingDealId = existingCheck.recordset[0]?.deal_id ?? null;
+
+    if (existingDealId) {
+      // ===== UPDATE deal เดิม =====
+      const updateReq = pool.request()
+        .input("deal_id",      sql.Int,          existingDealId)
+        .input("base_price",   sql.Decimal(18,2), base_price || 0)
+        .input("condition_mode", sql.NVarChar,   condition_mode || "normal")
+        .input("deal_type",    sql.NVarChar,     deal_type || "Discount")
+        .input("price_value",  sql.Decimal(18,2), price_value || 0)
+        .input("price_unit",   sql.NVarChar,     price_unit || "บาท")
+        .input("start_date",   sql.Date,         start_date && String(start_date).trim() !== "" ? start_date : null)
+        .input("end_date",     sql.Date,         end_date   && String(end_date).trim()   !== "" ? end_date   : null);
+
+      const updateCols = [
+        "base_price = @base_price",
+        "condition_mode = @condition_mode",
+        "deal_type = @deal_type",
+        "price_value = @price_value",
+        "price_unit = @price_unit",
+        "start_date = @start_date",
+        "end_date = @end_date",
+        "updated_at = GETDATE()"
+      ];
+
+      if (hasProjectNo)  { updateReq.input("project_no", sql.NVarChar, project_no || ""); updateCols.push("project_no = @project_no"); }
+      if (hasNote)       { updateReq.input("note",       sql.NVarChar, note || "");       updateCols.push("note = @note"); }
+      if (hasRequirePallet)    { updateReq.input("require_pallet",    sql.Bit, require_pallet    !== undefined ? require_pallet    : true);  updateCols.push("require_pallet = @require_pallet"); }
+      if (hasSupplierDelivery) { updateReq.input("supplier_delivery", sql.Bit, supplier_delivery !== undefined ? supplier_delivery : true); updateCols.push("supplier_delivery = @supplier_delivery"); }
+
+      await updateReq.query(`
+        UPDATE supplier_deal_price
+        SET ${updateCols.join(", ")}
+        WHERE deal_id = @deal_id
+      `);
+
+      // อัปเดต steps ถ้ามี
+      if (steps && steps.length > 0) {
+        await pool.request()
+          .input("deal_id", sql.Int, existingDealId)
+          .query(`DELETE FROM supplier_deal_price_steps WHERE deal_id = @deal_id`);
+
+        for (const step of steps) {
+          await pool.request()
+            .input("deal_id",     sql.Int,          existingDealId)
+            .input("step_number", sql.Int,          step.tier || 1)
+            .input("from_qty",    sql.Decimal(18,2), step.from_qty || 0)
+            .input("to_qty",      sql.Decimal(18,2), step.to_qty || 0)
+            .input("price_value", sql.Decimal(18,2), step.price_value || 0)
+            .input("price_unit",  sql.NVarChar,     step.price_unit || "บาท")
+            .query(`
+              INSERT INTO supplier_deal_price_steps (deal_id, step_number, from_qty, to_qty, price_value, price_unit)
+              VALUES (@deal_id, @step_number, @from_qty, @to_qty, @price_value, @price_unit)
+            `);
+        }
+      }
+
+      return res.json({ success: true, deal_id: existingDealId, action: "updated" });
+    }
+
+    // ===== INSERT deal ใหม่ =====
     const cols = [
       'supplier_no', 'status', 'deal_name',
       'sku', 'branch', 'base_price', 'condition_mode', 'deal_type',
@@ -105,7 +181,7 @@ export const saveSupplierDealSimple = async (req, res) => {
     if (hasRequirePallet)    { cols.push('require_pallet');    vals.push('@require_pallet'); }
     if (hasSupplierDelivery) { cols.push('supplier_delivery'); vals.push('@supplier_delivery'); }
 
-    const request = pool.request()
+    const insertReq = pool.request()
       .input("supplier_no",    sql.NVarChar,     supplierNo)
       .input("status",         sql.NVarChar,     "OPEN")
       .input("deal_name",      sql.NVarChar,     deal_name || "")
@@ -119,12 +195,12 @@ export const saveSupplierDealSimple = async (req, res) => {
       .input("start_date",     sql.Date,         start_date && String(start_date).trim() !== "" ? start_date : null)
       .input("end_date",       sql.Date,         end_date   && String(end_date).trim()   !== "" ? end_date   : null);
 
-    if (hasProjectNo)        request.input("project_no",        sql.NVarChar, project_no || "");
-    if (hasNote)             request.input("note",              sql.NVarChar, note || "");
-    if (hasRequirePallet)    request.input("require_pallet",    sql.Bit,      require_pallet    !== undefined ? require_pallet    : true);
-    if (hasSupplierDelivery) request.input("supplier_delivery", sql.Bit,      supplier_delivery !== undefined ? supplier_delivery : true);
+    if (hasProjectNo)        insertReq.input("project_no",        sql.NVarChar, project_no || "");
+    if (hasNote)             insertReq.input("note",              sql.NVarChar, note || "");
+    if (hasRequirePallet)    insertReq.input("require_pallet",    sql.Bit,      require_pallet    !== undefined ? require_pallet    : true);
+    if (hasSupplierDelivery) insertReq.input("supplier_delivery", sql.Bit,      supplier_delivery !== undefined ? supplier_delivery : true);
 
-    const result = await request.query(`
+    const result = await insertReq.query(`
       INSERT INTO supplier_deal_price (${cols.join(", ")})
       VALUES (${vals.join(", ")});
       SELECT SCOPE_IDENTITY() AS deal_id;
@@ -132,7 +208,6 @@ export const saveSupplierDealSimple = async (req, res) => {
 
     const newDealId = result.recordset[0].deal_id;
 
-    // Insert steps if any
     if (steps && steps.length > 0) {
       for (const step of steps) {
         await pool.request()
@@ -149,7 +224,7 @@ export const saveSupplierDealSimple = async (req, res) => {
       }
     }
 
-    res.json({ success: true, deal_id: newDealId });
+    res.json({ success: true, deal_id: newDealId, action: "inserted" });
   } catch (err) {
     console.error("saveSupplierDealSimple error:", err);
     res.status(500).json({ error: "Failed to save deal: " + err.message });

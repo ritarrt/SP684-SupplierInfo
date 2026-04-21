@@ -33,59 +33,24 @@ export const getSupplierDeals = async (req, res) => {
           AND GETDATE() > DATEADD(DAY, 1, end_date)
       `);
 
-    // Check if has_been_used column exists
-    const columnCheck = await pool.request()
-      .query(`
-        SELECT COUNT(*) AS column_exists
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'supplier_deal_price' AND COLUMN_NAME = 'has_been_used'
-      `);
-    const hasBeenUsedColumnExists = columnCheck.recordset[0].column_exists > 0;
-
-    // Check if limited_type column exists
-    const limitedTypeCheck = await pool.request()
-      .query(`
-        SELECT COUNT(*) AS column_exists
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'supplier_deal_price' AND COLUMN_NAME = 'limited_type'
-      `);
-    const limitedTypeExists = limitedTypeCheck.recordset[0].column_exists > 0;
-
-    // Check if limited_unit column exists
-    const limitedUnitCheck = await pool.request()
-      .query(`
-        SELECT COUNT(*) AS column_exists
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'supplier_deal_price' AND COLUMN_NAME = 'limited_unit'
-      `);
-    const limitedUnitExists = limitedUnitCheck.recordset[0].column_exists > 0;
-
-    // Check if limited_qty column exists
-    const limitedQtyCheck = await pool.request()
-      .query(`
-        SELECT COUNT(*) AS column_exists
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'supplier_deal_price' AND COLUMN_NAME = 'limited_qty'
-      `);
-    const limitedQtyExists = limitedQtyCheck.recordset[0].column_exists > 0;
-
-    // Check if limited_discount_value column exists
-    const limitedDiscountValueCheck = await pool.request()
-      .query(`
-        SELECT COUNT(*) AS column_exists
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'supplier_deal_price' AND COLUMN_NAME = 'limited_discount_value'
-      `);
-    const limitedDiscountValueExists = limitedDiscountValueCheck.recordset[0].column_exists > 0;
-
-    // Check if limited_discount_unit column exists
-    const limitedDiscountUnitCheck = await pool.request()
-      .query(`
-        SELECT COUNT(*) AS column_exists
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'supplier_deal_price' AND COLUMN_NAME = 'limited_discount_unit'
-      `);
-    const limitedDiscountUnitExists = limitedDiscountUnitCheck.recordset[0].column_exists > 0;
+    // Check column existence in one query
+    const colCheckResult = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'supplier_deal_price'
+        AND COLUMN_NAME IN (
+          'has_been_used','limited_type','limited_unit','limited_qty',
+          'limited_discount_value','limited_discount_unit',
+          'require_pallet','supplier_delivery','base_price','deal_ref','project_no'
+        )
+    `);
+    const existingCols = new Set(colCheckResult.recordset.map(r => r.COLUMN_NAME));
+    const hasBeenUsedColumnExists      = existingCols.has('has_been_used');
+    const limitedTypeExists            = existingCols.has('limited_type');
+    const limitedUnitExists            = existingCols.has('limited_unit');
+    const limitedQtyExists             = existingCols.has('limited_qty');
+    const limitedDiscountValueExists   = existingCols.has('limited_discount_value');
+    const limitedDiscountUnitExists    = existingCols.has('limited_discount_unit');
 
     const result = await pool.request()
       .input("supplier_no", sql.NVarChar, supplierNo)

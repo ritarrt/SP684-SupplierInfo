@@ -260,7 +260,7 @@ async function importDealFromExcel(event) {
     const result = await processImportedDealRows(dataRows, header, supplierNo);
 
     if (result.successCount > 0 || result.errorCount > 0) {
-      const msg = `นำเข้าสำเร็จ ${result.successCount} รายการ${result.errorCount > 0 ? ` | ผิดพลาด ${result.errorCount} รายการ` : ""}`;
+      const msg = `นำเข้าสำเร็จ ${result.successCount} รายการ (ใหม่ ${result.insertedCount} | อัปเดต ${result.updatedCount})${result.errorCount > 0 ? ` | ผิดพลาด ${result.errorCount} รายการ` : ""}`;
       window.showSaveMessage ? window.showSaveMessage(msg) : alert(msg);
       if (window.loadDealList) window.loadDealList(supplierNo);
     } else {
@@ -285,6 +285,8 @@ async function processImportedDealRows(rows, header, supplierNo) {
   }
 
   let successCount = 0;
+  let insertedCount = 0;
+  let updatedCount = 0;
   let errorCount = 0;
   const errors = [];
 
@@ -298,6 +300,9 @@ async function processImportedDealRows(rows, header, supplierNo) {
 
     try {
       const branchRaw        = String(row[idx["สาขา"]] ?? "").trim();
+
+      // ข้ามแถวตัวอย่าง (column สาขาขึ้นต้นด้วย ⬇)
+      if (branchRaw.startsWith("⬇")) continue;
       const conditionModeRaw = String(row[idx["กรอบเงื่อนไข"]] ?? "").trim();
       const conditionMode    = conditionModeRaw === "ขั้นบันได" ? "stepped" : "normal";
       const dealTypeRaw      = String(row[idx["ประเภทดีล"]] ?? "").trim();
@@ -340,7 +345,10 @@ async function processImportedDealRows(rows, header, supplierNo) {
       );
 
       if (res.ok) {
+        const data = await res.json();
         successCount++;
+        if (data.action === "updated") updatedCount++;
+        else insertedCount++;
       } else {
         const errText = await res.text();
         errorCount++;
@@ -354,7 +362,7 @@ async function processImportedDealRows(rows, header, supplierNo) {
     }
   }
 
-  return { successCount, errorCount, errors };
+  return { successCount, insertedCount, updatedCount, errorCount, errors };
 }
 
 // ===================================================

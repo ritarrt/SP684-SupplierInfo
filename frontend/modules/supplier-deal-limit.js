@@ -129,18 +129,19 @@ function hideLoadingIndicator(containerId) {
 window.updateDealLimitDiscountDisplay = function() {
   const discount = parseFloat(document.getElementById("dealLimitDiscount")?.value) || 0;
   const discountUnit = document.getElementById("dealLimitDiscountUnit")?.value || "บาท";
-  const limitedType = document.getElementById("dealLimitType")?.value || "amount";
+  const limitedType = document.getElementById("dealLimitDiscountType")?.value || "amount"; // ✅ อ่านจาก field ที่ถูกต้อง
   const displayEl = document.getElementById("dealLimitDiscountDisplay");
-  
+  if (!displayEl) return;
+
   if (discount <= 0) {
     displayEl.textContent = "-";
     return;
   }
 
-  if (limitedType === "amount") {
-    displayEl.textContent = `ราคา ${discount.toLocaleString()} ${discountUnit}`;
+  if (limitedType === "percent") {
+    displayEl.textContent = `ลด ${discount}%`;
   } else {
-    displayEl.textContent = `ราคา ลด ${discount}%`;
+    displayEl.textContent = `ราคา ${discount.toLocaleString()} ${discountUnit}`;
   }
 };
 
@@ -215,7 +216,7 @@ function renderDealLimitTable() {
     }
 
     const statusStyle = r.status === "OPEN" ? "background:#198754;color:#fff;" : r.status === "USE" ? "background:#ffc107;color:#000;" : r.status === "CLOSED" ? "background:#0d6efd;color:#fff;" : "background:#dc3545;color:#fff;";
-    const canEdit = (r.status === 'OPEN' && !r.has_been_used) || ((r.status === 'CANCELLED' || r.status === 'CLOSED') && r.has_been_used);
+    const canEdit = r.status === 'OPEN' && !r.has_been_used;
     const overAmount = isLimitExceeded ? (Number(actualValue) - Number(limitQty)).toLocaleString() : '';
 
     const tr = document.createElement("tr");
