@@ -254,7 +254,12 @@ router.put(
 import {
   getSupplierDealsSimple,
   saveSupplierDealSimple,
-  deleteSupplierDealSimple
+  deleteSupplierDealSimple,
+  getSupplierDealHistory,
+  createImportLog,
+  createImportLogItems,
+  getImportLogs,
+  getImportLogItems
 } from "../controllers/supplierDealSimple.controller.js";
 
 // Get deal list (simple - for Excel import)
@@ -274,6 +279,18 @@ router.delete(
   "/:supplierNo/deals-simple/:id",
   deleteSupplierDealSimple
 );
+
+// Deal history (all statuses)
+router.get(
+  "/:supplierNo/deals-history",
+  getSupplierDealHistory
+);
+
+// Import logs
+router.post("/:supplierNo/deals-import-logs",           createImportLog);
+router.post("/:supplierNo/deals-import-logs/:logId/items", createImportLogItems);
+router.get( "/:supplierNo/deals-import-logs",           getImportLogs);
+router.get( "/:supplierNo/deals-import-logs/:logId/items", getImportLogItems);
 
 /**
  * ==============================

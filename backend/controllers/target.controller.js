@@ -56,8 +56,8 @@ const prefix = `PT/${year}${month}`;
       .input("sku", sql.NVarChar, d.sku)
       .input("benefit_period", sql.NVarChar, d.benefit_period)
       .input("target_type", sql.NVarChar, d.target_type)
-      .input("target_qty", sql.Decimal(18, 2), d.target_qty)
-      .input("target_unit", sql.NVarChar, d.target_unit)
+      .input("target_qty", sql.Decimal(18, 2), parseFloat(String(d.target_qty).replace(/,/g, "")) || 0)
+      .input("target_unit", sql.NVarChar, String(d.target_unit || "").trim())
       .input("start_date", sql.Date, d.start_date)
       .input("end_date", sql.Date, d.end_date)
       .query(`
@@ -136,7 +136,7 @@ VALUES (
 
   } catch (err) {
     console.error("❌ Create Target Error:", err);
-    res.status(500).json({ error: "Create Target Failed" });
+    res.status(500).json({ error: err.message || "Create Target Failed" });
   }
 };
 

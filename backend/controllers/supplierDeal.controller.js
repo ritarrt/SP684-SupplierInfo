@@ -30,7 +30,7 @@ export const getSupplierDeals = async (req, res) => {
         WHERE supplier_no = @supplier_no
           AND status IN ('OPEN', 'USE')
           AND end_date IS NOT NULL
-          AND GETDATE() > DATEADD(DAY, 1, end_date)
+          AND CAST(GETDATE() AS DATE) > end_date
       `);
 
     // Check column existence in one query
