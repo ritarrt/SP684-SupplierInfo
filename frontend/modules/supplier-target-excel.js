@@ -659,11 +659,11 @@ window.importTargetFromExcel = async function importTargetFromExcel(event) {
 
       // color
       var colorKey = category + "|" + colorRaw.toLowerCase();
-      var color_no = (lookup.colorMap[colorKey] !== undefined) ? lookup.colorMap[colorKey] : (colorRaw || null);
+      var color_no = (colorRaw && lookup.colorMap[colorKey] !== undefined) ? lookup.colorMap[colorKey] : (colorRaw || null);
 
       // thickness
       var thickKey = category + "|" + thickRaw.toLowerCase();
-      var thick_no = (lookup.thickMap[thickKey] !== undefined)
+      var thick_no = (thickRaw && lookup.thickMap[thickKey] !== undefined)
                      ? lookup.thickMap[thickKey]
                      : (thickRaw ? String(thickRaw).padStart(2, "0") : null);
 
@@ -734,13 +734,11 @@ window.importTargetFromExcel = async function importTargetFromExcel(event) {
         category:          resolved.category,
         brand:             resolved.brand_name,
         brand_name:        resolved.brand_name,
-        brand_no:          resolved.brand_no,
-        group:             resolved.group_code,
-        group_name:        resolved.group_name,
+        brand_code:        resolved.brand_no,
         group_code:        resolved.group_code,
-        sub_group:         resolved.sub_name,
-        sub_group_name:    resolved.sub_name,
+        group_name:        resolved.group_name,
         sub_group_code:    resolved.sub_code,
+        sub_group_name:    resolved.sub_name,
         color:             resolved.color_no,
         thickness:         resolved.thick_no,
         mold:              getVal(row, "รหัสแม่พิมพ์") || null,

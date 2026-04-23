@@ -27,21 +27,21 @@ const prefix = `PT/${year}${month}`;
       .input("target_name", sql.NVarChar, d.target_name)
       .input("parent_target_ref", sql.NVarChar, d.parent_target_ref ?? null)
       .input("status", sql.NVarChar, "OPEN")
-      .input("region", sql.NVarChar, d.region)
-      .input("province", sql.NVarChar, d.province)
-      .input("branch", sql.NVarChar, d.branch)
+      .input("region", sql.NVarChar, (d.region || "").split(",").map(v => v.trim()).filter(v => v).join(",") || null)
+      .input("province", sql.NVarChar, (d.province || "").split(",").map(v => v.trim()).filter(v => v).join(",") || null)
+      .input("branch", sql.NVarChar, (d.branch || "").split(",").map(v => v.trim()).filter(v => v).join(",") || null)
       .input("category", sql.NVarChar, d.category)
 
       .input("brand", sql.NVarChar, d.brand_name || null)
-      .input("brand_code", sql.NVarChar, d.brand_code || d.brand_no || d.brand || null)
+      .input("brand_code", sql.NVarChar, (d.brand_code || "").split(",").map(v => v.trim()).filter(v => v).join(",") || null)
 
       .input("product_group", sql.NVarChar, d.group_name || null)
-      .input("product_group_code", sql.NVarChar, d.group_code || d.group || null)
+      .input("product_group_code", sql.NVarChar, (d.group_code || "").split(",").map(v => v.trim()).filter(v => v).join(",") || null)
 
-      .input("sub_group", sql.NVarChar, d.sub_group_name || d.sub_group || null)
-      .input("sub_group_code", sql.NVarChar, d.sub_group_code || null)
-      .input("color", sql.NVarChar, d.color || null)
-      .input("thickness", sql.NVarChar, d.thickness || null)
+      .input("sub_group", sql.NVarChar, d.sub_group_name || null)
+      .input("sub_group_code", sql.NVarChar, (d.sub_group_code || "").split(",").map(v => v.trim()).filter(v => v).join(",") || null)
+      .input("color", sql.NVarChar, (d.color || "").split(",").map(v => v.trim()).filter(v => v).join(",") || null)
+      .input("thickness", sql.NVarChar, (d.thickness || "").split(",").map(v => v.trim()).filter(v => v).join(",") || null)
       .input("mold", sql.NVarChar, d.mold)
       .input("sku", sql.NVarChar, d.sku)
       .input("benefit_period", sql.NVarChar, d.benefit_period)
@@ -947,7 +947,7 @@ export const calculateSupplierTargets = async (req, res) => {
                 @targetSku IS NOT NULL 
                 AND @targetSku <> ''
                 AND EXISTS (
-                  SELECT 1 FROM STRING_SPLIT(@targetSku, ',') s
+                  SELECT 1 FROM STRING_SPLIT(REPLACE(@targetSku, ' ', ''), ',') s
                   WHERE LTRIM(RTRIM(s.value)) <> '' AND SKU = LTRIM(RTRIM(s.value))
                 )
               )
@@ -1140,7 +1140,7 @@ export const calculateSingleTarget = async (req, res) => {
               t.sku IS NOT NULL 
               AND t.sku <> ''
               AND EXISTS (
-                SELECT 1 FROM STRING_SPLIT(t.sku, ',') s
+                SELECT 1 FROM STRING_SPLIT(REPLACE(t.sku, ' ', ''), ',') s
                 WHERE LTRIM(RTRIM(s.value)) <> '' AND SKU = LTRIM(RTRIM(s.value))
               )
             )

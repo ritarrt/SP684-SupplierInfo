@@ -525,24 +525,33 @@ if (skuInput) {
 // COLLECT DATA
 // ===================================================
 function collectProductCoverage() {
-  return getAllRows().map(row => ({
-    category: row.dataset.category || null,
-    category_name:
-      row.querySelector(".category-display span")?.textContent || null,
+  return getAllRows().map(row => {
+    // อ่านค่า SKU และแยกด้วย comma แล้ว trim ทั้งหมด
+    const skuRaw = row.querySelector(".sku-input")?.value || "";
+    const skuList = skuRaw
+      .split(",")
+      .map(s => s.trim())
+      .filter(s => s !== ""); // ลบค่าว่าง
+    
+    return {
+      category: row.dataset.category || null,
+      category_name:
+        row.querySelector(".category-display span")?.textContent || null,
 
-    brand: row.dataset.brand || null,
-    brand_name:
-      row.querySelector(".brand-display span")?.textContent || null,
+      brand: row.dataset.brand || null,
+      brand_name:
+        row.querySelector(".brand-display span")?.textContent || null,
 
-    group: row.dataset.group || null,
-    group_name:
-      row.querySelector(".group-display span")?.textContent || null,
+      group: row.dataset.group || null,
+      group_name:
+        row.querySelector(".group-display span")?.textContent || null,
 
-    subGroup: row.dataset.subGroup || null,
-SUBGROUP_NAME:
-  row.querySelector(".subgroup-display span")?.textContent || null,
-    sku: row.querySelector(".sku-input")?.value || null
-  }));
+      subGroup: row.dataset.subGroup || null,
+      SUBGROUP_NAME:
+        row.querySelector(".subgroup-display span")?.textContent || null,
+      sku: skuList.length > 0 ? skuList.join(", ") : null // รวมกลับด้วย ", "
+    };
+  });
 }
 
 
@@ -767,9 +776,17 @@ function attachSkuAutocomplete(input) {
   let dropdown;
 
   input.addEventListener("input", async () => {
-    const keyword = input.value.split(",").pop().trim();
+    // แยก SKU ด้วย comma และ trim ทั้งหมด
+    const parts = input.value.split(",").map(p => p.trim());
+    const keyword = parts[parts.length - 1]; // ส่วนสุดท้ายที่ยังพิมพ์อยู่
 
-    if (keyword.length < 2) return;
+    if (keyword.length < 2) {
+      if (dropdown) {
+        dropdown.remove();
+        dropdown = null;
+      }
+      return;
+    }
 
     const res = await fetch(
       `${window.API_BASE}/api/suppliers/sku/search?q=${encodeURIComponent(keyword)}`
@@ -795,11 +812,13 @@ function attachSkuAutocomplete(input) {
       el.addEventListener("click", () => {
         const selected = el.dataset.sku;
 
-        const parts = input.value.split(",");
-        parts.pop();
-        parts.push(" " + selected);
+        // แยก SKU ทั้งหมด trim และลบส่วนสุดท้ายที่ยังพิมพ์อยู่
+        const allParts = input.value.split(",").map(p => p.trim()).filter(p => p);
+        allParts.pop(); // ลบส่วนสุดท้าย
+        allParts.push(selected); // เพิ่ม SKU ที่เลือก
 
-        input.value = parts.join(",").replace(/^,/, "").trim() + ", ";
+        // รวมกลับด้วย ", " (comma + space)
+        input.value = allParts.join(", ") + ", ";
 
         dropdown.remove();
         dropdown = null;

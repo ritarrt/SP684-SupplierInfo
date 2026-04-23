@@ -270,9 +270,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         provider_contact_id: document.getElementById("tgProvider")?.value || null,
         target_name: targetName,
         parent_target_ref: document.getElementById("tgParent")?.value || null,
-        region: getSelectedValues("regionDropdown").join(",") || null,
-        province: getSelectedValues("provinceDropdown").join(",") || null,
-        branch: getSelectedValues("branchDropdown").join(",") || null,
+        region: getSelectedValues("regionDropdown").map(v => v.trim()).filter(v => v).join(", ") || null,
+        province: getSelectedValues("provinceDropdown").map(v => v.trim()).filter(v => v).join(", ") || null,
+        branch: getSelectedValues("branchDropdown").map(v => v.trim()).filter(v => v).join(", ") || null,
         category: category,
 
         // multi-value fields — comma-separated codes (null ถ้าไม่เลือก)
