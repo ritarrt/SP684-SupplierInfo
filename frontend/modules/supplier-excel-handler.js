@@ -18,8 +18,9 @@ async function exportDealToExcel() {
   }
   if (allSkuList.length === 0) { alert("ไม่พบข้อมูล SKU"); return; }
 
-  const selectedBranch   = document.getElementById("dealBranchSelect")?.value || "";
+  const selectedBranch   = document.getElementById("dealBranchSelect")?.value   || "";
   const selectedCategory = document.getElementById("dealCategorySelect")?.value || "";
+  const selectedContact  = document.getElementById("dealContactSelect")?.value  || "";
 
   // โหลด deals เดิม
   let existingDeals = [];
@@ -31,6 +32,8 @@ async function exportDealToExcel() {
   // map SKU|branch → [deal, ...]
   const dealMap = {};
   existingDeals.forEach(d => {
+    // filter ตาม contact ที่เลือก
+    if (selectedContact && d.contact_person !== selectedContact) return;
     const key = (d.sku || "") + "|" + (d.branch || "");
     if (!dealMap[key]) dealMap[key] = [];
     dealMap[key].push(d);
@@ -47,7 +50,7 @@ async function exportDealToExcel() {
 
   const headers = [
     "สาขา","ประเภทสินค้า","SKU","ชื่อสินค้า","แบรนด์","หน่วย",
-    "ราคาตั้งต้น","ชื่อดีลราคา","Project No",
+    "ราคาตั้งต้น","ชื่อดีลราคา","ผู้ให้ราคา","Project No",
     "กรอบเงื่อนไข","Tier","จาก","ถึง",
     "ราคาดีล/ส่วนลด","หน่วย","ประเภทดีล",
     "วันที่เริ่ม","วันที่สิ้นสุด",
@@ -77,7 +80,7 @@ async function exportDealToExcel() {
 
   // --- คำแนะนำ row 1-6 ---
   const instructions = [
-    `📋 สาขา: ${selectedBranch || "ทุกสาขา"} | ประเภท: ${selectedCategory || "ทุกประเภท"}`,
+    `📋 สาขา: ${selectedBranch || "ทุกสาขา"} | ประเภท: ${selectedCategory || "ทุกประเภท"} | ผู้ให้ราคา: ${selectedContact || "ทุกคน"}`,
     "📋 คำแนะนำ: กรอกข้อมูลดีลราคาในตารางด้านล่าง",
     "1. กรอบเงื่อนไข: ราคาปกติ หรือ ขั้นบันได",
     "2. ประเภทดีล: ส่วนลด (จำนวนส่วนลด) หรือ ราคาใหม่",
@@ -99,9 +102,9 @@ async function exportDealToExcel() {
 
   // --- ตัวอย่าง row 8-10 ---
   const examples = [
-    ["⬇ ตัวอย่าง: ราคาปกติ","Glass","GL-001-CLR-6","กระจกใส 6mm","AGC","แผ่น",250,"ดีลกระจก Q2/68","","ราคาปกติ","","","",10,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""],
-    ["⬇ ตัวอย่าง: ขั้นบันได tier 1","Glass","GL-002-CLR-8","กระจกใส 8mm","AGC","แผ่น",320,"ดีลขั้นบันได Q2/68","","ขั้นบันได",1,1,100,15,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""],
-    ["⬇ ตัวอย่าง: ขั้นบันได tier 2","Glass","GL-002-CLR-8","กระจกใส 8mm","AGC","แผ่น",320,"ดีลขั้นบันได Q2/68","","ขั้นบันได",2,101,999,25,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""]
+    ["⬇ ตัวอย่าง: ราคาปกติ","Glass","GL-001-CLR-6","กระจกใส 6mm","AGC","แผ่น",250,"ดีลกระจก Q2/68","คุณสมชาย","","ราคาปกติ","","","",10,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""],
+    ["⬇ ตัวอย่าง: ขั้นบันได tier 1","Glass","GL-002-CLR-8","กระจกใส 8mm","AGC","แผ่น",320,"ดีลขั้นบันได Q2/68","คุณสมชาย","","ขั้นบันได",1,1,100,15,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""],
+    ["⬇ ตัวอย่าง: ขั้นบันได tier 2","Glass","GL-002-CLR-8","กระจกใส 8mm","AGC","แผ่น",320,"ดีลขั้นบันได Q2/68","คุณสมชาย","","ขั้นบันได",2,101,999,25,"บาท","ส่วนลด","2025-04-01","2025-06-30","ใช่","ส่ง",""]
   ];
   examples.forEach(data => {
     const r = ws.addRow(data);
@@ -124,7 +127,7 @@ async function exportDealToExcel() {
         deal.steps.forEach(step => {
           dataRows.push([
             branchCode, s.category||"", s.sku||"", s.productName||"", s.brandName||"", s.baseUnit||"",
-            deal.base_price ?? "", deal.deal_name||"", deal.project_no||"",
+            deal.base_price ?? "", deal.deal_name||"", deal.contact_person || selectedContact || "ไม่ระบุ", deal.project_no||"",
             "ขั้นบันได", step.step_number??"", step.from_qty??"", step.to_qty??"",
             step.price_value??"", step.price_unit||deal.price_unit||"",
             deal.deal_type === "Discount" ? "ส่วนลด" : deal.deal_type === "New Price" ? "ราคาใหม่" : "",
@@ -137,7 +140,7 @@ async function exportDealToExcel() {
       } else {
         dataRows.push([
           branchCode, s.category||"", s.sku||"", s.productName||"", s.brandName||"", s.baseUnit||"",
-          deal.base_price ?? "", deal.deal_name||"", deal.project_no||"",
+          deal.base_price ?? "", deal.deal_name||"", deal.contact_person || selectedContact || "ไม่ระบุ", deal.project_no||"",
           deal.condition_mode === "normal" ? "ราคาปกติ" : "", "", "", "",
           deal.price_value ?? "", deal.price_unit||"",
           deal.deal_type === "Discount" ? "ส่วนลด" : deal.deal_type === "New Price" ? "ราคาใหม่" : "",
@@ -161,7 +164,7 @@ async function exportDealToExcel() {
   });
 
   // --- column widths ---
-  const colWidths = [18,14,22,36,16,8,12,22,14,14,8,8,8,14,8,12,12,12,8,12,24];
+  const colWidths = [18,14,22,36,16,8,12,22,16,14,14,8,8,8,14,8,12,12,12,8,12,24];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   // --- freeze panes: แถว 1-7 คำแนะนำ + แถว 8 header + แถว 9-11 ตัวอย่าง ---
@@ -276,8 +279,39 @@ async function importDealFromExcel(event) {
     const result = await processImportedDealRows(dataRows, header, supplierNo);
 
     if (result.successCount > 0 || result.errorCount > 0) {
-      const msg = `นำเข้าสำเร็จ ${result.successCount} รายการ (ใหม่ ${result.insertedCount} | อัปเดต ${result.updatedCount})${result.errorCount > 0 ? ` | ผิดพลาด ${result.errorCount} รายการ` : ""}`;
+      const msg = `นำเข้าสำเร็จ ${result.successCount} รายการ (ใหม่ ${result.insertedCount} | อัปเดต ${result.updatedCount} | ไม่เปลี่ยน ${result.skippedCount})${result.errorCount > 0 ? ` | ผิดพลาด ${result.errorCount} รายการ` : ""}`;
       window.showSaveMessage ? window.showSaveMessage(msg) : alert(msg);
+
+      // บันทึก import log
+      try {
+        const logRes = await fetch(
+          `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-import-logs`,
+          { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              total_rows: result.successCount + result.errorCount,
+              inserted:   result.insertedCount,
+              updated:    result.updatedCount,
+              skipped:    result.skippedCount,
+              errors:     result.errorCount,
+              note:       file.name
+            })
+          }
+        );
+        if (logRes.ok) {
+          const { log_id } = await logRes.json();
+          if (result.logItems.length > 0) {
+            await fetch(
+              `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-import-logs/${log_id}/items`,
+              { method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ items: result.logItems })
+              }
+            );
+          }
+        }
+      } catch (logErr) {
+        console.error("Save import log error:", logErr);
+      }
+
       if (window.loadDealList) window.loadDealList(supplierNo);
     } else {
       alert("ไม่พบแถวที่มีข้อมูลดีล (ต้องกรอก 'ชื่อดีลราคา' หรือ 'ราคาดีล/ส่วนลด')");
@@ -314,7 +348,7 @@ async function processImportedDealRows(rows, header, supplierNo) {
     if (!sku || (!dealName && (priceVal === "" || priceVal == null))) continue;
     if (branchRaw.startsWith("⬇")) continue;
 
-    const key = `${sku}|${branchRaw}|${dealName}`;
+    const key = `${sku}|${branchRaw}|${dealName}|${parseExcelDate(row[idx["วันที่เริ่ม"]])||""}|${parseExcelDate(row[idx["วันที่สิ้นสุด"]])||""}`;
 
     if (!dealGroups.has(key)) {
       // เก็บ metadata จาก row แรกของกลุ่ม
@@ -331,6 +365,7 @@ async function processImportedDealRows(rows, header, supplierNo) {
         end_date:          parseExcelDate(row[idx["วันที่สิ้นสุด"]]) || null,
         require_pallet:    String(row[idx["ลงลัง"]]        ?? "ใช่").trim() !== "ไม่",
         supplier_delivery: (() => { const v = String(row[idx["Supplier ส่ง"]] ?? "ส่ง").trim(); return v !== "ไม่" && v !== "ไปรับ"; })(),
+        contact_person:    String(row[idx["ผู้ให้ราคา"]]  ?? "").trim() || null,
         steps: []
       });
     }
@@ -356,8 +391,10 @@ async function processImportedDealRows(rows, header, supplierNo) {
   let successCount = 0;
   let insertedCount = 0;
   let updatedCount = 0;
+  let skippedCount = 0;
   let errorCount = 0;
   const errors = [];
+  const logItems = [];
 
   for (const [key, group] of dealGroups) {
     try {
@@ -366,6 +403,7 @@ async function processImportedDealRows(rows, header, supplierNo) {
         branch:            group.branch,
         base_price:        group.base_price,
         deal_name:         group.deal_name,
+        contact_person:    group.contact_person || null,
         project_no:        group.project_no,
         note:              group.note,
         condition_mode:    group.condition_mode,
@@ -391,22 +429,26 @@ async function processImportedDealRows(rows, header, supplierNo) {
       if (res.ok) {
         const data = await res.json();
         successCount++;
-        if (data.action === "updated") updatedCount++;
+        if (data.action === "updated")      updatedCount++;
+        else if (data.action === "skipped") skippedCount++;
         else insertedCount++;
+        logItems.push({ deal_id: data.deal_id, sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: data.action || "inserted" });
       } else {
         const errText = await res.text();
         errorCount++;
         errors.push(`SKU ${group.sku} (${group.branch}): ${errText}`);
+        logItems.push({ sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: "error", error_msg: errText });
         console.error("Import row error:", errText, payload);
       }
     } catch (err) {
       errorCount++;
       errors.push(`SKU ${group.sku}: ${err.message}`);
+      logItems.push({ sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: "error", error_msg: err.message });
       console.error("Import row exception:", err);
     }
   }
 
-  return { successCount, insertedCount, updatedCount, errorCount, errors };
+  return { successCount, insertedCount, updatedCount, skippedCount, errorCount, errors, logItems };
 }
 
 // ===================================================
@@ -414,3 +456,66 @@ async function processImportedDealRows(rows, header, supplierNo) {
 // ===================================================
 window.exportDealToExcel = exportDealToExcel;
 window.importDealFromExcel = importDealFromExcel;
+
+// ===================================================
+// DEAL: EXPORT HISTORY AS CSV
+// ===================================================
+async function exportDealHistoryCSV() {
+  const supplierNo = new URLSearchParams(location.search).get("id");
+  if (!supplierNo) { alert("ไม่พบ supplierNo"); return; }
+
+  try {
+    const res = await fetch(`${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-history`);
+    if (!res.ok) { alert("โหลดประวัติไม่ได้"); return; }
+    const data = await res.json();
+
+    if (data.length === 0) { alert("ไม่มีประวัติดีลราคา"); return; }
+
+    const headers = [
+      "deal_id","deal_ref","สถานะ","ชื่อดีล","ผู้ให้ราคา","Project No",
+      "SKU","สาขา","ประเภทสินค้า","แบรนด์","กลุ่มสินค้า",
+      "กรอบเงื่อนไข","ประเภทดีล","ราคาตั้งต้น","ราคาดีล","หน่วย",
+      "จำนวนจำกัด","หน่วยจำกัด",
+      "วันที่เริ่ม","วันที่สิ้นสุด",
+      "ลงลัง","Supplier ส่ง","หมายเหตุ","เคยใช้งาน",
+      "วันที่สร้าง","แก้ไขล่าสุด"
+    ];
+
+    const escapeCSV = v => {
+      if (v == null) return "";
+      const s = String(v);
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const rows = data.map(d => [
+      d.deal_id, d.deal_ref || "",
+      d.status, d.deal_name || "", d.contact_person || "", d.project_no || "",
+      d.sku || "", d.branch || "", d.category || "", d.brand || "", d.product_group || "",
+      d.condition_mode || "", d.deal_type || "",
+      d.base_price ?? "", d.price_value ?? "", d.price_unit || "",
+      d.limited_qty ?? "", d.limited_unit || "",
+      d.start_date ? String(d.start_date).split("T")[0] : "",
+      d.end_date   ? String(d.end_date).split("T")[0]   : "",
+      d.require_pallet    === false ? "ไม่" : "ใช่",
+      d.supplier_delivery === false ? "ไปรับ" : "ส่ง",
+      d.note || "", d.has_been_used ? "ใช่" : "ไม่",
+      d.created_at || "", d.updated_at || ""
+    ].map(escapeCSV).join(","));
+
+    const bom = "\uFEFF"; // UTF-8 BOM สำหรับ Excel เปิดภาษาไทยได้
+    const csv = bom + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `ประวัติดีลราคา_${supplierNo}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+    alert("เกิดข้อผิดพลาด: " + err.message);
+  }
+}
+
+window.exportDealHistoryCSV = exportDealHistoryCSV;

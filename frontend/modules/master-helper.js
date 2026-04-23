@@ -1,11 +1,15 @@
 const API_BASE = window.API_BASE || "http://localhost:3000";
 
-export async function loadColors(category, selectId) {
+import { renderCheckboxDropdown } from "./coverage-helper.js";
 
-  const select = document.getElementById(selectId);
-  if (!select) return;
+export async function loadColors(category, dropdownId) {
+  const textId = dropdownId.replace("Dropdown", "Text");
+  const el = document.getElementById(dropdownId);
+  if (!el) return;
 
-  select.innerHTML = `<option value="">ทั้งหมด</option>`;
+  // clear while loading
+  renderCheckboxDropdown(dropdownId, [], textId);
+
   if (!category) return;
 
   try {
@@ -14,24 +18,20 @@ export async function loadColors(category, selectId) {
     const colors = await res.json();
     if (!Array.isArray(colors)) throw new Error("Invalid colors data");
 
-    colors.forEach(c => {
-    select.innerHTML += `
-      <option value="${c.COLOR_NO}">
-        ${c.COLOR_NAME}
-      </option>
-    `;
-    });
+    const items = colors.map(c => ({ value: String(c.COLOR_NO), label: c.COLOR_NAME }));
+    renderCheckboxDropdown(dropdownId, items, textId);
   } catch (err) {
     console.error("loadColors error:", err);
   }
 }
 
-export async function loadThickness(category, selectId) {
+export async function loadThickness(category, dropdownId) {
+  const textId = dropdownId.replace("Dropdown", "Text");
+  const el = document.getElementById(dropdownId);
+  if (!el) return;
 
-  const select = document.getElementById(selectId);
-  if (!select) return;
+  renderCheckboxDropdown(dropdownId, [], textId);
 
-  select.innerHTML = `<option value="">ทั้งหมด</option>`;
   if (!category) return;
 
   try {
@@ -40,13 +40,11 @@ export async function loadThickness(category, selectId) {
     const list = await res.json();
     if (!Array.isArray(list)) throw new Error("Invalid thickness data");
 
-    list.forEach(t => {
-      select.innerHTML += `
-        <option value="${t.THICKNESS_NO}">
-          ${t.THICKNESS_NAME}
-        </option>
-      `;
-    });
+    const items = list.map(t => ({
+      value: String(t.THICKNESS_NO).padStart(2, "0"),
+      label: t.THICKNESS_NAME
+    }));
+    renderCheckboxDropdown(dropdownId, items, textId);
   } catch (err) {
     console.error("loadThickness error:", err);
   }

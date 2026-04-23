@@ -1005,10 +1005,19 @@
           <div class="card">
             <div class="card-body">
 
-              <div class="flex justify-between items-end section-header first-section">
+              <div class="flex justify-between items-center section-header first-section">
                 <div><i class="bi bi-info-circle"></i> 1. ข้อมูลพื้นฐาน (Target)</div>
-                <div class="last-updated" id="tgLastUpdated">
-                  <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+                <div class="flex items-center gap-2">
+                  <button type="button" class="btn btn-outline-success btn-sm" id="tgExportBtn">
+                    <i class="bi bi-file-earmark-excel"></i> Export Template
+                  </button>
+                  <label class="btn btn-outline-primary btn-sm cursor-pointer mb-0">
+                    <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
+                    <input type="file" id="tgImportFile" accept=".xlsx,.xls" class="hidden">
+                  </label>
+                  <div class="last-updated" id="tgLastUpdated">
+                    <i class="bi bi-clock"></i> แก้ไขล่าสุด: —
+                  </div>
                 </div>
               </div>
 
@@ -1118,37 +1127,79 @@
                     </select>
                 </div>
 
+                <!-- BRAND multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">แบรนด์<span class="text-red-600">*</span></label>
-                  <select class="form-select" id="tgBrand">
-                    <option value="">ทั้งหมด</option>
-                  </select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('brandDropdown')">
+                      <span id="brandText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="brandDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
+                <!-- GROUP multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">กลุ่มสินค้า</label>
-                  <select class="form-select" id="tgGroup">
-                    <option value="-">ทั้งหมด</option>
-                  </select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('groupDropdown')">
+                      <span id="groupText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="groupDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
+                <!-- SUB GROUP multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">กลุ่มย่อย</label>
-                  <select class="form-select" id="tgSub">
-                    <option value="-">ทั้งหมด</option>
-                  </select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('subDropdown')">
+                      <span id="subText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="subDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
+                <!-- COLOR multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">สีของสินค้า</label>
-                  <select class="form-select" id="tgColor">
-                    <option value="">ทั้งหมด</option></select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('colorDropdown')">
+                      <span id="colorText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="colorDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
+                <!-- THICKNESS multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ความหนา</label>
-                  <select class="form-select" id="tgThick">
-                  </select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('thickDropdown')">
+                      <span id="thickText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="thickDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
@@ -1244,6 +1295,7 @@
         </form>
 
         <!-- TARGET TABLE -->
+
 <div class="card card-table">
   <div class="card-header">
     <div class="flex justify-between items-center">
@@ -1582,7 +1634,7 @@
       <div class="tab-pane" id="pills-deal">
 
         <!-- Branch and Category Filter for Deal -->
-        <div class="flex gap-2 mb-4 items-center" id="dealBranchFilter">
+        <div class="flex gap-2 mb-4 items-center flex-wrap" id="dealBranchFilter">
           <label class="text-sm font-medium">สาขา:</label>
           <select id="dealBranchSelect" class="form-select form-select-sm" style="width: 150px;" onchange="onDealBranchChange()">
             <option value="">ทุกสาขา</option>
@@ -1590,6 +1642,10 @@
           <label class="text-sm font-medium">ประเภทสินค้า:</label>
           <select id="dealCategorySelect" class="form-select form-select-sm" style="width: 150px;" onchange="onDealCategoryChange()">
             <option value="">ทุกประเภท</option>
+          </select>
+          <label class="text-sm font-medium">ผู้ให้ราคา:</label>
+          <select id="dealContactSelect" class="form-select form-select-sm" style="width: 160px;" onchange="onDealContactChange()">
+            <option value="">ทุกคน</option>
           </select>
           <span class="text-gray-400 text-sm mr-1">ดีลราคา:</span>
           <button type="button" class="btn btn-outline-success btn-sm" onclick="exportDealToExcel()">
@@ -1606,14 +1662,11 @@
           <div class="card-header">
             <div class="flex justify-between items-center">
               <div class="inline-flex" role="group" style="gap:6px;">
-                <input type="radio" class="hidden" name="dealFilter" id="dealFilterActive" value="active" checked onchange="renderDealTable()">
-                <label class="btn btn-sm btn-outline-success" for="dealFilterActive"><i class="bi bi-check-circle"></i> รายการปกติ</label>
-
-                <input type="radio" class="hidden" name="dealFilter" id="dealFilterClosed" value="closed" onchange="renderDealTable()">
-                <label class="btn btn-sm btn-outline-primary" for="dealFilterClosed"><i class="bi bi-clock-history"></i> รายการที่หมดอายุ</label>
-
-                <input type="radio" class="hidden" name="dealFilter" id="dealFilterCancel" value="cancelled" onchange="renderDealTable()">
-                <label class="btn btn-sm btn-outline-danger" for="dealFilterCancel"><i class="bi bi-x-circle"></i> รายการที่ยกเลิก</label>
+                <input type="radio" class="hidden" name="dealFilter" id="dealFilterHistory" value="history" onchange="renderDealTable()">
+                <label class="btn btn-sm btn-outline-secondary" for="dealFilterHistory"><i class="bi bi-journal-text"></i> ประวัติทั้งหมด</label>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportDealHistoryCSV()">
+                  <i class="bi bi-download"></i> ดาวน์โหลด CSV
+                </button>
               </div>
               <span class="badge bg-light text-dark border" id="dealRecordCount">0 รายการ</span>
             </div>
@@ -1621,8 +1674,8 @@
 
           <div class="table-wrap">
             <table class="table table-hover table-bordered mb-0">
-              <thead>
-                <tr>
+              <thead id="dealTableHead">
+                <tr id="dealTableHeadRow">
                   <th>#</th>
                   <th>สถานะ</th>
                   <th>ผู้ให้ราคา</th>
@@ -2147,6 +2200,7 @@
 <script type="module" src="modules/supplier-deal.js"></script>
 <script type="module" src="modules/supplier-deal-limit.js"></script>
 <script type="module" src="modules/supplier-target.js"></script>
+<script src="modules/supplier-target-excel.js" defer></script>
 
 
 

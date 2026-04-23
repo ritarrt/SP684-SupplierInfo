@@ -1,23 +1,25 @@
 import { loadColors, loadThickness } from "../modules/master-helper.js";
-import { loadCoverageToForm, loadGroups, loadSubGroups } from "../modules/coverage-helper.js";
+import { loadCoverageToForm, loadGroups, loadSubGroups, renderCheckboxDropdown, updateCheckboxText, getCheckboxValues } from "../modules/coverage-helper.js";
 
 // ============================================================
-// DROPDOWN TOGGLE
+// DROPDOWN TOGGLE — รองรับทั้ง region/province/branch และ brand/group/sub/color/thick
 // ============================================================
+const ALL_MULTI_DROPDOWNS = [
+  "regionDropdown", "provinceDropdown", "branchDropdown",
+  "brandDropdown", "groupDropdown", "subDropdown",
+  "colorDropdown", "thickDropdown"
+];
+
 window.toggleDropdown = function (id) {
   const el = document.getElementById(id);
   if (!el) return;
-
   el.classList.toggle("hidden");
 };
 
 document.addEventListener("click", (e) => {
-  const dropdowns = ["regionDropdown", "provinceDropdown", "branchDropdown"];
-
-  dropdowns.forEach(id => {
+  ALL_MULTI_DROPDOWNS.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
-
     if (!el.contains(e.target) && !e.target.closest(`[onclick*="${id}"]`)) {
       el.classList.add("hidden");
     }
@@ -31,38 +33,45 @@ document.addEventListener("click", (e) => {
 function renderCheckboxList(containerId, data) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  
-  const isMultiSelect = containerId.includes("Dropdown");
-  
-  el.innerHTML = (isMultiSelect && data.length > 0 ? `
+
+  const textId = containerId.replace("Dropdown", "Text");
+
+  el.innerHTML = (data.length > 0 ? `
     <label class="block text-sm py-1 font-semibold border-b mb-1">
-      <input type="checkbox" class="mr-2 select-all-checkbox" data-container="${containerId}" value="">
+      <input type="checkbox" class="mr-2 select-all-checkbox" data-container="${containerId}" data-textid="${textId}" value="">
       ทั้งหมด
     </label>
   ` : '') + data.map(d => `
     <label class="block text-sm py-1">
-      <input type="checkbox" value="${d.value}" class="mr-2 item-checkbox" data-container="${containerId}">
+      <input type="checkbox" value="${d.value}" class="mr-2 item-checkbox"
+             data-container="${containerId}" data-textid="${textId}" data-label="${d.label}">
       ${d.label}
     </label>
   `).join("");
-  
-  if (isMultiSelect && data.length > 0) {
-    el.querySelector('.select-all-checkbox')?.addEventListener('change', function() {
-      const container = this.dataset.container;
-      const checkboxes = document.querySelectorAll(`#${container} .item-checkbox`);
-      checkboxes.forEach(cb => cb.checked = this.checked);
-      updateSelectedText(container, container.replace('Dropdown', 'Text'));
+
+  const selectAllCb = el.querySelector('.select-all-checkbox');
+  if (selectAllCb) {
+    selectAllCb.addEventListener('change', function () {
+      el.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = this.checked);
+      _syncCheckboxText(containerId, textId);
     });
   }
+  el.querySelectorAll('.item-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const allItems = el.querySelectorAll('.item-checkbox');
+      if (selectAllCb) selectAllCb.checked = [...allItems].every(c => c.checked);
+      _syncCheckboxText(containerId, textId);
+    });
+  });
 }
 
-function updateSelectedText(containerId, textId) {
-  const values = [...document.querySelectorAll(`#${containerId} input:checked`)]
-    .map(i => i.parentElement.textContent.trim())
-    .filter(t => t !== "ทั้งหมด");
-
-  document.getElementById(textId).innerText =
-    values.length ? values.join(", ") : "ทั้งหมด";
+function _syncCheckboxText(containerId, textId) {
+  const el = document.getElementById(containerId);
+  const textEl = document.getElementById(textId);
+  if (!el || !textEl) return;
+  const labels = [...el.querySelectorAll('.item-checkbox:checked')]
+    .map(cb => cb.dataset.label || cb.value);
+  textEl.textContent = labels.length ? labels.join(", ") : "ทั้งหมด";
 }
 
 // ============================================================
@@ -73,7 +82,7 @@ let branchData = [];
 
 
 function getSelectedValues(containerId) {
-  return [...document.querySelectorAll(`#${containerId} input:checked`)]
+  return [...document.querySelectorAll(`#${containerId} input.item-checkbox:checked`)]
     .map(i => i.value)
     .filter(v => v);
 }
@@ -150,9 +159,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (catSelect) {
     catSelect.addEventListener("change", (e) => {
       const category = e.target.value;
-
-      loadColors(category, "tgColor");
-      loadThickness(category, "tgThick");
+      loadColors(category, "colorDropdown");
+      loadThickness(category, "thickDropdown");
+      loadGroups(category, "groupDropdown");
+      loadSubGroups(category, "subDropdown");
     });
   }
 
@@ -162,46 +172,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (window.supplierNo) {
     await loadCoverageToForm(window.supplierNo, {
       category: "tgCat",
-      brand: "tgBrand",
-      group: "tgGroup",
-      sub: "tgSub",
-      color: "tgColor",
-      thickness: "tgThick",
+      brand: "brand",
+      group: "group",
+      sub: "sub",
       sku: "tgSku"
     });
 
-    // โหลด Group และ Sub Group หลังจาก Coverage โหลดเสร็จ
+    // โหลด Group, Sub, Color, Thickness หลังจาก Coverage โหลดเสร็จ
     const catValue = document.getElementById("tgCat")?.value;
     if (catValue) {
-      await loadGroups(catValue, "tgGroup");
-      await loadSubGroups(catValue, "tgSub");
+      loadGroups(catValue, "groupDropdown");
+      loadSubGroups(catValue, "subDropdown");
+      loadColors(catValue, "colorDropdown");
+      loadThickness(catValue, "thickDropdown");
     }
   }
 
   // ============================================================
-  // Reload GROUP when Category / Brand change
+  // Reload GROUP/SUB/COLOR/THICK when Category changes
   // ============================================================
   const catSelect2 = document.getElementById("tgCat");
-  const brandSelect2 = document.getElementById("tgBrand");
 
   if (catSelect2) {
-
     catSelect2.addEventListener("change", () => {
-      loadGroups(catSelect2.value, "tgGroup");
-    });
-
-    // โหลด group เมื่อ category เปลี่ยน
-    loadGroups(catSelect2.value, "tgGroup");
-  }
-
-  const groupSelect = document.getElementById("tgGroup");
-
-  if (groupSelect) {
-    groupSelect.addEventListener("change", () => {
-      loadSubGroups(
-        catSelect2.value,
-        "tgSub"
-      );
+      const cat = catSelect2.value;
+      loadGroups(cat, "groupDropdown");
+      loadSubGroups(cat, "subDropdown");
+      loadColors(cat, "colorDropdown");
+      loadThickness(cat, "thickDropdown");
     });
   }
 
@@ -233,10 +231,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const targetName = document.getElementById("tgName")?.value?.trim();
       const category = document.getElementById("tgCat")?.value?.trim();
-      const brand = document.getElementById("tgBrand")?.value?.trim();
-      const brandName = document.getElementById("tgBrand")?.selectedOptions[0]?.text || "";
-      const productGroup = document.getElementById("tgGroup")?.value?.trim();
-      const groupName = document.getElementById("tgGroup")?.selectedOptions[0]?.text || "";
+
+      // multi-select values
+      const brandCodes = getSelectedValues("brandDropdown");
+      const groupCodes = getSelectedValues("groupDropdown");
+      const subCodes   = getSelectedValues("subDropdown");
+      const colorCodes = getSelectedValues("colorDropdown");
+      const thickCodes = getSelectedValues("thickDropdown");
+
+      // labels for display
+      const brandLabels = [...document.querySelectorAll("#brandDropdown .item-checkbox:checked")].map(cb => cb.dataset.label || cb.value);
+      const groupLabels = [...document.querySelectorAll("#groupDropdown .item-checkbox:checked")].map(cb => cb.dataset.label || cb.value);
+      const subLabels   = [...document.querySelectorAll("#subDropdown .item-checkbox:checked")].map(cb => cb.dataset.label || cb.value);
 
       const benefitPeriod = document.getElementById("tgBenefit")?.value?.trim();
       const targetType = document.getElementById("tgType")?.value?.trim();
@@ -247,7 +253,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (!targetName) return showToast("กรุณากรอกชื่อเป้าหมาย", true, "tgName");
       if (!category) return showToast("กรุณาเลือกประเภทสินค้า", true, "tgCat");
-      if (!brand) return showToast("กรุณาเลือกแบรนด์", true, "tgBrand");
+      if (brandCodes.length === 0) return showToast("กรุณาเลือกแบรนด์อย่างน้อย 1 รายการ", true);
       if (!benefitPeriod) return showToast("กรุณาเลือกระยะเวลาได้รับผลประโยชน์", true, "tgBenefit");
       if (!targetType) return showToast("กรุณาเลือกประเภทเป้า", true, "tgType");
       if (!targetQty) return showToast("กรุณากรอกเป้าหมาย/หน่วย", true, "tgQty");
@@ -269,16 +275,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         branch: getSelectedValues("branchDropdown").join(",") || null,
         category: category,
 
-        brand: brand,
-        brand_name: brandName,
-        group: productGroup,
-        group_name: groupName,
-      
+        // multi-value fields — comma-separated codes (null ถ้าไม่เลือก)
+        brand_code: brandCodes.length ? brandCodes.join(",") : null,
+        brand_name: brandLabels.length ? brandLabels.join(",") : null,
+        group_code: groupCodes.length ? groupCodes.join(",") : null,
+        group_name: groupLabels.length ? groupLabels.join(",") : null,
+        sub_group_code: subCodes.length ? subCodes.join(",") : null,
+        sub_group_name: subLabels.length ? subLabels.join(",") : null,
+        color: colorCodes.length ? colorCodes.join(",") : null,
+        thickness: thickCodes.length ? thickCodes.join(",") : null,
 
-        sub_group_name: document.getElementById("tgSub")?.selectedOptions[0]?.text || "",
-        sub_group_code: document.getElementById("tgSub")?.value || "",
-        color: document.getElementById("tgColor")?.value || "",
-        thickness: document.getElementById("tgThick")?.value || "",
         mold: document.getElementById("tgMold")?.value || "",
         sku: document.getElementById("tgSku")?.value || "",
 
@@ -353,8 +359,6 @@ document.addEventListener("change", (e) => {
   }
 });
 
-console.log("branchData:", branchData);
-
   // ============================================================
 // 🔥 PROVINCE → BRANCH (MULTI)
 // ============================================================
@@ -378,47 +382,20 @@ document.addEventListener("change", (e) => {
       }))
     );
   }
-
-  // Handle select-all checkbox state when individual items change
-  if (e.target.matches("#regionDropdown .item-checkbox") || 
-      e.target.matches("#provinceDropdown .item-checkbox") ||
-      e.target.matches("#branchDropdown .item-checkbox")) {
-    const container = e.target.dataset.container;
-    const selectAll = document.querySelector(`#${container} .select-all-checkbox`);
-    const itemCheckboxes = document.querySelectorAll(`#${container} .item-checkbox`);
-    if (selectAll) {
-      selectAll.checked = itemCheckboxes.length > 0 && [...itemCheckboxes].every(cb => cb.checked);
-    }
-  }
 });
 
 document.addEventListener("change", (e) => {
 
   if (e.target.matches("#regionDropdown input")) {
-    updateSelectedText("regionDropdown", "regionText");
-    const selectAll = document.querySelector('#regionDropdown .select-all-checkbox');
-    const items = document.querySelectorAll('#regionDropdown .item-checkbox');
-    if (selectAll && items.length > 0) {
-      selectAll.checked = [...items].every(cb => cb.checked);
-    }
+    _syncCheckboxText("regionDropdown", "regionText");
   }
 
   if (e.target.matches("#provinceDropdown input")) {
-    updateSelectedText("provinceDropdown", "provinceText");
-    const selectAll = document.querySelector('#provinceDropdown .select-all-checkbox');
-    const items = document.querySelectorAll('#provinceDropdown .item-checkbox');
-    if (selectAll && items.length > 0) {
-      selectAll.checked = [...items].every(cb => cb.checked);
-    }
+    _syncCheckboxText("provinceDropdown", "provinceText");
   }
 
   if (e.target.matches("#branchDropdown input")) {
-    updateSelectedText("branchDropdown", "branchText");
-    const selectAll = document.querySelector('#branchDropdown .select-all-checkbox');
-    const items = document.querySelectorAll('#branchDropdown .item-checkbox');
-    if (selectAll && items.length > 0) {
-      selectAll.checked = [...items].every(cb => cb.checked);
-    }
+    _syncCheckboxText("branchDropdown", "branchText");
   }
 
 });
@@ -879,7 +856,7 @@ async function loadParentTargets() {
         province: t.province,
         branch: t.branch,
         category: t.category,
-        brand: t.brand,
+        brand: t.brand_code,       // comma-separated brand codes
         group: t.product_group_code,
         group_name: t.product_group,
         sub_group_code: t.sub_group_code,
@@ -914,29 +891,22 @@ document.getElementById("tgParent")?.addEventListener("change", (e) => {
 function disableScopeFields(scope) {
   console.log("🔍 disableScopeFields scope:", scope);
   
-  // Show loading indicator
   showScopeLoadingIndicator(true);
   
-  const fields = [
-    "tgCat", "tgBrand", "tgGroup", "tgSub", 
-    "tgColor", "tgThick", "tgMold", "tgSku"
-  ];
-  
-  fields.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = true;
+  // disable ปุ่ม toggle ของ dropdown แทน (ไม่มี element id ตรงๆ แล้ว)
+  ["brandDropdown","groupDropdown","subDropdown","colorDropdown","thickDropdown"].forEach(id => {
+    const toggle = document.querySelector(`[onclick="toggleDropdown('${id}')"]`);
+    if (toggle) toggle.style.pointerEvents = "none";
   });
+  const catEl = document.getElementById("tgCat");
+  if (catEl) catEl.disabled = true;
 
-  // First, ensure coverage data is loaded
   if (!window.COVERAGE_DATA || window.COVERAGE_DATA.length === 0) {
-    console.log("🔍 Loading coverage data first...");
     loadCoverageToForm(window.supplierNo, {
       category: "tgCat",
-      brand: "tgBrand",
-      group: "tgGroup",
-      sub: "tgSub",
-      color: "tgColor",
-      thickness: "tgThick",
+      brand: "brand",
+      group: "group",
+      sub: "sub",
       sku: "tgSku"
     }).then(() => {
       setScopeValuesWithCategory(scope);
@@ -947,92 +917,54 @@ function disableScopeFields(scope) {
 }
 
 async function setScopeValuesWithCategory(scope) {
-  // 1. Set category first (this will trigger loading of groups, colors, thickness)
   if (scope.category) {
     const catSelect = document.getElementById("tgCat");
     const foundCat = Array.from(catSelect?.options || []).find(opt => opt.value === scope.category || opt.text === scope.category);
     if (foundCat) {
       catSelect.value = foundCat.value;
-      // Trigger category change to load related dropdowns
       catSelect.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }
   
-  // Wait for category change to complete loading (including async loadColors/loadThickness)
-  // Using a promise-based wait to ensure all async operations complete
   await new Promise(resolve => setTimeout(resolve, 500));
   
-  // Also load groups if needed
   if (scope.category) {
-    loadGroups(scope.category, "tgGroup");
-    loadSubGroups(scope.category, "tgSub");
+    loadGroups(scope.category, "groupDropdown");
+    loadSubGroups(scope.category, "subDropdown");
+    loadColors(scope.category, "colorDropdown");
+    loadThickness(scope.category, "thickDropdown");
   }
   
-  // Additional wait for groups/subgroups to populate
-  await new Promise(resolve => setTimeout(resolve, 200));
+  await new Promise(resolve => setTimeout(resolve, 300));
   
-  // Now set all the values
   setScopeFieldValues(scope);
-  
-  // Handle region/province/branch
   handleRegionProvinceBranch(scope);
 }
 
 function setScopeFieldValues(scope) {
-  // Brand
-  if (scope.brand) {
-    const brandSelect = document.getElementById("tgBrand");
-    if (brandSelect) {
-      let found = Array.from(brandSelect.options).find(opt => opt.value === scope.brand);
-      if (!found) {
-        found = Array.from(brandSelect.options).find(opt => opt.text.trim() === scope.brand.trim());
-      }
-      if (found) brandSelect.value = found.value;
-    }
+  // helper: set checkboxes in a dropdown by comma-separated value string
+  function setCheckboxDropdown(dropdownId, valueStr) {
+    if (!valueStr) return;
+    const values = valueStr.split(",").map(v => v.trim()).filter(Boolean);
+    const container = document.getElementById(dropdownId);
+    if (!container) return;
+    const textId = dropdownId.replace("Dropdown", "Text");
+    container.querySelectorAll(".item-checkbox").forEach(cb => {
+      cb.checked = values.includes(cb.value.trim());
+    });
+    _syncCheckboxText(dropdownId, textId);
+    // sync select-all
+    const allItems = container.querySelectorAll(".item-checkbox");
+    const selectAll = container.querySelector(".select-all-checkbox");
+    if (selectAll) selectAll.checked = allItems.length > 0 && [...allItems].every(c => c.checked);
   }
-  
-  // Group
-  if (scope.group) {
-    const groupSelect = document.getElementById("tgGroup");
-    if (groupSelect) {
-      let found = Array.from(groupSelect.options).find(opt => opt.value === scope.group || opt.value === scope.group?.toString().padStart(2, '0'));
-      if (!found && scope.group_name) {
-        found = Array.from(groupSelect.options).find(opt => opt.text.trim() === scope.group_name.trim());
-      }
-      if (found) groupSelect.value = found.value;
-    }
-  }
-  
-  // Sub Group
-  if (scope.sub_group_code) {
-    const subSelect = document.getElementById("tgSub");
-    if (subSelect) {
-      let found = Array.from(subSelect.options).find(opt => opt.value === scope.sub_group_code || opt.value === scope.sub_group_code?.toString().padStart(3, '0'));
-      if (!found && scope.sub_group_name) {
-        found = Array.from(subSelect.options).find(opt => opt.text.trim() === scope.sub_group_name.trim());
-      }
-      if (found) subSelect.value = found.value;
-    }
-  }
-  
-  // Color
-  if (scope.color) {
-    const colorSelect = document.getElementById("tgColor");
-    if (colorSelect) {
-      const found = Array.from(colorSelect.options).find(opt => opt.value === scope.color || opt.text === scope.color);
-      if (found) colorSelect.value = found.value;
-    }
-  }
-  
-  // Thickness
-  if (scope.thickness) {
-    const thickSelect = document.getElementById("tgThick");
-    if (thickSelect) {
-      const found = Array.from(thickSelect.options).find(opt => opt.value === scope.thickness || opt.text === scope.thickness);
-      if (found) thickSelect.value = found.value;
-    }
-  }
-  
+
+  setCheckboxDropdown("brandDropdown", scope.brand);
+  setCheckboxDropdown("groupDropdown", scope.group);
+  setCheckboxDropdown("subDropdown", scope.sub_group_code);
+  setCheckboxDropdown("colorDropdown", scope.color);
+  setCheckboxDropdown("thickDropdown", scope.thickness);
+
   // Mold
   if (scope.mold) {
     const moldSelect = document.getElementById("tgMold");
@@ -1044,7 +976,8 @@ function setScopeFieldValues(scope) {
   
   // SKU
   if (scope.sku) {
-    document.getElementById("tgSku").value = scope.sku;
+    const skuEl = document.getElementById("tgSku");
+    if (skuEl) skuEl.value = scope.sku;
   }
 }
 
@@ -1143,24 +1076,20 @@ async function renderAllProvinces() {
 }
 
 function enableScopeFields() {
-  const fields = [
-    "tgCat", "tgBrand", "tgGroup", "tgSub", 
-    "tgColor", "tgThick", "tgMold", "tgSku"
-  ];
-  
-  fields.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = false;
-  });
+  const catEl = document.getElementById("tgCat");
+  if (catEl) catEl.disabled = false;
 
-  // Re-enable all form fields
-  const regionDiv = document.querySelector('#regionDropdownToggle');
-  const provinceDiv = document.querySelector('#provinceDropdownToggle');
-  const branchDiv = document.querySelector('#branchDropdownToggle');
-  
-  if (regionDiv) regionDiv.style.pointerEvents = "auto";
-  if (provinceDiv) provinceDiv.style.pointerEvents = "auto";
-  if (branchDiv) branchDiv.style.pointerEvents = "auto";
+  ["brandDropdown","groupDropdown","subDropdown","colorDropdown","thickDropdown"].forEach(id => {
+    const toggle = document.querySelector(`[onclick="toggleDropdown('${id}')"]`);
+    if (toggle) toggle.style.pointerEvents = "auto";
+    // clear selections
+    const container = document.getElementById(id);
+    if (container) {
+      container.querySelectorAll("input").forEach(cb => cb.checked = false);
+      const textId = id.replace("Dropdown", "Text");
+      _syncCheckboxText(id, textId);
+    }
+  });
 
   ["regionText", "provinceText", "branchText"].forEach(id => {
     const el = document.getElementById(id);
@@ -1168,9 +1097,7 @@ function enableScopeFields() {
   });
   ["regionDropdown", "provinceDropdown", "branchDropdown"].forEach(id => {
     const container = document.getElementById(id);
-    if (container) {
-      container.querySelectorAll("input").forEach(cb => cb.checked = false);
-    }
+    if (container) container.querySelectorAll("input").forEach(cb => cb.checked = false);
   });
 }
 
@@ -1184,62 +1111,31 @@ function setSelectValue(selectId, value) {
 function setMultiSelectValues(dropdownId, valuesStr) {
   if (!valuesStr) return;
   
-  const rawValues = valuesStr.split(",").map(v => v.trim());
+  const rawValues = valuesStr.split(",").map(v => v.trim()).filter(Boolean);
   const container = document.getElementById(dropdownId);
   const textId = dropdownId.replace("Dropdown", "Text");
   
   if (!container) return;
   
-  console.log(`🔍 setMultiSelectValues: ${dropdownId}`, { rawValues, textId });
-  
-  container.querySelectorAll("input").forEach(cb => {
+  container.querySelectorAll("input.item-checkbox").forEach(cb => {
     const cbValue = cb.value.trim();
-    const cbText = cb.parentElement.textContent.trim();
-    
-    // Try multiple matching strategies
-    const isMatch = rawValues.some(v => {
-      return cbValue === v || 
-             cbText === v ||
-             cbValue === v.replace(/^0+/, '') || // Remove leading zeros
-             cbValue.padStart(3, '0') === v.padStart(3, '0'); // Normalize padding
-    });
-    
+    const isMatch = rawValues.some(v => cbValue === v);
     cb.checked = isMatch;
-    if (isMatch) {
-      cb.dispatchEvent(new Event('change', { bubbles: true }));
-    }
   });
 
-  const selectedLabels = [...container.querySelectorAll("input:checked")]
-    .map(cb => cb.parentElement.textContent.trim())
-    .filter(t => t !== "ทั้งหมด");
-  
-  const textEl = document.getElementById(textId);
-  if (textEl) {
-    textEl.textContent = selectedLabels.length ? selectedLabels.join(", ") : "ทั้งหมด";
-  }
+  // sync select-all
+  const allItems = container.querySelectorAll(".item-checkbox");
+  const selectAll = container.querySelector(".select-all-checkbox");
+  if (selectAll) selectAll.checked = allItems.length > 0 && [...allItems].every(c => c.checked);
+
+  _syncCheckboxText(dropdownId, textId);
 }
 
 // ===================================================
-// ENSURE DEFAULT OPTIONS FOR ALL DROPDOWNS
+// ENSURE DEFAULT OPTIONS — ไม่ใช้แล้ว (checkbox dropdown ไม่ต้องการ)
 // ===================================================
 function ensureDefaultOptions() {
-  const defaults = {
-    tgCat: "ทั้งหมด",
-    tgBrand: "ทั้งหมด",
-    tgGroup: "ทั้งหมด",
-    tgSub: "ทั้งหมด",
-    tgColor: "ทั้งหมด",
-    tgThick: "ทั้งหมด",
-    tgMold: "ทั้งหมด"
-  };
-
-  Object.entries(defaults).forEach(([id, text]) => {
-    const select = document.getElementById(id);
-    if (select && select.options.length > 0 && select.options[0].value === "") {
-      select.options[0].textContent = text;
-    }
-  });
+  // no-op: brand/group/sub/color/thick ใช้ checkbox dropdown แล้ว
 }
 
 // ===================================================

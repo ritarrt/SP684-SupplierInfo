@@ -189,6 +189,12 @@ async function loadDealList(supplierNo) {
         return skuCategory === categoryFilter;
       });
     }
+
+    // Filter by selected contact person
+    const contactFilter = document.getElementById("dealContactSelect")?.value;
+    if (contactFilter) {
+      data = data.filter(d => d.contact_person === contactFilter);
+    }
     
     dealData = data;
     renderDealTable();
@@ -203,38 +209,42 @@ async function loadDealList(supplierNo) {
    RENDER DEAL TABLE
  ============================== */
 function renderDealTable() {
-  const tbody = document.getElementById("dealTableBody");
-  const countEl = document.getElementById("dealRecordCount");
-
-  if (!tbody) return;
-  
-  hideLoadingIndicator("dealTableBody");
-
   const filterValue = document.querySelector("input[name='dealFilter']:checked")?.value;
 
-  let rows = [...dealData];
+  // "ประวัติทั้งหมด" โหลดจาก endpoint ประวัติ
+  if (filterValue === "history") {
+    loadDealHistory();
+    return;
+  }
 
-  if (filterValue === "active") {
-    rows = rows.filter(r => r.status === "OPEN" || r.status === "USE");
+  const tbody   = document.getElementById("dealTableBody");
+  const countEl = document.getElementById("dealRecordCount");
+  if (!tbody) return;
+
+  hideLoadingIndicator("dealTableBody");
+
+  // restore header กลับเป็น deal mode
+  const headRow = document.getElementById("dealTableHeadRow");
+  if (headRow && !headRow.querySelector('th[class*="text-success"]') === false) {
+    headRow.innerHTML = `
+      <th>#</th><th>สถานะ</th><th>ผู้ให้ราคา</th><th>ชื่อดีลราคา</th>
+      <th>Project No</th><th>SKU</th><th>สาขา</th><th>ราคาตั้งต้น</th>
+      <th>กรอบเงื่อนไข</th><th>Tier</th><th>จาก</th><th>ถึง</th>
+      <th>ราคาดีล/ส่วนลด</th><th>หน่วย</th><th>ประเภทดีล</th>
+      <th>วันที่เริ่ม</th><th>วันที่สิ้นสุด</th>
+      <th>ลงลัง</th><th>Supplier ส่ง</th><th>หมายเหตุ</th><th>แก้ไขล่าสุด</th>
+    `;
   }
-  if (filterValue === "closed") {
-    rows = rows.filter(r => r.status === "CLOSED");
-  }
-  if (filterValue === "cancelled") {
-    rows = rows.filter(r => r.status === "CANCELLED");
-  }
+
+  // แสดงทุก status ไม่ filter
+  let rows = [...dealData];
 
   // Sort by SKU then branch
   rows.sort((a, b) => {
-    const skuA = (a.sku || "").toString().toLowerCase();
-    const skuB = (b.sku || "").toString().toLowerCase();
-    if (skuA < skuB) return -1;
-    if (skuA > skuB) return 1;
-    const branchA = (a.branch || "").toString().toLowerCase();
-    const branchB = (b.branch || "").toString().toLowerCase();
-    if (branchA < branchB) return -1;
-    if (branchA > branchB) return 1;
-    return 0;
+    const skuA = (a.sku || "").toLowerCase();
+    const skuB = (b.sku || "").toLowerCase();
+    if (skuA !== skuB) return skuA < skuB ? -1 : 1;
+    return (a.branch || "").toLowerCase() < (b.branch || "").toLowerCase() ? -1 : 1;
   });
 
   tbody.innerHTML = "";
@@ -482,6 +492,7 @@ async function initDealModule() {
   await loadBranchMaster();
   await populateDealBranchFilter(); // Load SKU data first
   loadDealProviderOptions(supplierNo);
+  await populateDealContactFilter(supplierNo);
   loadDealList(supplierNo);
   
   // Initialize stepped pricing
@@ -575,6 +586,145 @@ function onDealCategoryChange() {
   }
 }
 
+/* ===============================
+   LOAD DEAL HISTORY (import sessions)
+ ============================== */
+async function loadDealHistory() {
+  const supplierNo = new URLSearchParams(location.search).get("id");
+  if (!supplierNo) return;
+
+  const tbody   = document.getElementById("dealTableBody");
+  const countEl = document.getElementById("dealRecordCount");
+  if (!tbody) return;
+
+  showLoadingIndicator("dealTableBody", "กำลังโหลดประวัติ import...");
+
+  // สลับ header เป็น history mode
+  const headRow = document.getElementById("dealTableHeadRow");
+  if (headRow) {
+    headRow.innerHTML = `
+      <th>#</th>
+      <th>วันที่ import</th>
+      <th class="text-center">ทั้งหมด</th>
+      <th class="text-center text-success">ใหม่</th>
+      <th class="text-center text-primary">อัปเดต</th>
+      <th class="text-center text-muted">ไม่เปลี่ยน</th>
+      <th class="text-center text-danger">ผิดพลาด</th>
+      <th>ไฟล์</th>
+      <th class="text-center">CSV</th>
+    `;
+  }
+
+  try {
+    const res = await fetch(`${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-import-logs`);
+    if (!res.ok) throw new Error(await res.text());
+    const logs = await res.json();
+
+    tbody.innerHTML = "";
+
+    if (logs.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="100%" class="text-center py-4 text-muted">ยังไม่มีประวัติการ import</td></tr>`;
+      if (countEl) countEl.textContent = "0 ครั้ง";
+      return;
+    }
+
+    logs.forEach((log, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="text-center">${i + 1}</td>
+        <td>${log.imported_at || "-"}</td>
+        <td class="text-center">${log.total_rows}</td>
+        <td class="text-center text-success fw-bold">${log.inserted}</td>
+        <td class="text-center text-primary fw-bold">${log.updated}</td>
+        <td class="text-center text-muted">${log.skipped}</td>
+        <td class="text-center ${log.errors > 0 ? "text-danger fw-bold" : "text-muted"}">${log.errors}</td>
+        <td class="text-muted small">${log.note || "-"}</td>
+        <td class="text-center">
+          <button class="btn btn-sm btn-outline-secondary" onclick="downloadImportLogCSV(${log.log_id}, '${log.imported_at}')">
+            <i class="bi bi-download"></i> CSV
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    if (countEl) countEl.textContent = `${logs.length} ครั้ง`;
+
+  } catch (err) {
+    console.error("Load import logs error:", err);
+    tbody.innerHTML = `<tr><td colspan="100%" class="text-center text-danger py-4">โหลดประวัติไม่สำเร็จ: ${err.message}</td></tr>`;
+  }
+}
+
+/* ===============================
+   DOWNLOAD IMPORT LOG CSV
+ ============================== */
+window.downloadImportLogCSV = async function(logId, importedAt) {
+  const supplierNo = new URLSearchParams(location.search).get("id");
+  if (!supplierNo) return;
+
+  try {
+    const res = await fetch(`${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-import-logs/${logId}/items`);
+    if (!res.ok) throw new Error(await res.text());
+    const items = await res.json();
+
+    if (items.length === 0) { alert("ไม่มีรายละเอียดใน import ครั้งนี้"); return; }
+
+    const headers = ["#","deal_id","SKU","สาขา","ชื่อดีล","ผลลัพธ์","หมายเหตุ"];
+    const escCSV = v => {
+      if (v == null) return "";
+      const s = String(v);
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g,'""')}"` : s;
+    };
+    const rows = items.map((item, i) => [
+      i + 1, item.deal_id || "", item.sku || "", item.branch || "",
+      item.deal_name || "", item.action || "", item.error_msg || ""
+    ].map(escCSV).join(","));
+
+    const bom = "\uFEFF";
+    const csv = bom + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `import_log_${logId}_${(importedAt||"").replace(/[: ]/g,"-").substring(0,16)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert("โหลด CSV ไม่สำเร็จ: " + err.message);
+  }
+};
+
+// Populate contact person filter from contacts API
+async function populateDealContactFilter(supplierNo) {
+  const contactSelect = document.getElementById("dealContactSelect");
+  if (!contactSelect) return;
+  try {
+    const res = await fetch(`${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/contacts`);
+    if (!res.ok) return;
+    const contacts = await res.json();
+    contactSelect.innerHTML = '<option value="">ทุกคน</option>';
+    // กรองเฉพาะ active (status ไม่ใช่ CANCELLED) และไม่ซ้ำชื่อ
+    const seen = new Set();
+    contacts
+      .filter(c => c.status !== "CANCELLED" && c.name)
+      .forEach(c => {
+        if (!seen.has(c.name)) {
+          seen.add(c.name);
+          contactSelect.add(new Option(c.name, c.name));
+        }
+      });
+  } catch (err) {
+    console.error("Load contacts for filter error:", err);
+  }
+}
+
+// Handle contact filter change
+function onDealContactChange() {
+  const supplierNo = new URLSearchParams(location.search).get("id");
+  if (supplierNo) loadDealList(supplierNo);
+}
+
 // Expose functions and data to global scope
 window.renderDealTable = renderDealTable;
 window.loadDealList = loadDealList;
@@ -582,6 +732,7 @@ window.getBranchName = getBranchName;
 window.formatThaiDate = formatThaiDate;
 window.onDealBranchChange = onDealBranchChange;
 window.onDealCategoryChange = onDealCategoryChange;
+window.onDealContactChange = onDealContactChange;
 window.initDealModule = initDealModule;
 window.cachedSkuData = window.cachedSkuData;
 
