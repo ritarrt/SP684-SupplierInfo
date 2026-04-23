@@ -32,26 +32,16 @@ const prefix = `PT/${year}${month}`;
       .input("branch", sql.NVarChar, d.branch)
       .input("category", sql.NVarChar, d.category)
 
-      .input("brand", sql.NVarChar, d.brand_name ?? null)
-      .input("brand_code", sql.NVarChar, d.brand_no ?? d.brand ?? null)
+      .input("brand", sql.NVarChar, d.brand_name || null)
+      .input("brand_code", sql.NVarChar, d.brand_code || d.brand_no || d.brand || null)
 
-      .input("product_group", sql.NVarChar, d.group_name ?? null)
-      .input("product_group_code", sql.NVarChar, d.group_code ?? d.group ?? null)
+      .input("product_group", sql.NVarChar, d.group_name || null)
+      .input("product_group_code", sql.NVarChar, d.group_code || d.group || null)
 
-     .input("sub_group", sql.NVarChar, d.sub_group_name ?? d.sub_group ?? null)
-      .input(
-  "sub_group_code",
-  sql.NVarChar,
-  d.sub_group_code && d.sub_group_code !== ''
-    ? d.sub_group_code.toString().padStart(3, "0")
-    : null
-)
-      .input("color", sql.NVarChar, d.color)
-      .input(
-  "thickness",
-  sql.NVarChar,
-  d.thickness ? d.thickness.toString().padStart(2, "0") : null
-)
+      .input("sub_group", sql.NVarChar, d.sub_group_name || d.sub_group || null)
+      .input("sub_group_code", sql.NVarChar, d.sub_group_code || null)
+      .input("color", sql.NVarChar, d.color || null)
+      .input("thickness", sql.NVarChar, d.thickness || null)
       .input("mold", sql.NVarChar, d.mold)
       .input("sku", sql.NVarChar, d.sku)
       .input("benefit_period", sql.NVarChar, d.benefit_period)
@@ -161,7 +151,10 @@ WHERE status = 'OPEN'
   AND CONVERT(DATE, GETDATE()) > end_date;
 SELECT
     t.*,
-    CASE 
+    -- brand_name: ถ้าเลือกหลายแบรนด์ ใช้ค่าที่เก็บใน t.brand (brand_name) โดยตรง
+    -- ถ้าว่างค่อย fallback ไปหา join
+    CASE
+        WHEN t.brand IS NOT NULL AND t.brand <> '' THEN t.brand
         WHEN t.category = 'Aluminum' THEN ba.BRAND_NAME
         WHEN t.category = 'Glass' THEN bg.BRAND_NAME
         WHEN t.category = 'Gypsum' THEN gy.BRAND_NAME
@@ -169,7 +162,11 @@ SELECT
         WHEN t.category = 'Sealant' THEN bs.BRAND_NAME
         WHEN t.category = 'Accessories' THEN accb.BRAND_NAME
     END AS brand_name,
-    accg.GroupName AS group_name,
+    -- group_name: ใช้ t.product_group ที่เก็บ name ไว้แล้ว
+    CASE
+        WHEN t.product_group IS NOT NULL AND t.product_group <> '' THEN t.product_group
+        ELSE accg.GroupName
+    END AS group_name,
     ISNULL(a.actual_qty,0) AS actual_qty,
     ISNULL(a.actual_amount,0) AS actual_amount,
     ISNULL(a.actual_weight,0) AS actual_weight,
@@ -230,50 +227,98 @@ OUTER APPLY (
       AND r.Posting_Date < DATEADD(DAY, 1, t.end_date)
     AND (
         (t.category = 'Accessories'
-            AND r.SKU LIKE CONCAT(
-                'E',
-                RIGHT('00' + ISNULL(t.brand_code,''), 2),
-                RIGHT('00' + ISNULL(t.product_group_code,''), 2),
-                CASE WHEN t.sub_group_code IS NULL THEN '%'
-                    ELSE RIGHT('000' + t.sub_group_code, 3) + '%' END
+            AND EXISTS (
+              SELECT 1
+              FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''), ',') bc_s
+              CROSS JOIN (
+                SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
+                WHERE NULLIF(t.sub_group_code,'') IS NULL
+                UNION ALL
+                SELECT LTRIM(RTRIM(sc_s.value))
+                FROM STRING_SPLIT(REPLACE(ISNULL(t.sub_group_code,''),' ',''), ',') sc_s
+                WHERE LTRIM(RTRIM(sc_s.value)) <> ''
+                  AND NULLIF(t.sub_group_code,'') IS NOT NULL
+              ) sub_s
+              WHERE LTRIM(RTRIM(bc_s.value)) <> ''
+                AND r.SKU LIKE CONCAT(
+                  'E',
+                  RIGHT('000' + LTRIM(RTRIM(bc_s.value)), 3),   -- brand 3 หลัก
+                  CASE WHEN NULLIF(t.product_group_code,'') IS NULL THEN ''
+                       ELSE RIGHT('00' + LTRIM(RTRIM(
+                              (SELECT TOP 1 LTRIM(RTRIM(gc_s.value))
+                               FROM STRING_SPLIT(REPLACE(t.product_group_code,' ',''),',') gc_s
+                               WHERE LTRIM(RTRIM(gc_s.value))<>'')
+                            )), 2)
+                  END,
+                  CASE WHEN sub_s.sub_val IS NULL THEN '%'
+                       ELSE RIGHT('00' + sub_s.sub_val, 2) + '%'  -- sub 2 หลัก
+                  END
+                )
             )
         )
         OR
         (t.category <> 'Accessories'
-            AND r.SKU LIKE CONCAT(
-                CASE t.category
-                    WHEN 'Glass' THEN 'G'
+            AND EXISTS (
+              SELECT 1
+              FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''), ',') bc_s
+              CROSS JOIN (
+                SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
+                WHERE NULLIF(t.sub_group_code,'') IS NULL
+                UNION ALL
+                SELECT LTRIM(RTRIM(sc_s.value))
+                FROM STRING_SPLIT(REPLACE(ISNULL(t.sub_group_code,''),' ',''), ',') sc_s
+                WHERE LTRIM(RTRIM(sc_s.value)) <> ''
+                  AND NULLIF(t.sub_group_code,'') IS NOT NULL
+              ) sub_s
+              WHERE LTRIM(RTRIM(bc_s.value)) <> ''
+                AND r.SKU LIKE CONCAT(
+                  CASE t.category
+                    WHEN 'Glass'    THEN 'G'
                     WHEN 'Aluminum' THEN 'A'
-                    WHEN 'Sealant' THEN 'S'
-                    WHEN 'Gypsum' THEN 'Y'
-                    WHEN 'C-Line' THEN 'C'
-                END,
-                RIGHT('00' + ISNULL(t.brand_code,''), 2),
-                RIGHT('00' + ISNULL(t.product_group_code,''), 2),
-                CASE WHEN t.sub_group_code IS NULL THEN '%'
-                    ELSE RIGHT('000' + t.sub_group_code, 3) + '%' END
+                    WHEN 'Sealant'  THEN 'S'
+                    WHEN 'Gypsum'   THEN 'Y'
+                    WHEN 'C-Line'   THEN 'C'
+                  END,
+                  RIGHT('00' + LTRIM(RTRIM(bc_s.value)), 2),    -- brand 2 หลัก
+                  CASE WHEN NULLIF(t.product_group_code,'') IS NULL THEN ''
+                       ELSE RIGHT('00' + LTRIM(RTRIM(
+                              (SELECT TOP 1 LTRIM(RTRIM(gc_s.value))
+                               FROM STRING_SPLIT(REPLACE(t.product_group_code,' ',''),',') gc_s
+                               WHERE LTRIM(RTRIM(gc_s.value))<>'')
+                            )), 2)
+                  END,
+                  CASE WHEN sub_s.sub_val IS NULL THEN '%'
+                       ELSE RIGHT('000' + sub_s.sub_val, 3) + '%'  -- sub 3 หลัก
+                  END
+                )
             )
         )
     )
     AND (
-        t.color IS NULL OR t.color = ''
-        OR (
-            CASE 
-                WHEN t.category = 'Gypsum'
-                    THEN SUBSTRING(r.SKU, 9, 3)
+        NULLIF(t.color,'') IS NULL
+        OR EXISTS (
+          SELECT 1 FROM STRING_SPLIT(REPLACE(t.color,' ',''), ',') col_s
+          WHERE LTRIM(RTRIM(col_s.value)) <> ''
+            AND (
+              CASE 
+                WHEN t.category = 'Gypsum' THEN SUBSTRING(r.SKU, 9, 3)
                 ELSE SUBSTRING(r.SKU, 9, 2)
-            END
-        ) = t.color
+              END
+            ) = LTRIM(RTRIM(col_s.value))
+        )
     )
     AND (
-        t.thickness IS NULL OR t.thickness = ''
-        OR (
-            CASE 
-                WHEN t.category = 'Gypsum'
-                    THEN SUBSTRING(r.SKU, 12, 2)
+        NULLIF(t.thickness,'') IS NULL
+        OR EXISTS (
+          SELECT 1 FROM STRING_SPLIT(REPLACE(t.thickness,' ',''), ',') th_s
+          WHERE LTRIM(RTRIM(th_s.value)) <> ''
+            AND (
+              CASE 
+                WHEN t.category = 'Gypsum' THEN SUBSTRING(r.SKU, 12, 2)
                 ELSE SUBSTRING(r.SKU, 11, 2)
-            END
-        ) = t.thickness
+              END
+            ) = LTRIM(RTRIM(th_s.value))
+        )
     )
 AND (
       NULLIF(t.branch,'') IS NULL
@@ -298,25 +343,39 @@ WHEN LOWER(LTRIM(RTRIM(t.target_unit))) IN (N'ตร.ฟ.','ตร.ฟุต','s
         END AS actual_value
 ) v
 LEFT JOIN BRAND_Aluminium ba
-  ON ba.BRAND_NO = RIGHT('00' + t.brand_code, 2)
+  ON ba.BRAND_NO = RIGHT('00' + LTRIM(RTRIM(
+       (SELECT TOP 1 value FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''),',') WHERE LTRIM(RTRIM(value))<>'')
+     )), 2)
  AND t.category = 'Aluminum'
 LEFT JOIN BRAND_Glass bg
-  ON bg.BRAND_NO = RIGHT('00' + t.brand_code, 2)
+  ON bg.BRAND_NO = RIGHT('00' + LTRIM(RTRIM(
+       (SELECT TOP 1 value FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''),',') WHERE LTRIM(RTRIM(value))<>'')
+     )), 2)
  AND t.category = 'Glass'
 LEFT JOIN BRAND_Gypsum gy
-  ON gy.BRAND_NO = RIGHT('00' + t.brand_code, 2)
+  ON gy.BRAND_NO = RIGHT('00' + LTRIM(RTRIM(
+       (SELECT TOP 1 value FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''),',') WHERE LTRIM(RTRIM(value))<>'')
+     )), 2)
  AND t.category = 'Gypsum'
 LEFT JOIN BRAND_CLine bc
-  ON bc.BRAND_NO = RIGHT('00' + t.brand_code, 2)
+  ON bc.BRAND_NO = RIGHT('00' + LTRIM(RTRIM(
+       (SELECT TOP 1 value FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''),',') WHERE LTRIM(RTRIM(value))<>'')
+     )), 2)
  AND t.category = 'C-Line'
 LEFT JOIN BRAND_Sealant bs
-  ON bs.BRAND_NO = RIGHT('00' + t.brand_code, 2)
+  ON bs.BRAND_NO = RIGHT('00' + LTRIM(RTRIM(
+       (SELECT TOP 1 value FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''),',') WHERE LTRIM(RTRIM(value))<>'')
+     )), 2)
  AND t.category = 'Sealant'
 LEFT JOIN Accessory_BRAND accb
-  ON accb.BRAND_NO = RIGHT('000' + t.brand_code, 3)
+  ON accb.BRAND_NO = RIGHT('000' + LTRIM(RTRIM(
+       (SELECT TOP 1 value FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''),',') WHERE LTRIM(RTRIM(value))<>'')
+     )), 3)
  AND t.category = 'Accessories'
 LEFT JOIN Accessory_GROUP accg
-  ON accg.Group_ID = RIGHT('00' + t.product_group_code, 2)
+  ON accg.Group_ID = RIGHT('00' + LTRIM(RTRIM(
+       (SELECT TOP 1 value FROM STRING_SPLIT(REPLACE(ISNULL(t.product_group_code,''),' ',''),',') WHERE LTRIM(RTRIM(value))<>'')
+     )), 2)
 OUTER APPLY (
   SELECT SUM(ISNULL(sub_calc.actual_value,0)) AS sub_actual_value
   FROM supplier_targets sub
@@ -343,28 +402,70 @@ OUTER APPLY (
         AND r.Posting_Date < DATEADD(DAY, 1, sub.end_date)
         AND (
           (sub.category = 'Accessories'
-            AND r.SKU LIKE CONCAT(
-              'E',
-              RIGHT('00' + ISNULL(sub.brand_code,''), 2),
-              RIGHT('00' + ISNULL(sub.product_group_code,''), 2),
-              CASE WHEN sub.sub_group_code IS NULL THEN '%'
-                  ELSE RIGHT('000' + sub.sub_group_code, 3) + '%' END
+            AND EXISTS (
+              SELECT 1
+              FROM STRING_SPLIT(REPLACE(ISNULL(sub.brand_code,''),' ',''), ',') bc_s
+              CROSS JOIN (
+                SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
+                WHERE NULLIF(sub.sub_group_code,'') IS NULL
+                UNION ALL
+                SELECT LTRIM(RTRIM(sc_s.value))
+                FROM STRING_SPLIT(REPLACE(ISNULL(sub.sub_group_code,''),' ',''), ',') sc_s
+                WHERE LTRIM(RTRIM(sc_s.value)) <> ''
+                  AND NULLIF(sub.sub_group_code,'') IS NOT NULL
+              ) sub_s
+              WHERE LTRIM(RTRIM(bc_s.value)) <> ''
+                AND r.SKU LIKE CONCAT(
+                  'E',
+                  RIGHT('000' + LTRIM(RTRIM(bc_s.value)), 3),   -- brand 3 หลัก
+                  CASE WHEN NULLIF(sub.product_group_code,'') IS NULL THEN ''
+                       ELSE RIGHT('00' + LTRIM(RTRIM(
+                              (SELECT TOP 1 LTRIM(RTRIM(gc_s.value))
+                               FROM STRING_SPLIT(REPLACE(sub.product_group_code,' ',''),',') gc_s
+                               WHERE LTRIM(RTRIM(gc_s.value))<>'')
+                            )), 2)
+                  END,
+                  CASE WHEN sub_s.sub_val IS NULL THEN '%'
+                       ELSE RIGHT('00' + sub_s.sub_val, 2) + '%'  -- sub 2 หลัก
+                  END
+                )
             )
           )
           OR
           (sub.category <> 'Accessories'
-            AND r.SKU LIKE CONCAT(
-              CASE sub.category
-                WHEN 'Glass' THEN 'G'
-                WHEN 'Aluminum' THEN 'A'
-                WHEN 'Sealant' THEN 'S'
-                WHEN 'Gypsum' THEN 'Y'
-                WHEN 'C-Line' THEN 'C'
-              END,
-              RIGHT('00' + ISNULL(sub.brand_code,''), 2),
-              RIGHT('00' + ISNULL(sub.product_group_code,''), 2),
-              CASE WHEN sub.sub_group_code IS NULL THEN '%'
-                  ELSE RIGHT('000' + sub.sub_group_code, 3) + '%' END
+            AND EXISTS (
+              SELECT 1
+              FROM STRING_SPLIT(REPLACE(ISNULL(sub.brand_code,''),' ',''), ',') bc_s
+              CROSS JOIN (
+                SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
+                WHERE NULLIF(sub.sub_group_code,'') IS NULL
+                UNION ALL
+                SELECT LTRIM(RTRIM(sc_s.value))
+                FROM STRING_SPLIT(REPLACE(ISNULL(sub.sub_group_code,''),' ',''), ',') sc_s
+                WHERE LTRIM(RTRIM(sc_s.value)) <> ''
+                  AND NULLIF(sub.sub_group_code,'') IS NOT NULL
+              ) sub_s
+              WHERE LTRIM(RTRIM(bc_s.value)) <> ''
+                AND r.SKU LIKE CONCAT(
+                  CASE sub.category
+                    WHEN 'Glass'    THEN 'G'
+                    WHEN 'Aluminum' THEN 'A'
+                    WHEN 'Sealant'  THEN 'S'
+                    WHEN 'Gypsum'   THEN 'Y'
+                    WHEN 'C-Line'   THEN 'C'
+                  END,
+                  RIGHT('00' + LTRIM(RTRIM(bc_s.value)), 2),    -- brand 2 หลัก
+                  CASE WHEN NULLIF(sub.product_group_code,'') IS NULL THEN ''
+                       ELSE RIGHT('00' + LTRIM(RTRIM(
+                              (SELECT TOP 1 LTRIM(RTRIM(gc_s.value))
+                               FROM STRING_SPLIT(REPLACE(sub.product_group_code,' ',''),',') gc_s
+                               WHERE LTRIM(RTRIM(gc_s.value))<>'')
+                            )), 2)
+                  END,
+                  CASE WHEN sub_s.sub_val IS NULL THEN '%'
+                       ELSE RIGHT('000' + sub_s.sub_val, 3) + '%'  -- sub 3 หลัก
+                  END
+                )
             )
           )
         )
@@ -1242,109 +1343,102 @@ export const debugTargetCalculation = async (req, res) => {
     const pool = await getPool();
     const targetId = req.params.id;
 
+    // 1. ดึงข้อมูล target
     const targetResult = await pool.request()
       .input("targetId", sql.Int, targetId)
-      .query(`
-        SELECT 
-          t.*,
-          t.brand_code AS brand_no
-        FROM supplier_targets t
-        WHERE t.id = @targetId
-      `);
+      .query(`SELECT t.* FROM supplier_targets t WHERE t.id = @targetId`);
 
     if (targetResult.recordset.length === 0) {
       return res.status(404).json({ error: "Target not found" });
     }
 
     const t = targetResult.recordset[0];
-    
-    const categoryPrefix = t.category === 'Glass' ? 'G'
-      : t.category === 'Aluminum' ? 'A'
-      : t.category === 'Sealant' ? 'S'
-      : t.category === 'Gypsum' ? 'Y'
-      : t.category === 'C-Line' ? 'C'
-      : t.category === 'Accessories' ? 'E'
-      : null;
 
-    const brandNo = t.brand_code;
-    const skuPattern = categoryPrefix && brandNo 
-      ? `${categoryPrefix}${String(brandNo).padStart(2, '0')}${String(t.product_group_code || '').padStart(2, '0')}${t.sub_group_code ? String(t.sub_group_code).padStart(3, '0') : ''}%`
-      : null;
+    // 2. สร้าง patterns จริงๆ ที่ SQL จะใช้ (multi-value)
+    const isAcc = t.category === 'Accessories';
+    const prefix = { Glass:'G', Aluminum:'A', Sealant:'S', Gypsum:'Y', 'C-Line':'C', Accessories:'E' }[t.category] || '?';
 
-    // Debug: Check raw data in date range (no filter)
-    const rawDataCheck = await pool.request()
+    const brandCodes = (t.brand_code || '').split(',').map(v => v.trim()).filter(Boolean);
+    const groupCodes = (t.product_group_code || '').split(',').map(v => v.trim()).filter(Boolean);
+    const subCodes   = (t.sub_group_code || '').split(',').map(v => v.trim()).filter(Boolean);
+
+    const patterns = [];
+    const groupPart = groupCodes.length
+      ? (isAcc ? groupCodes[0].padStart(2,'0') : groupCodes[0].padStart(2,'0'))
+      : '';
+
+    for (const bc of brandCodes) {
+      const brandPart = isAcc ? bc.padStart(3,'0') : bc.padStart(2,'0');
+      if (subCodes.length === 0) {
+        patterns.push(`${prefix}${brandPart}${groupPart}%`);
+      } else {
+        for (const sc of subCodes) {
+          const subPart = isAcc ? sc.padStart(2,'0') : sc.padStart(3,'0');
+          patterns.push(`${prefix}${brandPart}${groupPart}${subPart}%`);
+        }
+      }
+    }
+
+    // 3. ดึง sample SKU จาก RE_Detail_WithCost ในช่วงวันที่ (ไม่กรอง SKU)
+    const rawSample = await pool.request()
       .input("startDate", sql.Date, t.start_date)
-      .input("endDate", sql.Date, t.end_date)
-      .input("skuPattern", sql.NVarChar, skuPattern)
+      .input("endDate",   sql.Date, t.end_date)
       .query(`
-        SELECT TOP 10 
-          Posting_Date, SKU, Branch, Quantity, Total_Cost, Area_SQFT
+        SELECT TOP 20 SKU, Posting_Date, Branch, Quantity, Total_Cost, Area_SQFT
         FROM RE_Detail_WithCost
         WHERE Posting_Date >= @startDate
           AND Posting_Date < DATEADD(DAY, 1, @endDate)
-          AND SKU LIKE @skuPattern
         ORDER BY Posting_Date DESC
       `);
 
-    const actualResult = await pool.request()
-      .input("startDate", sql.Date, t.start_date)
-      .input("endDate", sql.Date, t.end_date)
-      .input("skuPattern", sql.NVarChar, skuPattern)
-      .input("targetSku", sql.NVarChar, t.sku)
-      .input("branch", sql.NVarChar, t.branch)
-      .query(`
-        SELECT 
-          SUM(Quantity) AS actual_qty,
-          SUM(Total_Cost) AS actual_amount,
-          SUM(ISNULL(Gross_Weight,0)) AS actual_weight,
-          SUM(ISNULL(Area_SQFT,0)) AS actual_area,
-          COUNT(*) AS record_count
-        FROM RE_Detail_WithCost
-        WHERE Posting_Date >= @startDate
-          AND Posting_Date < DATEADD(DAY, 1, @endDate)
-          AND (
-            (@skuPattern IS NOT NULL AND SKU LIKE @skuPattern)
-            OR (
-              @targetSku IS NOT NULL 
-              AND @targetSku <> ''
-              AND EXISTS (
-                SELECT 1 FROM STRING_SPLIT(@targetSku, ',') s
-                WHERE LTRIM(RTRIM(s.value)) <> '' AND SKU = LTRIM(RTRIM(s.value))
-              )
-            )
-            OR (@skuPattern IS NULL AND (@targetSku IS NULL OR @targetSku = ''))
-          )
-          AND (
-            @branch IS NULL OR @branch = ''
-            OR EXISTS (
-              SELECT 1 FROM STRING_SPLIT(REPLACE(@branch,' ',''), ',') b
-              WHERE LTRIM(RTRIM(b.value)) <> ''
-                AND UPPER(LTRIM(RTRIM(Branch))) = UPPER(LTRIM(RTRIM(b.value)))
-            )
-          )
-      `);
-
-    const a = actualResult.recordset[0];
-    const actualQty = parseFloat(a.actual_qty) || 0;
-    const actualAmount = parseFloat(a.actual_amount) || 0;
-    const actualWeight = parseFloat(a.actual_weight) || 0;
-    const actualArea = parseFloat(a.actual_area) || 0;
-
-    let actualValue = 0;
-    const targetUnitLower = (t.target_unit || '').toLowerCase().trim();
-    
-    if (targetUnitLower === 'ชิ้น' || targetUnitLower === 'pcs') {
-      actualValue = actualQty;
-    } else if (targetUnitLower === 'บาท') {
-      actualValue = actualAmount;
-    } else if (targetUnitLower === 'ตัน' || targetUnitLower === 'ton') {
-      actualValue = actualWeight / 1000;
-    } else if (targetUnitLower === 'ตร.ฟ.' || targetUnitLower === 'ตร.ฟุต' || targetUnitLower === 'sqft' || targetUnitLower === 'sq ft') {
-      actualValue = actualArea;
+    // 4. ดึง sample SKU ที่ match pattern แรก (ถ้ามี)
+    let patternSample = [];
+    if (patterns.length > 0) {
+      const pr = await pool.request()
+        .input("startDate",  sql.Date,    t.start_date)
+        .input("endDate",    sql.Date,    t.end_date)
+        .input("skuPattern", sql.NVarChar, patterns[0])
+        .query(`
+          SELECT TOP 20 SKU, Posting_Date, Branch, Quantity, Total_Cost, Area_SQFT
+          FROM RE_Detail_WithCost
+          WHERE Posting_Date >= @startDate
+            AND Posting_Date < DATEADD(DAY, 1, @endDate)
+            AND SKU LIKE @skuPattern
+          ORDER BY Posting_Date DESC
+        `);
+      patternSample = pr.recordset;
     }
 
-    const targetQty = parseFloat(t.target_qty) || 0;
-    const achievementPercent = targetQty > 0 ? (actualValue * 100) / targetQty : 0;
+    // 5. นับ record ที่ match ทุก pattern รวมกัน (ใช้ dynamic SQL)
+    let totalCount = 0;
+    let totalArea = 0;
+    let totalWeight = 0;
+    let totalAmount = 0;
+    let totalQty = 0;
+    for (const pat of patterns) {
+      const cr = await pool.request()
+        .input("startDate",  sql.Date,    t.start_date)
+        .input("endDate",    sql.Date,    t.end_date)
+        .input("skuPattern", sql.NVarChar, pat)
+        .query(`
+          SELECT
+            COUNT(*) AS cnt,
+            SUM(ISNULL(Area_SQFT,0))   AS area,
+            SUM(ISNULL(Gross_Weight,0)) AS weight,
+            SUM(ISNULL(Total_Cost,0))  AS amount,
+            SUM(ISNULL(Quantity,0))    AS qty
+          FROM RE_Detail_WithCost
+          WHERE Posting_Date >= @startDate
+            AND Posting_Date < DATEADD(DAY, 1, @endDate)
+            AND SKU LIKE @skuPattern
+        `);
+      const row = cr.recordset[0];
+      totalCount  += row.cnt || 0;
+      totalArea   += parseFloat(row.area)   || 0;
+      totalWeight += parseFloat(row.weight) || 0;
+      totalAmount += parseFloat(row.amount) || 0;
+      totalQty    += parseFloat(row.qty)    || 0;
+    }
 
     res.json({
       target: {
@@ -1355,29 +1449,25 @@ export const debugTargetCalculation = async (req, res) => {
         brand_code: t.brand_code,
         product_group_code: t.product_group_code,
         sub_group_code: t.sub_group_code,
-        target_unit: t.target_unit,
-        target_qty: t.target_qty,
-        sku: t.sku,
+        color: t.color,
+        thickness: t.thickness,
         branch: t.branch,
+        target_qty: t.target_qty,
+        target_unit: t.target_unit,
         start_date: t.start_date,
-        end_date: t.end_date
+        end_date: t.end_date,
       },
-      calculation: {
-        category_prefix: categoryPrefix,
-        sku_pattern: skuPattern,
-        actual_qty: actualQty,
-        actual_amount: actualAmount,
-        actual_weight: actualWeight,
-        actual_area: actualArea,
-        actual_value: actualValue,
-        target_qty: targetQty,
-        achievement_percent: achievementPercent,
-        record_count: a.record_count
+      patterns_generated: patterns,
+      totals: {
+        record_count: totalCount,
+        actual_qty: totalQty,
+        actual_amount: totalAmount,
+        actual_weight_kg: totalWeight,
+        actual_weight_ton: totalWeight / 1000,
+        actual_area_sqft: totalArea,
       },
-      debug: {
-        raw_data_sample: rawDataCheck.recordset,
-        raw_count: rawDataCheck.recordset.length
-      }
+      raw_sample_in_date_range: rawSample.recordset,
+      pattern_match_sample: patternSample,
     });
 
   } catch (err) {
@@ -1385,3 +1475,5 @@ export const debugTargetCalculation = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+
