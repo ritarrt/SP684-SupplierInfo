@@ -218,3 +218,24 @@ export const getCategoriesForFilter = async (req, res) => {
     res.status(500).json({ error: "Failed to load categories" });
   }
 };
+
+
+// Get all product categories
+export const getCategories = async (req, res) => {
+  try {
+    const categories = [
+      { id: 1, name: "Glass", label: "กระจก" },
+      { id: 2, name: "Aluminum", label: "อลูมิเนียม" },
+      { id: 3, name: "Gypsum", label: "ยิปซั่ม" },
+      { id: 4, name: "Sealant", label: "ซีลแลนท์" },
+      { id: 5, name: "C-Line", label: "ซี-ไลน์" },
+      { id: 6, name: "Accessories", label: "อุปกรณ์เสริม" },
+    ];
+
+    res.json(categories);
+
+  } catch (err) {
+    console.error("getCategories error:", err);
+    res.status(500).json({ message: "Failed to fetch categories" });
+  }
+};
