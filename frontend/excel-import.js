@@ -322,27 +322,36 @@ function renderGypsumPreview(result) {
       <th rowspan="2">ชื่อสินค้า</th>
       <th rowspan="2">ยี่ห้อ</th>
       <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
-      <th colspan="4" class="bg-blue-50">ราคา</th>
+      <th rowspan="2" class="bg-gray-50">ชั้น<br/>ลด</th>
+      <th colspan="4" class="bg-blue-50">ราคา (บาท)</th>
+      <th colspan="3" class="bg-yellow-50">ส่วนลด %</th>
       <th colspan="4" class="bg-green-50">ราคาขาย</th>
-      <th colspan="2" class="bg-yellow-50">ส่วนลด %</th>
     </tr>
     <tr class="text-xs">
-      <th class="bg-blue-50">base_price</th>
-      <th class="bg-blue-50">discount_price_1</th>
-      <th class="bg-blue-50">discount_price_2</th>
-      <th class="bg-blue-50">discount_price_3</th>
-      <th class="bg-green-50">selling_price_w1</th>
-      <th class="bg-green-50">selling_price_w2</th>
-      <th class="bg-green-50">selling_price_r1</th>
-      <th class="bg-green-50">selling_price_r2</th>
-      <th class="bg-yellow-50">discount_pct_1</th>
-      <th class="bg-yellow-50">discount_pct_2</th>
+      <th class="bg-blue-50">ตั้งต้น</th>
+      <th class="bg-blue-50">หลังลด 1</th>
+      <th class="bg-blue-50">หลังลด 2</th>
+      <th class="bg-blue-50">หลังลด 3</th>
+      <th class="bg-yellow-50">% ชั้น 1</th>
+      <th class="bg-yellow-50">% ชั้น 2</th>
+      <th class="bg-yellow-50">% ชั้น 3</th>
+      <th class="bg-green-50">W1</th>
+      <th class="bg-green-50">W2</th>
+      <th class="bg-green-50">R1</th>
+      <th class="bg-green-50">R2</th>
     </tr>
   `;
   
   // Build table body
   tbody.innerHTML = "";
   preview.forEach((row) => {
+    const fmt = v => (v != null && v !== 0) ? parseFloat(v).toFixed(2) : '<span class="text-gray-300">-</span>';
+    const fmtPct = v => v ? `${(v * 100).toFixed(2)}%` : '<span class="text-gray-300">-</span>';
+    const numDisc = row.numDiscounts || 0;
+    const discBadge = numDisc > 0
+      ? `<span class="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">${numDisc} ชั้น</span>`
+      : `<span class="text-gray-300 text-xs">-</span>`;
+
     const tr = document.createElement("tr");
     tr.className = "text-sm";
     tr.innerHTML = `
@@ -350,16 +359,18 @@ function renderGypsumPreview(result) {
       <td>${row.productName}</td>
       <td class="text-gray-600">${row.brand || '-'}</td>
       <td>${row.branch}</td>
-      <td class="text-right">${row.base_price.toFixed(2)}</td>
-      <td class="text-right">${row.discount_price_1.toFixed(2)}</td>
-      <td class="text-right text-gray-400">${row.discount_price_2.toFixed(2)}</td>
-      <td class="text-right text-gray-400">${row.discount_price_3.toFixed(2)}</td>
-      <td class="text-right">${row.selling_price_w1.toFixed(2)}</td>
-      <td class="text-right">${row.selling_price_w2.toFixed(2)}</td>
-      <td class="text-right">${row.selling_price_r1.toFixed(2)}</td>
-      <td class="text-right">${row.selling_price_r2.toFixed(2)}</td>
-      <td class="text-right">${(row.discount_pct_1 * 100).toFixed(2)}%</td>
-      <td class="text-right">${(row.discount_pct_2 * 100).toFixed(2)}%</td>
+      <td class="text-center">${discBadge}</td>
+      <td class="text-right">${fmt(row.base_price)}</td>
+      <td class="text-right">${fmt(row.discount_price_1)}</td>
+      <td class="text-right">${fmt(row.discount_price_2)}</td>
+      <td class="text-right">${fmt(row.discount_price_3)}</td>
+      <td class="text-right">${fmtPct(row.discount_pct_1)}</td>
+      <td class="text-right">${fmtPct(row.discount_pct_2)}</td>
+      <td class="text-right">${fmtPct(row.discount_pct_3)}</td>
+      <td class="text-right">${fmt(row.selling_price_w1)}</td>
+      <td class="text-right">${fmt(row.selling_price_w2)}</td>
+      <td class="text-right">${fmt(row.selling_price_r1)}</td>
+      <td class="text-right">${fmt(row.selling_price_r2)}</td>
     `;
     tbody.appendChild(tr);
   });

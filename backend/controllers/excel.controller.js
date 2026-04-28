@@ -382,9 +382,15 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
               // reExVat               = ราคาสุดท้ายหลังหักทุกชั้น
               const numDiscounts = discountPctRows.length; // จำนวนชั้น discount จริง
 
-              const discPct1 = discountPctRows[0] ? parseFloat(discountPctRows[0][colIdx]) || 0 : 0;
-              const discPct2 = discountPctRows[1] ? parseFloat(discountPctRows[1][colIdx]) || 0 : 0;
-              const discPct3 = discountPctRows[2] ? parseFloat(discountPctRows[2][colIdx]) || 0 : 0;
+              // normalize % → ถ้าค่า > 1 แสดงว่า Excel เก็บเป็น % จริง (เช่น 4.6) ให้หาร 100
+              // ถ้าค่า <= 1 แสดงว่าเป็น decimal แล้ว (เช่น 0.046) ใช้ตรงๆ
+              const normPct = v => {
+                const n = parseFloat(v) || 0;
+                return n > 1 ? n / 100 : n;
+              };
+              const discPct1 = discountPctRows[0] ? normPct(discountPctRows[0][colIdx]) : 0;
+              const discPct2 = discountPctRows[1] ? normPct(discountPctRows[1][colIdx]) : 0;
+              const discPct3 = discountPctRows[2] ? normPct(discountPctRows[2][colIdx]) : 0;
 
               const reExVatVal = reExVat ? parseFloat(reExVat[colIdx]) || 0 : 0;
 
@@ -989,7 +995,21 @@ async function previewGypsumData(excelBuffer, sheetName) {
 
         const priceList = rawData[priceListRowIndex];
         let reExVat = null, priceW1 = null, priceW2 = null, priceR1 = null, priceR2 = null;
-        let discountRow1 = null, discountRow2 = null;
+        // ใช้ logic เดียวกับ importGypsumDataFromBuffer — รองรับ discount สูงสุด 3 ชั้น
+        const discountPctRows  = []; // [row1%, row2%, row3%]
+        const discountPriceRows = []; // [rowAfter1, rowAfter2, rowAfter3]
+
+        // Scan แถวระหว่าง block header กับ priceListRowIndex (discount ที่อยู่ก่อน Price List)
+        for (let k = i + 1; k < priceListRowIndex; k++) {
+          const dr = rawData[k];
+          if (!dr) continue;
+          const nc1 = dr[1] !== undefined ? String(dr[1]).trim() : '';
+          if (nc1 === 'Discount') {
+            discountPctRows.push(dr);
+          } else if (nc1 === '' && discountPctRows.length > discountPriceRows.length) {
+            discountPriceRows.push(dr);
+          }
+        }
 
         let nextBlockIndex = priceListRowIndex + 1;
         while (nextBlockIndex < rawData.length) {
@@ -1001,16 +1021,17 @@ async function previewGypsumData(excelBuffer, sheetName) {
 
           if (/^Y\d/.test(nc0) && !nextIsPriceLabel && nc1 !== '') break;
 
-          // ไม่เพิ่ม SKU จาก merged cells — ใช้ Sheet1 lookup เท่านั้น
-
           if (nc1 === 'RE (ex VAT)')         reExVat = dr;
           else if (nc1 === 'Price : W1')     priceW1 = dr;
           else if (nc1 === 'Price : W2')     priceW2 = dr;
           else if (nc1 === 'Price : R1')     priceR1 = dr;
           else if (nc1 === 'Price : R2')     priceR2 = dr;
-          else if (nc1 === 'Discount' && !priceW1) {
-            if (!discountRow1) discountRow1 = dr;
-            else if (!discountRow2) discountRow2 = dr;
+          else if (nc1 === 'Discount') {
+            // หยุดเก็บ discount หลังจากเจอ Price : W1 แล้ว (ป้องกัน discount ปลอม)
+            if (!priceW1) discountPctRows.push(dr);
+          } else if (nc1 === '' && !priceW1 && discountPctRows.length > discountPriceRows.length) {
+            const hasValues = dr.some(v => v !== null && v !== undefined && v !== '');
+            if (hasValues) discountPriceRows.push(dr);
           }
 
           nextBlockIndex++;
@@ -1029,8 +1050,36 @@ async function previewGypsumData(excelBuffer, sheetName) {
             let basePrice = priceList ? parseFloat(priceList[colIdx]) || 0 : 0;
             if (basePrice === 0 && reExVat) basePrice = parseFloat(reExVat[colIdx]) || 0;
 
-            const discPct1 = discountRow1 ? parseFloat(discountRow1[colIdx]) || 0 : 0;
-            const discPct2 = discountRow2 ? parseFloat(discountRow2[colIdx]) || 0 : 0;
+            const numDiscounts = discountPctRows.length;
+            // normalize % → ถ้าค่า > 1 แสดงว่า Excel เก็บเป็น % จริง (เช่น 4.6) ให้หาร 100
+            const normPct = v => { const n = parseFloat(v) || 0; return n > 1 ? n / 100 : n; };
+            const discPct1 = discountPctRows[0] ? normPct(discountPctRows[0][colIdx]) : 0;
+            const discPct2 = discountPctRows[1] ? normPct(discountPctRows[1][colIdx]) : 0;
+            const discPct3 = discountPctRows[2] ? normPct(discountPctRows[2][colIdx]) : 0;
+            const reExVatVal = reExVat ? parseFloat(reExVat[colIdx]) || 0 : 0;
+
+            const getDiscPrice = (rowArr, idx, fallback) => {
+              if (!rowArr[idx]) return fallback;
+              const v = parseFloat(rowArr[idx][colIdx]);
+              return (v && !isNaN(v)) ? v : fallback;
+            };
+
+            let discPrice1 = 0, discPrice2 = 0, discPrice3 = 0;
+            if (numDiscounts === 0) {
+              discPrice1 = reExVatVal;
+            } else if (numDiscounts === 1) {
+              discPrice1 = getDiscPrice(discountPriceRows, 0, reExVatVal);
+            } else if (numDiscounts === 2) {
+              const fallback1 = discPct1 > 0 ? Math.round(basePrice * (1 - discPct1) * 100) / 100 : reExVatVal;
+              discPrice1 = getDiscPrice(discountPriceRows, 0, fallback1);
+              discPrice2 = getDiscPrice(discountPriceRows, 1, reExVatVal);
+            } else {
+              const fallback1 = discPct1 > 0 ? Math.round(basePrice * (1 - discPct1) * 100) / 100 : reExVatVal;
+              discPrice1 = getDiscPrice(discountPriceRows, 0, fallback1);
+              const fallback2 = discPct2 > 0 ? Math.round(discPrice1 * (1 - discPct2) * 100) / 100 : reExVatVal;
+              discPrice2 = getDiscPrice(discountPriceRows, 1, fallback2);
+              discPrice3 = getDiscPrice(discountPriceRows, 2, reExVatVal);
+            }
 
             previewRows.push({
               sku,
@@ -1038,13 +1087,15 @@ async function previewGypsumData(excelBuffer, sheetName) {
               brand: brandName,
               branch: branches[0],           // ตัวอย่างสาขาแรก
               totalBranches: branches.length, // จำนวนสาขาจริง
+              numDiscounts,
               // คอลัมน์ที่จะเก็บ
               base_price:         basePrice,
               discount_pct_1:     discPct1,
               discount_pct_2:     discPct2,
-              discount_price_1:   reExVat ? parseFloat(reExVat[colIdx]) || 0 : 0,
-              discount_price_2:   0,
-              discount_price_3:   0,
+              discount_pct_3:     discPct3,
+              discount_price_1:   discPrice1,
+              discount_price_2:   discPrice2,
+              discount_price_3:   discPrice3,
               selling_price_w1:   parseFloat(priceW1[colIdx]) || 0,
               selling_price_w2:   parseFloat(priceW2[colIdx]) || 0,
               selling_price_r1:   parseFloat(priceR1[colIdx]) || 0,
