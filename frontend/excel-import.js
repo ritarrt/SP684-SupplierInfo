@@ -57,12 +57,13 @@ function createProductTypeTabs() {
   }
   
   if (productTypes.length === 0) {
-    // Show message if no product types
     productTypeTabs.innerHTML = `
       <div class="px-4 py-2 text-gray-500 text-sm">
         ไม่พบประเภทสินค้า กรุณาไปตั้งค่าที่หน้าเป้าสินค้า
       </div>
     `;
+    // โหลดข้อมูลตารางล่างแม้ไม่มี tabs
+    loadImportData(1);
     return;
   }
   
@@ -75,7 +76,7 @@ function createProductTypeTabs() {
     productTypeTabs.appendChild(btn);
   });
   
-  // Select first tab by default
+  // Select first tab by default (จะเรียก loadImportData ผ่าน selectTab)
   if (productTypes.length > 0) {
     selectTab(productTypes[0]);
   }
@@ -110,9 +111,7 @@ function selectTab(type) {
   dataTable.querySelector("thead").innerHTML = "";
   dataTable.querySelector("tbody").innerHTML = "";
 
-  // Sync filter และโหลดข้อมูลตาม tab
-  const ptFilter = document.getElementById("filterProductType");
-  if (ptFilter) ptFilter.value = type;
+  // โหลดข้อมูลตาราง — ไม่ผูก filter กับ tab เพื่อให้แสดงข้อมูลทั้งหมด
   loadImportData(1);
 }
 
@@ -245,22 +244,156 @@ function showDataPreview() {
   
   dataSection.classList.remove("hidden");
   
-  // For Gypsum, don't show preview table (special format)
+  // For Gypsum, show preview from backend
   if (currentTab === "Gypsum") {
-    dataTable.querySelector("thead").innerHTML = "";
-    dataTable.querySelector("tbody").innerHTML = `
-      <tr>
-        <td colspan="100" class="py-6 text-center text-gray-600">
-          ไฟล์ Gypsum มีโครงสร้างพิเศษ - ระบบจะประมวลผลโดยตรง
-        </td>
-      </tr>
-    `;
-    rowCount.textContent = "พร้อมส่งไปประมวลผล";
+    loadGypsumPreview();
     return;
   }
   
   // For other types, show preview
   renderTable(currentData);
+}
+
+async function loadGypsumPreview() {
+  try {
+    // Read original file as base64
+    const excelBuffer = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const bytes = new Uint8Array(e.target.result);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        resolve(btoa(binary));
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(currentFile);
+    });
+
+    const response = await fetch(`${API_BASE}/api/excel/preview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sheetName: currentSheetName,
+        productType: currentTab,
+        excelBuffer: excelBuffer
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      showStatus(`ข้อผิดพลาด: ${error.message}`, "error");
+      return;
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.preview && result.preview.length > 0) {
+      renderGypsumPreview(result);
+    } else {
+      showStatus("ไม่พบข้อมูลที่จะนำเข้า", "warning");
+      dataTable.querySelector("thead").innerHTML = "";
+      dataTable.querySelector("tbody").innerHTML = `
+        <tr>
+          <td colspan="100" class="py-6 text-center text-gray-600">
+            ไม่พบข้อมูลที่จะนำเข้า
+          </td>
+        </tr>
+      `;
+    }
+  } catch (err) {
+    console.error("Preview error:", err);
+    showStatus("เกิดข้อผิดพลาดในการโหลด preview", "error");
+  }
+}
+
+function renderGypsumPreview(result) {
+  const { preview, totalSkus, totalRows, branches } = result;
+  const thead = dataTable.querySelector("thead");
+  const tbody = dataTable.querySelector("tbody");
+  
+  // Build table header - แสดงคอลัมน์ที่จะเก็บจริงใน DB
+  thead.innerHTML = `
+    <tr class="text-xs">
+      <th rowspan="2">SKU</th>
+      <th rowspan="2">ชื่อสินค้า</th>
+      <th rowspan="2">ยี่ห้อ</th>
+      <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
+      <th colspan="4" class="bg-blue-50">ราคา</th>
+      <th colspan="4" class="bg-green-50">ราคาขาย</th>
+      <th colspan="2" class="bg-yellow-50">ส่วนลด %</th>
+    </tr>
+    <tr class="text-xs">
+      <th class="bg-blue-50">base_price</th>
+      <th class="bg-blue-50">discount_price_1</th>
+      <th class="bg-blue-50">discount_price_2</th>
+      <th class="bg-blue-50">discount_price_3</th>
+      <th class="bg-green-50">selling_price_w1</th>
+      <th class="bg-green-50">selling_price_w2</th>
+      <th class="bg-green-50">selling_price_r1</th>
+      <th class="bg-green-50">selling_price_r2</th>
+      <th class="bg-yellow-50">discount_pct_1</th>
+      <th class="bg-yellow-50">discount_pct_2</th>
+    </tr>
+  `;
+  
+  // Build table body
+  tbody.innerHTML = "";
+  preview.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.className = "text-sm";
+    tr.innerHTML = `
+      <td class="font-mono text-xs">${row.sku}</td>
+      <td>${row.productName}</td>
+      <td class="text-gray-600">${row.brand || '-'}</td>
+      <td>${row.branch}</td>
+      <td class="text-right">${row.base_price.toFixed(2)}</td>
+      <td class="text-right">${row.discount_price_1.toFixed(2)}</td>
+      <td class="text-right text-gray-400">${row.discount_price_2.toFixed(2)}</td>
+      <td class="text-right text-gray-400">${row.discount_price_3.toFixed(2)}</td>
+      <td class="text-right">${row.selling_price_w1.toFixed(2)}</td>
+      <td class="text-right">${row.selling_price_w2.toFixed(2)}</td>
+      <td class="text-right">${row.selling_price_r1.toFixed(2)}</td>
+      <td class="text-right">${row.selling_price_r2.toFixed(2)}</td>
+      <td class="text-right">${(row.discount_pct_1 * 100).toFixed(2)}%</td>
+      <td class="text-right">${(row.discount_pct_2 * 100).toFixed(2)}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  
+  // Show summary
+  rowCount.innerHTML = `
+    <div class="space-y-2 text-sm">
+      <div class="text-lg font-semibold text-blue-600">📊 สรุปข้อมูลที่จะนำเข้า</div>
+      <div class="grid grid-cols-2 gap-2 mt-2">
+        <div><strong>ตาราง:</strong> excel_import_data</div>
+        <div><strong>จำนวน SKU:</strong> ${totalSkus} SKU</div>
+        <div><strong>จำนวนสาขา:</strong> ${branches.length} สาขา</div>
+        <div><strong>รวมแถวทั้งหมด:</strong> ${totalRows} แถว</div>
+      </div>
+      <div class="mt-3 p-3 bg-gray-50 rounded">
+        <strong>สาขาทั้งหมด (${branches.length}):</strong>
+        <div class="text-xs mt-1 text-gray-600">${branches.join(', ')}</div>
+      </div>
+      <div class="mt-3 p-3 bg-blue-50 rounded text-xs">
+        <strong>💾 คอลัมน์ที่จะบันทึก:</strong>
+        <ul class="list-disc list-inside mt-1 space-y-0.5">
+          <li><strong>ข้อมูลพื้นฐาน:</strong> branch, product_type, sku, product_name, brand, unit</li>
+          <li><strong>ราคา:</strong> base_price, discount_price_1/2/3</li>
+          <li><strong>ราคาขาย:</strong> selling_price_w1/w2/r1/r2</li>
+          <li><strong>ส่วนลด:</strong> discount_pct_1/2 (เปอร์เซ็นต์)</li>
+          <li><strong>อื่นๆ:</strong> project_no, project_discount_1/2, project_price, carton_price, shipping_cost, free_item</li>
+          <li><strong>อัตโนมัติ:</strong> created_at, updated_at</li>
+        </ul>
+      </div>
+      <div class="mt-2 text-xs text-gray-500">
+        * แสดง ${preview.length} SKU แรก (สาขา ${branches[0]} เป็นตัวอย่าง)
+      </div>
+    </div>
+  `;
 }
 
 function renderTable(data) {
@@ -583,45 +716,34 @@ async function loadImportData(page = 1) {
   const pagination = document.getElementById("dataPagination");
 
   tbody.innerHTML = `
-    <tr><td colspan="11" class="text-center py-6 text-gray-400">
+    <tr><td colspan="13" class="text-center py-6 text-gray-400">
       <i class="bi bi-hourglass-split"></i> กำลังโหลด...
     </td></tr>
   `;
 
   const productType = document.getElementById("filterProductType")?.value || "";
   const branch      = document.getElementById("filterBranch")?.value || "";
-  const sku         = document.getElementById("filterSku")?.value || "";
+  const searchText  = document.getElementById("filterSku")?.value || "";
 
   const params = new URLSearchParams({ page, limit: 50 });
   if (productType) params.append("productType", productType);
   if (branch)      params.append("branch", branch);
-  if (sku)         params.append("search", sku);
+  if (searchText)  params.append("search", searchText);
 
   try {
     const response = await fetch(`${API_BASE}/api/excel/data?${params}`);
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      tbody.innerHTML = `<tr><td colspan="11" class="text-center py-6 text-red-400">โหลดข้อมูลไม่สำเร็จ: ${err.error || err.message || response.status}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" class="text-center py-6 text-red-400">โหลดข้อมูลไม่สำเร็จ: ${err.error || err.message || response.status}</td></tr>`;
       return;
     }
 
     const { data, total, totalPages } = await response.json();
 
-    // Update product type filter options (ทำแค่ครั้งแรก)
-    const ptFilter = document.getElementById("filterProductType");
-    if (ptFilter && ptFilter.options.length <= 1 && productTypes.length > 0) {
-      productTypes.forEach(t => {
-        const opt = document.createElement("option");
-        opt.value = t;
-        opt.textContent = t;
-        ptFilter.appendChild(opt);
-      });
-    }
-
     summary.textContent = `พบ ${total.toLocaleString()} รายการ`;
 
     if (!data || data.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="11" class="text-center py-6 text-gray-400">ไม่มีข้อมูล</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" class="text-center py-6 text-gray-400">ไม่มีข้อมูล</td></tr>`;
       pagination.innerHTML = "";
       return;
     }
@@ -652,10 +774,13 @@ async function loadImportData(page = 1) {
           <td>${row.productName || '-'}</td>
           <td class="text-gray-600">${row.brand || '-'}</td>
           <td><span class="font-medium">${row.branch || '-'}</span></td>
-          ${priceCell('base_price',       row.basePrice)}
+          ${priceCell('base_price', row.basePrice)}
+          <td class="text-right text-orange-600 font-medium">${row.discountPct1 ? (row.discountPct1 * 100).toFixed(1) + '%' : '-'}</td>
           ${priceCell('discount_price_1', row.discountPrice1)}
-          ${priceCell('discount_price_2', row.discountPrice2)}
-          ${priceCell('discount_price_3', row.discountPrice3)}
+          <td class="text-right text-orange-600 font-medium">${row.discountPct2 ? (row.discountPct2 * 100).toFixed(1) + '%' : '-'}</td>
+          <td class="text-right text-gray-400">${row.discountPct2 ? fmt(row.discountPrice2) : '-'}</td>
+          <td class="text-right text-orange-600 font-medium">${row.discountPct3 ? (row.discountPct3 * 100).toFixed(1) + '%' : '-'}</td>
+          <td class="text-right text-gray-400">${row.discountPct3 ? fmt(row.discountPrice3) : '-'}</td>
           <td class="text-gray-400 text-xs">${date}</td>
         </tr>
       `;
@@ -681,7 +806,7 @@ async function loadImportData(page = 1) {
     }
 
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-center py-6 text-red-400">เกิดข้อผิดพลาด</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" class="text-center py-6 text-red-400">เกิดข้อผิดพลาด</td></tr>`;
     console.error("loadImportData error:", err);
   }
 }
@@ -690,5 +815,6 @@ async function loadImportData(page = 1) {
 // INITIALIZE ON PAGE LOAD
 // ============================================
 
+// initializeProductTypes จะเรียก loadImportData เองผ่าน selectTab
+// ไม่ต้องเรียก loadImportData() แยกเพื่อป้องกัน race condition
 initializeProductTypes();
-loadImportData();
