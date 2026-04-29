@@ -25,7 +25,9 @@ export async function importExcelData(req, res) {
       const sheetLower = sheetName.toLowerCase();
       if (sheetLower.includes('gypsum') || sheetLower.includes('ยิปซั่ม') || sheetLower.includes('y1') || sheetLower.includes('sb')) {
         detectedType = 'Gypsum';
-      } else if (sheetLower.includes('glass') || sheetLower.includes('กระจก')) {
+      } else if (sheetLower.includes('glass') || sheetLower.includes('กระจก') ||
+                 sheetLower === 'float' || sheetLower === 'coated' ||
+                 sheetLower === 't&l' || sheetLower === 'igu') {
         detectedType = 'Glass';
       } else if (sheetLower.includes('aluminum') || sheetLower.includes('อลูมิเนียม')) {
         detectedType = 'Aluminum';
@@ -50,7 +52,9 @@ export async function importExcelData(req, res) {
           imported = await importGypsumDataFromBuffer(pool, bufferData, sheetName);
         }
       } else if (detectedType === "Glass") {
-        imported = await importGlassData(pool, data, null);
+        if (bufferData) {
+          imported = await importGlassData(pool, bufferData, sheetName);
+        }
       } else {
         imported = data ? data.length : 0;
       }
@@ -535,62 +539,193 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
 
 /**
  * =====================================================
- * Helper: Import Glass Data
+ * Helper: Import Glass Data from Excel Buffer
+ * Sheet: float
  * =====================================================
+ *
+ * Column mapping (float sheet):
+ *   col0=SKU, col1=ชื่อ, col2=หนา, col3=หมายเหตุ
+ *   RE per region:  BKK=5, N=6, NE=7, C=8, E=9, S=10
+ *   W1/W2/R1/R2:   BKK=21-24, N=26-29, NE=31-34, C=36-39, E=41-44, S=46-49
+ *
+ * Region → branchCodes:
+ *   BKK → 00TR,01TJ,02TN,03TS,04TP
+ *   C   → 05AY,21BS,22BP,24TL,25SB,07RB
+ *   N   → 11PL,12CM,17CR,23NS
+ *   NE  → 08NR,09UB,10KK,18UD,20SK
+ *   E   → 06RY,15CB
+ *   S   → 13SR,14HY,16PK,19PC
  */
-async function importGlassData(pool, data, logId) {
+async function importGlassData(pool, excelBuffer, sheetName) {
   let imported = 0;
 
-  for (const row of data) {
-    try {
-      const sku = row["SKU"] || row.sku || "";
-      const productName = row["ชื่อสินค้า"] || row.product_name || "";
-      const branch = row["สาขา"] || row.branch || "";
-      const basePrice = parseFloat(row["ราคาตั้งต้น"] || row.base_price || 0) || 0;
+  try {
+    console.log(`[Glass Parser] Starting import for sheet: ${sheetName}`);
 
-      if (!sku) continue;
-
-      await pool
-        .request()
-        .input("branch", sql.NVarChar(100), branch)
-        .input("productType", sql.NVarChar(100), "Glass")
-        .input("sku", sql.NVarChar(50), sku)
-        .input("productName", sql.NVarChar(255), productName)
-        .input("brand", sql.NVarChar(100), "")
-        .input("unit", sql.NVarChar(50), "")
-        .input("basePrice", sql.Decimal(18, 2), basePrice)
-        .input("discountPrice1", sql.Decimal(18, 2), 0)
-        .input("discountPrice2", sql.Decimal(18, 2), 0)
-        .input("discountPrice3", sql.Decimal(18, 2), 0)
-        .input("projectNo", sql.NVarChar(50), "")
-        .input("projectDiscount1", sql.Decimal(18, 2), 0)
-        .input("projectDiscount2", sql.Decimal(18, 2), 0)
-        .input("projectPrice", sql.Decimal(18, 2), 0)
-        .input("cartonPrice", sql.Decimal(18, 2), 0)
-        .input("shippingCost", sql.Decimal(18, 2), 0)
-        .input("freeItem", sql.NVarChar(255), "")
-        .query(`
-          INSERT INTO excel_import_data (
-            branch, product_type, sku, product_name, brand, unit,
-            base_price, discount_price_1, discount_price_2, discount_price_3,
-            project_no, project_discount_1, project_discount_2, project_price,
-            carton_price, shipping_cost, free_item
-          )
-          VALUES (
-            @branch, @productType, @sku, @productName, @brand, @unit,
-            @basePrice, @discountPrice1, @discountPrice2, @discountPrice3,
-            @projectNo, @projectDiscount1, @projectDiscount2, @projectPrice,
-            @cartonPrice, @shippingCost, @freeItem
-          )
-        `);
-
-      imported++;
-    } catch (err) {
-      console.error("Error importing glass row:", err);
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) {
+      console.error(`[Glass Parser] Sheet "${sheetName}" not found`);
+      return 0;
     }
-  }
 
-  return imported;
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    console.log(`[Glass Parser] Raw rows: ${data.length}`);
+
+    // Load brand mapping จาก BRAND_Glass (เหมือน Gypsum)
+    const brandResult = await pool.request().query(`
+      SELECT BRAND_NO, BRAND_NAME FROM BRAND_Glass
+    `);
+    const brandMap = {};
+    brandResult.recordset.forEach(row => {
+      brandMap[String(row.BRAND_NO).padStart(2, '0')] = row.BRAND_NAME;
+    });
+    console.log(`[Glass Parser] Brand map loaded: ${Object.keys(brandMap).length} brands`);
+
+    // Region → branchCodes mapping
+    const REGION_BRANCHES = {
+      BKK: ['00TR','01TJ','02TN','03TS','04TP'],
+      C:   ['05AY','21BS','22BP','24TL','25SB','07RB'],
+      N:   ['11PL','12CM','17CR','23NS'],
+      NE:  ['08NR','09UB','10KK','18UD','20SK'],
+      E:   ['06RY','15CB'],
+      S:   ['13SR','14HY','16PK','19PC'],
+    };
+
+    // float sheet column mapping per region
+    // { region, reCol, w1Col, w2Col, r1Col, r2Col }
+    const REGION_COLS = [
+      { region: 'BKK', reCol:  5, w1Col: 21, w2Col: 22, r1Col: 23, r2Col: 24 },
+      { region: 'N',   reCol:  6, w1Col: 26, w2Col: 27, r1Col: 28, r2Col: 29 },
+      { region: 'NE',  reCol:  7, w1Col: 31, w2Col: 32, r1Col: 33, r2Col: 34 },
+      { region: 'C',   reCol:  8, w1Col: 36, w2Col: 37, r1Col: 38, r2Col: 39 },
+      { region: 'E',   reCol:  9, w1Col: 41, w2Col: 42, r1Col: 43, r2Col: 44 },
+      { region: 'S',   reCol: 10, w1Col: 46, w2Col: 47, r1Col: 48, r2Col: 49 },
+    ];
+
+    // Check DB columns
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'excel_import_data'
+    `);
+    const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasSellingPrices = dbCols.includes('selling_price_w1');
+    const hasDiscPct       = dbCols.includes('discount_pct_1');
+
+    const fv = v => parseFloat(v) || 0;
+
+    // current brand/section name (ติดตาม brand จาก section header)
+    let currentBrand = '';
+    let currentProductName = ''; // ชื่อสินค้าล่าสุด (inherit ถ้า col1 ว่าง)
+
+    // parse rows
+    for (let i = 6; i < data.length; i++) {
+      const row = data[i];
+      if (!row) continue;
+
+      const col0 = row[0] !== undefined ? String(row[0]).trim() : '';
+      const col1 = row[1] !== undefined ? String(row[1]).trim() : '';
+      const col2 = row[2];
+
+      // Section header: col0 ว่าง, col1 = brand name, ไม่มีราคา
+      if (!col0 && col1 && col1 !== 'undefined' && col1 !== 'CUT SIZE' &&
+          !col1.startsWith('เจียร') && col1 !== 'ต่อเมตร' &&
+          row[21] === null || row[21] === undefined) {
+        currentBrand = col1;
+        continue;
+      }
+
+      // ข้าม rows ที่ไม่มี SKU และไม่มีราคา
+      if (!col0 && (row[21] === null || row[21] === undefined)) continue;
+
+      // ข้าม rows ที่ไม่ใช่ G-SKU (เช่น เจียรหยาบ, CUT SIZE ที่ไม่มี SKU)
+      if (!col0 || !/^G\d/.test(col0)) continue;
+
+      const sku         = col0;
+      const productName = col1 || currentProductName || currentBrand || 'Glass';
+      if (col1) currentProductName = col1; // อัปเดตชื่อล่าสุดเมื่อมีค่า
+      const thickness   = col2 !== undefined ? String(col2).trim() : '';
+      const remark      = row[3] !== undefined ? String(row[3]).trim() : '';
+      const fullName    = remark ? `${productName} ${remark} ${thickness}mm` : `${productName} ${thickness}mm`;
+
+      // map brand จาก SKU[1:3] → BRAND_Glass
+      const brandCode = sku.substring(1, 3);
+      const brandName = brandMap[brandCode] || currentBrand || 'ไม่ระบุ';
+
+      // insert 1 row ต่อ branchCode
+      for (const { region, reCol, w1Col, w2Col, r1Col, r2Col } of REGION_COLS) {
+        const rePrice = fv(row[reCol]);
+        const w1      = fv(row[w1Col]);
+        const w2      = fv(row[w2Col]);
+        const r1      = fv(row[r1Col]);
+        const r2      = fv(row[r2Col]);
+
+        // ถ้าไม่มีราคาขายเลย ข้ามไป
+        if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0) continue;
+
+        const branches = REGION_BRANCHES[region] || [];
+        for (const branchCode of branches) {
+          try {
+            const req = pool.request()
+              .input('branch',      sql.NVarChar(100), branchCode)
+              .input('productType', sql.NVarChar(100), 'Glass')
+              .input('sku',         sql.NVarChar(50),  sku)
+              .input('productName', sql.NVarChar(255), fullName)
+              .input('brand',       sql.NVarChar(100), brandName)
+              .input('unit',        sql.NVarChar(50),  '')
+              .input('basePrice',   sql.Decimal(18,2), rePrice)
+              .input('discPrice1',  sql.Decimal(18,2), 0)
+              .input('discPrice2',  sql.Decimal(18,2), 0)
+              .input('discPrice3',  sql.Decimal(18,2), 0)
+              .input('sellW1',      sql.Decimal(18,2), w1)
+              .input('sellW2',      sql.Decimal(18,2), w2)
+              .input('sellR1',      sql.Decimal(18,2), r1)
+              .input('sellR2',      sql.Decimal(18,2), r2);
+
+            if (hasSellingPrices) {
+              await req.query(`
+                INSERT INTO excel_import_data (
+                  branch, product_type, sku, product_name, brand, unit,
+                  base_price, discount_price_1, discount_price_2, discount_price_3,
+                  project_no, project_discount_1, project_discount_2, project_price,
+                  carton_price, shipping_cost, free_item,
+                  selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2
+                ) VALUES (
+                  @branch, @productType, @sku, @productName, @brand, @unit,
+                  @basePrice, @discPrice1, @discPrice2, @discPrice3,
+                  '', 0, 0, 0, 0, 0, '',
+                  @sellW1, @sellW2, @sellR1, @sellR2
+                )
+              `);
+            } else {
+              await req.query(`
+                INSERT INTO excel_import_data (
+                  branch, product_type, sku, product_name, brand, unit,
+                  base_price, discount_price_1, discount_price_2, discount_price_3,
+                  project_no, project_discount_1, project_discount_2, project_price,
+                  carton_price, shipping_cost, free_item
+                ) VALUES (
+                  @branch, @productType, @sku, @productName, @brand, @unit,
+                  @basePrice, @discPrice1, @discPrice2, @discPrice3,
+                  '', 0, 0, 0, 0, 0, ''
+                )
+              `);
+            }
+            imported++;
+          } catch (err) {
+            console.error(`[Glass Parser] Insert error (${branchCode}/${sku}):`, err.message);
+          }
+        }
+      }
+    }
+
+    console.log(`[Glass Parser] Done: ${imported} rows inserted`);
+    return imported;
+
+  } catch (err) {
+    console.error('[Glass Parser] Fatal error:', err);
+    return 0;
+  }
 }
 
 /**
@@ -633,9 +768,10 @@ export async function getImportData(req, res) {
         NULL AS [sellingPriceR1], NULL AS [sellingPriceR2],`;
 
     const discPctCols = hasDiscPct ? `
-        [discount_pct_1] AS [discountPct1],
-        [discount_pct_2] AS [discountPct2],
-        [discount_pct_3] AS [discountPct3],` : `
+        -- normalize: ถ้าค่า > 1 แสดงว่าเป็น % จริง (ข้อมูลเก่า) ให้หาร 100 ก่อนส่ง
+        CASE WHEN [discount_pct_1] > 1 THEN [discount_pct_1] / 100.0 ELSE [discount_pct_1] END AS [discountPct1],
+        CASE WHEN [discount_pct_2] > 1 THEN [discount_pct_2] / 100.0 ELSE [discount_pct_2] END AS [discountPct2],
+        CASE WHEN [discount_pct_3] > 1 THEN [discount_pct_3] / 100.0 ELSE [discount_pct_3] END AS [discountPct3],` : `
         NULL AS [discountPct1], NULL AS [discountPct2], NULL AS [discountPct3],`;
 
     // CTE: เลือกเฉพาะ row ล่าสุดต่อ sku+branch ด้วย ROW_NUMBER()
