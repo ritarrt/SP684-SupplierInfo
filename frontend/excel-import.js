@@ -111,7 +111,9 @@ function selectTab(type) {
   dataTable.querySelector("thead").innerHTML = "";
   dataTable.querySelector("tbody").innerHTML = "";
 
-  // โหลดข้อมูลตาราง — ไม่ผูก filter กับ tab เพื่อให้แสดงข้อมูลทั้งหมด
+  // โหลดข้อมูลตาราง — filter ตาม tab ที่เลือก
+  const ptFilter = document.getElementById("filterProductType");
+  if (ptFilter) ptFilter.value = type;
   loadImportData(1);
 }
 
@@ -120,25 +122,6 @@ function selectTab(type) {
 // ============================================
 
 dropzone.addEventListener("click", () => fileInput.click());
-
-dropzone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  dropzone.classList.add("dragover");
-});
-
-dropzone.addEventListener("dragleave", () => {
-  dropzone.classList.remove("dragover");
-});
-
-dropzone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  dropzone.classList.remove("dragover");
-  
-  const files = e.dataTransfer.files;
-  if (files.length > 0) {
-    handleFile(files[0]);
-  }
-});
 
 fileInput.addEventListener("change", (e) => {
   if (e.target.files.length > 0) {
@@ -244,8 +227,8 @@ function showDataPreview() {
   
   dataSection.classList.remove("hidden");
   
-  // For Gypsum, show preview from backend
-  if (currentTab === "Gypsum") {
+  // For Gypsum and Glass, show preview from backend
+  if (currentTab === "Gypsum" || currentTab === "Glass" || currentTab === "Accessories") {
     loadGypsumPreview();
     return;
   }
@@ -311,71 +294,164 @@ async function loadGypsumPreview() {
 }
 
 function renderGypsumPreview(result) {
-  const { preview, totalSkus, totalRows, branches } = result;
+  const { preview, totalSkus, totalRows, branches, detectedType } = result;
+  const isGlass = detectedType === 'Glass';
+  const isAcc   = detectedType === 'Accessories';
   const thead = dataTable.querySelector("thead");
   const tbody = dataTable.querySelector("tbody");
-  
-  // Build table header - แสดงคอลัมน์ที่จะเก็บจริงใน DB
-  thead.innerHTML = `
-    <tr class="text-xs">
-      <th rowspan="2">SKU</th>
-      <th rowspan="2">ชื่อสินค้า</th>
-      <th rowspan="2">ยี่ห้อ</th>
-      <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
-      <th rowspan="2" class="bg-gray-50">ชั้น<br/>ลด</th>
-      <th colspan="4" class="bg-blue-50">ราคา (บาท)</th>
-      <th colspan="3" class="bg-yellow-50">ส่วนลด %</th>
-      <th colspan="4" class="bg-green-50">ราคาขาย</th>
-    </tr>
-    <tr class="text-xs">
-      <th class="bg-blue-50">ตั้งต้น</th>
-      <th class="bg-blue-50">หลังลด 1</th>
-      <th class="bg-blue-50">หลังลด 2</th>
-      <th class="bg-blue-50">หลังลด 3</th>
-      <th class="bg-yellow-50">% ชั้น 1</th>
-      <th class="bg-yellow-50">% ชั้น 2</th>
-      <th class="bg-yellow-50">% ชั้น 3</th>
-      <th class="bg-green-50">W1</th>
-      <th class="bg-green-50">W2</th>
-      <th class="bg-green-50">R1</th>
-      <th class="bg-green-50">R2</th>
-    </tr>
-  `;
-  
-  // Build table body
-  tbody.innerHTML = "";
-  preview.forEach((row) => {
-    const fmt = v => (v != null && v !== 0) ? parseFloat(v).toFixed(2) : '<span class="text-gray-300">-</span>';
-    const fmtPct = v => v ? `${(v * 100).toFixed(2)}%` : '<span class="text-gray-300">-</span>';
-    const numDisc = row.numDiscounts || 0;
-    const discBadge = numDisc > 0
-      ? `<span class="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">${numDisc} ชั้น</span>`
-      : `<span class="text-gray-300 text-xs">-</span>`;
 
-    const tr = document.createElement("tr");
-    tr.className = "text-sm";
-    tr.innerHTML = `
-      <td class="font-mono text-xs">${row.sku}</td>
-      <td>${row.productName}</td>
-      <td class="text-gray-600">${row.brand || '-'}</td>
-      <td>${row.branch}</td>
-      <td class="text-center">${discBadge}</td>
-      <td class="text-right">${fmt(row.base_price)}</td>
-      <td class="text-right">${fmt(row.discount_price_1)}</td>
-      <td class="text-right">${fmt(row.discount_price_2)}</td>
-      <td class="text-right">${fmt(row.discount_price_3)}</td>
-      <td class="text-right">${fmtPct(row.discount_pct_1)}</td>
-      <td class="text-right">${fmtPct(row.discount_pct_2)}</td>
-      <td class="text-right">${fmtPct(row.discount_pct_3)}</td>
-      <td class="text-right">${fmt(row.selling_price_w1)}</td>
-      <td class="text-right">${fmt(row.selling_price_w2)}</td>
-      <td class="text-right">${fmt(row.selling_price_r1)}</td>
-      <td class="text-right">${fmt(row.selling_price_r2)}</td>
+  if (isAcc) {
+    // Accessories: ราคาตั้ง + RE ก่อน VAT + ราคาขาย รวม VAT
+    thead.innerHTML = `
+      <tr class="text-xs">
+        <th rowspan="2">SKU</th>
+        <th rowspan="2">ชื่อสินค้า</th>
+        <th rowspan="2">ยี่ห้อ</th>
+        <th rowspan="2">หน่วย</th>
+        <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
+        <th class="bg-gray-50">ราคาตั้ง</th>
+        <th class="bg-blue-50">RE<br/>ก่อน VAT</th>
+        <th class="bg-green-50">ราคาขาย<br/>รวม VAT</th>
+      </tr>
+      <tr class="text-xs">
+        <th class="bg-gray-50">base_price</th>
+        <th class="bg-blue-50">W1</th>
+        <th class="bg-green-50">R1</th>
+      </tr>
     `;
-    tbody.appendChild(tr);
-  });
-  
-  // Show summary
+    tbody.innerHTML = "";
+    preview.forEach((row) => {
+      const fmt = v => (v != null && v !== 0) ? parseFloat(v).toFixed(2) : '<span class="text-gray-300">-</span>';
+      const tr = document.createElement("tr");
+      tr.className = "text-sm";
+      tr.innerHTML = `
+        <td class="font-mono text-xs">${row.sku}</td>
+        <td>${row.productName}</td>
+        <td class="text-gray-600">${row.brand || '-'}</td>
+        <td class="text-gray-500 text-xs">${row.unit || '-'}</td>
+        <td>${row.branch}</td>
+        <td class="text-right bg-gray-50">${fmt(row.base_price)}</td>
+        <td class="text-right bg-blue-50">${fmt(row.selling_price_w1)}</td>
+        <td class="text-right bg-green-50">${fmt(row.selling_price_r1)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } else if (isGlass) {
+    // Glass: ไม่มี discount_pct แต่มี RE + W1/W2/R1/R2
+    thead.innerHTML = `
+      <tr class="text-xs">
+        <th rowspan="2">SKU</th>
+        <th rowspan="2">ชื่อสินค้า</th>
+        <th rowspan="2">ยี่ห้อ</th>
+        <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
+        <th class="bg-blue-50">RE<br/>(ทุน)</th>
+        <th colspan="4" class="bg-green-50">ราคาขาย</th>
+      </tr>
+      <tr class="text-xs">
+        <th class="bg-blue-50">base_price</th>
+        <th class="bg-green-50">W1</th>
+        <th class="bg-green-50">W2</th>
+        <th class="bg-green-50">R1</th>
+        <th class="bg-green-50">R2</th>
+      </tr>
+    `;
+    tbody.innerHTML = "";
+    preview.forEach((row) => {
+      const fmt = v => (v != null && v !== 0) ? parseFloat(v).toFixed(2) : '<span class="text-gray-300">-</span>';
+      const tr = document.createElement("tr");
+      tr.className = "text-sm";
+      tr.innerHTML = `
+        <td class="font-mono text-xs">${row.sku}</td>
+        <td>${row.productName}</td>
+        <td class="text-gray-600">${row.brand || '-'}</td>
+        <td>${row.branch}</td>
+        <td class="text-right bg-blue-50">${fmt(row.base_price)}</td>
+        <td class="text-right">${fmt(row.selling_price_w1)}</td>
+        <td class="text-right">${fmt(row.selling_price_w2)}</td>
+        <td class="text-right">${fmt(row.selling_price_r1)}</td>
+        <td class="text-right">${fmt(row.selling_price_r2)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } else {
+    // Gypsum: มี discount_pct + selling prices
+    thead.innerHTML = `
+      <tr class="text-xs">
+        <th rowspan="2">SKU</th>
+        <th rowspan="2">ชื่อสินค้า</th>
+        <th rowspan="2">ยี่ห้อ</th>
+        <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
+        <th rowspan="2" class="bg-gray-50">ชั้น<br/>ลด</th>
+        <th colspan="4" class="bg-blue-50">ราคา (บาท)</th>
+        <th colspan="3" class="bg-yellow-50">ส่วนลด %</th>
+        <th colspan="4" class="bg-green-50">ราคาขาย</th>
+      </tr>
+      <tr class="text-xs">
+        <th class="bg-blue-50">ตั้งต้น</th>
+        <th class="bg-blue-50">หลังลด 1</th>
+        <th class="bg-blue-50">หลังลด 2</th>
+        <th class="bg-blue-50">หลังลด 3</th>
+        <th class="bg-yellow-50">% ชั้น 1</th>
+        <th class="bg-yellow-50">% ชั้น 2</th>
+        <th class="bg-yellow-50">% ชั้น 3</th>
+        <th class="bg-green-50">W1</th>
+        <th class="bg-green-50">W2</th>
+        <th class="bg-green-50">R1</th>
+        <th class="bg-green-50">R2</th>
+      </tr>
+    `;
+    tbody.innerHTML = "";
+    preview.forEach((row) => {
+      const fmt = v => (v != null && v !== 0) ? parseFloat(v).toFixed(2) : '<span class="text-gray-300">-</span>';
+
+      // คำนวณ % ย้อนกลับจากราคา เมื่อ discount_pct ไม่มีหรือเป็น 0
+      const calcPct = (before, after) => {
+        const b = parseFloat(before), a = parseFloat(after);
+        if (!b || !a || a <= 0 || a >= b) return null;
+        const pct = ((b - a) / b) * 100;
+        if (pct < 0.01) return null;
+        return pct;
+      };
+      const fmtPct = (storedPct, priceBefore, priceAfter) => {
+        if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0) {
+          return `<span title="จาก Excel">${(storedPct * 100).toFixed(2)}%</span>`;
+        }
+        const computed = calcPct(priceBefore, priceAfter);
+        if (computed != null) {
+          return `<span class="text-gray-500 italic" title="คำนวณจากราคา">${computed.toFixed(2)}%</span>`;
+        }
+        return '<span class="text-gray-300">-</span>';
+      };
+
+      const numDisc = row.numDiscounts || 0;
+      const discBadge = numDisc > 0
+        ? `<span class="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">${numDisc} ชั้น</span>`
+        : `<span class="text-gray-300 text-xs">-</span>`;
+      const tr = document.createElement("tr");
+      tr.className = "text-sm";
+      tr.innerHTML = `
+        <td class="font-mono text-xs">${row.sku}</td>
+        <td>${row.productName}</td>
+        <td class="text-gray-600">${row.brand || '-'}</td>
+        <td>${row.branch}</td>
+        <td class="text-center">${discBadge}</td>
+        <td class="text-right">${fmt(row.base_price)}</td>
+        <td class="text-right">${fmt(row.discount_price_1)}</td>
+        <td class="text-right">${fmt(row.discount_price_2)}</td>
+        <td class="text-right">${fmt(row.discount_price_3)}</td>
+        <td class="text-right">${fmtPct(row.discount_pct_1, row.base_price,      row.discount_price_1)}</td>
+        <td class="text-right">${fmtPct(row.discount_pct_2, row.discount_price_1, row.discount_price_2)}</td>
+        <td class="text-right">${fmtPct(row.discount_pct_3, row.discount_price_2, row.discount_price_3)}</td>
+        <td class="text-right">${fmt(row.selling_price_w1)}</td>
+        <td class="text-right">${fmt(row.selling_price_w2)}</td>
+        <td class="text-right">${fmt(row.selling_price_r1)}</td>
+        <td class="text-right">${fmt(row.selling_price_r2)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Summary (เหมือนกันทั้ง Gypsum และ Glass)
   rowCount.innerHTML = `
     <div class="space-y-2 text-sm">
       <div class="text-lg font-semibold text-blue-600">📊 สรุปข้อมูลที่จะนำเข้า</div>
@@ -388,17 +464,6 @@ function renderGypsumPreview(result) {
       <div class="mt-3 p-3 bg-gray-50 rounded">
         <strong>สาขาทั้งหมด (${branches.length}):</strong>
         <div class="text-xs mt-1 text-gray-600">${branches.join(', ')}</div>
-      </div>
-      <div class="mt-3 p-3 bg-blue-50 rounded text-xs">
-        <strong>💾 คอลัมน์ที่จะบันทึก:</strong>
-        <ul class="list-disc list-inside mt-1 space-y-0.5">
-          <li><strong>ข้อมูลพื้นฐาน:</strong> branch, product_type, sku, product_name, brand, unit</li>
-          <li><strong>ราคา:</strong> base_price, discount_price_1/2/3</li>
-          <li><strong>ราคาขาย:</strong> selling_price_w1/w2/r1/r2</li>
-          <li><strong>ส่วนลด:</strong> discount_pct_1/2 (เปอร์เซ็นต์)</li>
-          <li><strong>อื่นๆ:</strong> project_no, project_discount_1/2, project_price, carton_price, shipping_cost, free_item</li>
-          <li><strong>อัตโนมัติ:</strong> created_at, updated_at</li>
-        </ul>
       </div>
       <div class="mt-2 text-xs text-gray-500">
         * แสดง ${preview.length} SKU แรก (สาขา ${branches[0]} เป็นตัวอย่าง)
@@ -765,18 +830,48 @@ async function loadImportData(page = 1) {
         : '-';
       const fmt = v => v != null ? parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-';
 
-      // Editable price cell
-      const priceCell = (field, value) => `
-        <td class="text-right">
-          <span 
-            class="editable-price cursor-pointer hover:bg-yellow-50 hover:text-blue-600 px-1 rounded"
-            data-id="${row.id}"
-            data-field="${field}"
-            data-value="${value != null ? parseFloat(value) : 0}"
-            onclick="startEditPrice(this)"
-          >${fmt(value)}</span>
-        </td>
-      `;
+      // Editable price cell — แสดง "-" ถ้าค่าเป็น 0 แต่ยังคลิกแก้ไขได้เสมอ
+      const priceCell = (field, value) => {
+        const numVal = value != null ? parseFloat(value) : 0;
+        const display = numVal !== 0 ? fmt(value) : '<span class="text-gray-300">-</span>';
+        return `
+          <td class="text-right">
+            <span 
+              class="editable-price cursor-pointer hover:bg-yellow-50 hover:text-blue-600 px-1 rounded"
+              data-id="${row.id}"
+              data-field="${field}"
+              data-value="${numVal}"
+              onclick="startEditPrice(this)"
+            >${display}</span>
+          </td>
+        `;
+      };
+
+      // คำนวณ % ส่วนลดย้อนกลับจากราคา เมื่อ discountPct ไม่มีใน DB
+      // สูตร: pct = (ราคาก่อน - ราคาหลัง) / ราคาก่อน × 100
+      // ถ้าราคาหลัง >= ราคาก่อน หรือ ราคาหลัง = 0 → ไม่มีส่วนลดจริง → แสดง -
+      const calcPct = (priceBefore, priceAfter) => {
+        const before = parseFloat(priceBefore);
+        const after  = parseFloat(priceAfter);
+        if (!before || !after || after <= 0 || after >= before) return null;
+        const pct = ((before - after) / before) * 100;
+        if (pct < 0.01) return null; // ต่ำกว่า 0.01% ถือว่าไม่มีส่วนลด
+        return pct;
+      };
+
+      const fmtPct = (storedPct, priceBefore, priceAfter) => {
+        // ถ้ามีค่า discountPct จาก DB ให้ใช้ก่อน (แม่นยำกว่า)
+        // แต่ต้องมี priceAfter > 0 ด้วย ไม่งั้นแปลว่าข้อมูลผิด
+        if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0) {
+          return `<span title="จาก DB">${(storedPct * 100).toFixed(1)}%</span>`;
+        }
+        // ไม่มีใน DB หรือ priceAfter = 0 → คำนวณย้อนกลับจากราคา
+        const computed = calcPct(priceBefore, priceAfter);
+        if (computed != null) {
+          return `<span class="text-gray-500 italic" title="คำนวณจากราคา">${computed.toFixed(1)}%</span>`;
+        }
+        return '<span class="text-gray-300">-</span>';
+      };
 
       return `
         <tr>
@@ -785,13 +880,13 @@ async function loadImportData(page = 1) {
           <td>${row.productName || '-'}</td>
           <td class="text-gray-600">${row.brand || '-'}</td>
           <td><span class="font-medium">${row.branch || '-'}</span></td>
-          ${priceCell('base_price', row.basePrice)}
-          <td class="text-right text-orange-600 font-medium">${row.discountPct1 ? (row.discountPct1 * 100).toFixed(1) + '%' : '-'}</td>
+          ${priceCell('base_price',       row.basePrice)}
+          <td class="text-right text-orange-600 font-medium">${fmtPct(row.discountPct1, row.basePrice,      row.discountPrice1)}</td>
           ${priceCell('discount_price_1', row.discountPrice1)}
-          <td class="text-right text-orange-600 font-medium">${row.discountPct2 ? (row.discountPct2 * 100).toFixed(1) + '%' : '-'}</td>
-          <td class="text-right text-gray-400">${row.discountPct2 ? fmt(row.discountPrice2) : '-'}</td>
-          <td class="text-right text-orange-600 font-medium">${row.discountPct3 ? (row.discountPct3 * 100).toFixed(1) + '%' : '-'}</td>
-          <td class="text-right text-gray-400">${row.discountPct3 ? fmt(row.discountPrice3) : '-'}</td>
+          <td class="text-right text-orange-600 font-medium">${fmtPct(row.discountPct2, row.discountPrice1, row.discountPrice2)}</td>
+          ${priceCell('discount_price_2', row.discountPrice2)}
+          <td class="text-right text-orange-600 font-medium">${fmtPct(row.discountPct3, row.discountPrice2, row.discountPrice3)}</td>
+          ${priceCell('discount_price_3', row.discountPrice3)}
           <td class="text-gray-400 text-xs">${date}</td>
         </tr>
       `;
