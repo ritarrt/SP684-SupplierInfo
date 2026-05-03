@@ -231,12 +231,11 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
     const ALL_ZONE_KEYS = new Set(Object.keys(ZONE_TO_BRANCHES));
     const BRANCH_CODE_RE = /^\d{2}[A-Z]{2}$/; // เช่น 00TR, 01TJ
     let branchHeaderRowIdx = -1;
-    let branchStartCol = 2; // default col 2
+    let branchStartCol = 3; // default col 3
 
     for (let ri = 0; ri <= Math.min(5, rawData.length - 1); ri++) {
       const row = rawData[ri];
       if (!row) continue;
-      // นับจำนวน zone/branchCode ที่พบใน row นี้ (col 2+)
       let matchCount = 0;
       let firstMatchCol = -1;
       for (let col = 2; col < row.length; col++) {
@@ -248,35 +247,36 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
           if (firstMatchCol === -1) firstMatchCol = col;
         }
       }
-      if (matchCount >= 2) { // ต้องมีอย่างน้อย 2 zone/branch ถึงจะถือว่าเป็น header row
+      if (matchCount >= 2) {
         branchHeaderRowIdx = ri;
         branchStartCol = firstMatchCol;
         break;
       }
     }
 
+    // fallback: ถ้าหาไม่เจอใน 6 rows แรก ให้ใช้ row 1 col 3 (format เดิม)
     if (branchHeaderRowIdx === -1) {
-      console.error("[Gypsum Parser] Cannot find branch header row in first 6 rows");
-      return 0;
+      console.warn("[Gypsum Parser] Auto-detect failed, falling back to row 1 col 3");
+      branchHeaderRowIdx = 1;
+      branchStartCol = 3;
     }
     console.log(`[Gypsum Parser] Branch header row: ${branchHeaderRowIdx}, startCol: ${branchStartCol}`);
 
     const branchHeaderRow = rawData[branchHeaderRowIdx];
-    for (let col = branchStartCol; col < branchHeaderRow.length; col++) {
-      const header = branchHeaderRow[col];
-      if (!header || typeof header !== 'string' || !header.trim()) continue;
-      const h = header.trim();
-      branches.push(h);
+    if (branchHeaderRow) {
+      for (let col = branchStartCol; col < branchHeaderRow.length; col++) {
+        const header = branchHeaderRow[col];
+        if (!header || typeof header !== 'string' || !header.trim()) continue;
+        const h = header.trim();
+        branches.push(h);
 
-      if (ZONE_TO_BRANCHES[h]) {
-        // Excel เก่า: zone name → expand เป็น branchCodes ทั้งหมดในโซน
-        // ทุก branchCode ในโซนใช้ราคาจาก colIdx เดียวกัน
-        for (const branchCode of ZONE_TO_BRANCHES[h]) {
-          branchColumns.push({ colIdx: col, branchCode });
+        if (ZONE_TO_BRANCHES[h]) {
+          for (const branchCode of ZONE_TO_BRANCHES[h]) {
+            branchColumns.push({ colIdx: col, branchCode });
+          }
+        } else {
+          branchColumns.push({ colIdx: col, branchCode: h });
         }
-      } else {
-        // Excel ใหม่: branchCode จริง → ใช้ตรงๆ
-        branchColumns.push({ colIdx: col, branchCode: h });
       }
     }
 
@@ -1243,7 +1243,7 @@ async function previewGypsumData(excelBuffer, sheetName) {
     const ALL_ZONE_KEYS_P = new Set(Object.keys(ZONE_TO_BRANCHES));
     const BRANCH_CODE_RE_P = /^\d{2}[A-Z]{2}$/;
     let branchHeaderRowIdx = -1;
-    let branchStartCol = 2;
+    let branchStartCol = 3;
     for (let ri = 0; ri <= Math.min(5, rawData.length - 1); ri++) {
       const row = rawData[ri];
       if (!row) continue;
@@ -1260,20 +1260,23 @@ async function previewGypsumData(excelBuffer, sheetName) {
       }
       if (matchCount >= 2) { branchHeaderRowIdx = ri; branchStartCol = firstMatchCol; break; }
     }
-    if (branchHeaderRowIdx === -1) return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
+    // fallback
+    if (branchHeaderRowIdx === -1) { branchHeaderRowIdx = 1; branchStartCol = 3; }
 
     const branchHeaderRow = rawData[branchHeaderRowIdx];
-    for (let col = branchStartCol; col < branchHeaderRow.length; col++) {
-      const header = branchHeaderRow[col];
-      if (!header || typeof header !== 'string' || !header.trim()) continue;
-      const h = header.trim();
-      branches.push(h);
-      if (ZONE_TO_BRANCHES[h]) {
-        for (const branchCode of ZONE_TO_BRANCHES[h]) {
-          branchColumns.push({ colIdx: col, branchCode });
+    if (branchHeaderRow) {
+      for (let col = branchStartCol; col < branchHeaderRow.length; col++) {
+        const header = branchHeaderRow[col];
+        if (!header || typeof header !== 'string' || !header.trim()) continue;
+        const h = header.trim();
+        branches.push(h);
+        if (ZONE_TO_BRANCHES[h]) {
+          for (const branchCode of ZONE_TO_BRANCHES[h]) {
+            branchColumns.push({ colIdx: col, branchCode });
+          }
+        } else {
+          branchColumns.push({ colIdx: col, branchCode: h });
         }
-      } else {
-        branchColumns.push({ colIdx: col, branchCode: h });
       }
     }
     const dataStartRowP = branchHeaderRowIdx + 1;
