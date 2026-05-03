@@ -238,16 +238,18 @@ function showDataPreview() {
 }
 
 async function loadGypsumPreview() {
+  // แสดง loading state
+  dataTable.querySelector("thead").innerHTML = "";
+  dataTable.querySelector("tbody").innerHTML = "";
+  rowCount.innerHTML = `<div class="text-sm text-gray-400 animate-pulse">⏳ กำลังวิเคราะห์ไฟล์...</div>`;
+
   try {
-    // Read original file as base64
     const excelBuffer = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const bytes = new Uint8Array(e.target.result);
         let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
         resolve(btoa(binary));
       };
       reader.onerror = reject;
@@ -256,218 +258,92 @@ async function loadGypsumPreview() {
 
     const response = await fetch(`${API_BASE}/api/excel/preview`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        sheetName: currentSheetName,
-        productType: currentTab,
-        excelBuffer: excelBuffer
-      })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sheetName: currentSheetName, productType: currentTab, excelBuffer })
     });
 
     if (!response.ok) {
       const error = await response.json();
       showStatus(`ข้อผิดพลาด: ${error.message}`, "error");
+      rowCount.innerHTML = "";
       return;
     }
 
     const result = await response.json();
-    
-    if (result.success && result.preview && result.preview.length > 0) {
-      renderGypsumPreview(result);
+
+    if (result.success && result.totalSkus > 0) {
+      renderImportSummary(result);
     } else {
-      showStatus("ไม่พบข้อมูลที่จะนำเข้า", "warning");
-      dataTable.querySelector("thead").innerHTML = "";
-      dataTable.querySelector("tbody").innerHTML = `
-        <tr>
-          <td colspan="100" class="py-6 text-center text-gray-600">
-            ไม่พบข้อมูลที่จะนำเข้า
-          </td>
-        </tr>
-      `;
+      rowCount.innerHTML = `<div class="text-sm text-red-500">⚠️ ไม่พบข้อมูลที่จะนำเข้าในไฟล์นี้</div>`;
     }
   } catch (err) {
     console.error("Preview error:", err);
     showStatus("เกิดข้อผิดพลาดในการโหลด preview", "error");
+    rowCount.innerHTML = "";
   }
 }
 
-function renderGypsumPreview(result) {
-  const { preview, totalSkus, totalRows, branches, detectedType } = result;
-  const isGlass = detectedType === 'Glass';
-  const isAcc   = detectedType === 'Accessories';
-  const thead = dataTable.querySelector("thead");
-  const tbody = dataTable.querySelector("tbody");
+function renderImportSummary(result) {
+  const {
+    detectedType, totalSkus, totalRows, branches,
+    uploadRoundToday, previewVersionLabel,
+    priceChangesTotal,
+    newSkusTotal,
+    removedSkusTotal,
+  } = result;
 
-  if (isAcc) {
-    // Accessories: ราคาตั้ง + RE ก่อน VAT + ราคาขาย รวม VAT
-    thead.innerHTML = `
-      <tr class="text-xs">
-        <th rowspan="2">SKU</th>
-        <th rowspan="2">ชื่อสินค้า</th>
-        <th rowspan="2">ยี่ห้อ</th>
-        <th rowspan="2">หน่วย</th>
-        <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
-        <th class="bg-gray-50">ราคาตั้ง</th>
-        <th class="bg-blue-50">RE<br/>ก่อน VAT</th>
-        <th class="bg-green-50">ราคาขาย<br/>รวม VAT</th>
-      </tr>
-      <tr class="text-xs">
-        <th class="bg-gray-50">base_price</th>
-        <th class="bg-blue-50">W1</th>
-        <th class="bg-green-50">R1</th>
-      </tr>
-    `;
-    tbody.innerHTML = "";
-    preview.forEach((row) => {
-      const fmt = v => (v != null && v !== 0) ? parseFloat(v).toFixed(2) : '<span class="text-gray-300">-</span>';
-      const tr = document.createElement("tr");
-      tr.className = "text-sm";
-      tr.innerHTML = `
-        <td class="font-mono text-xs">${row.sku}</td>
-        <td>${row.productName}</td>
-        <td class="text-gray-600">${row.brand || '-'}</td>
-        <td class="text-gray-500 text-xs">${row.unit || '-'}</td>
-        <td>${row.branch}</td>
-        <td class="text-right bg-gray-50">${fmt(row.base_price)}</td>
-        <td class="text-right bg-blue-50">${fmt(row.selling_price_w1)}</td>
-        <td class="text-right bg-green-50">${fmt(row.selling_price_r1)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  } else if (isGlass) {
-    // Glass: ไม่มี discount_pct แต่มี RE + W1/W2/R1/R2
-    thead.innerHTML = `
-      <tr class="text-xs">
-        <th rowspan="2">SKU</th>
-        <th rowspan="2">ชื่อสินค้า</th>
-        <th rowspan="2">ยี่ห้อ</th>
-        <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
-        <th class="bg-blue-50">RE<br/>(ทุน)</th>
-        <th colspan="4" class="bg-green-50">ราคาขาย</th>
-      </tr>
-      <tr class="text-xs">
-        <th class="bg-blue-50">base_price</th>
-        <th class="bg-green-50">W1</th>
-        <th class="bg-green-50">W2</th>
-        <th class="bg-green-50">R1</th>
-        <th class="bg-green-50">R2</th>
-      </tr>
-    `;
-    tbody.innerHTML = "";
-    preview.forEach((row) => {
-      const fmt = v => (v != null && v !== 0) ? parseFloat(v).toFixed(2) : '<span class="text-gray-300">-</span>';
-      const tr = document.createElement("tr");
-      tr.className = "text-sm";
-      tr.innerHTML = `
-        <td class="font-mono text-xs">${row.sku}</td>
-        <td>${row.productName}</td>
-        <td class="text-gray-600">${row.brand || '-'}</td>
-        <td>${row.branch}</td>
-        <td class="text-right bg-blue-50">${fmt(row.base_price)}</td>
-        <td class="text-right">${fmt(row.selling_price_w1)}</td>
-        <td class="text-right">${fmt(row.selling_price_w2)}</td>
-        <td class="text-right">${fmt(row.selling_price_r1)}</td>
-        <td class="text-right">${fmt(row.selling_price_r2)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  } else {
-    // Gypsum: มี discount_pct + selling prices
-    thead.innerHTML = `
-      <tr class="text-xs">
-        <th rowspan="2">SKU</th>
-        <th rowspan="2">ชื่อสินค้า</th>
-        <th rowspan="2">ยี่ห้อ</th>
-        <th rowspan="2">สาขา<br/>(ตัวอย่าง)</th>
-        <th rowspan="2" class="bg-gray-50">ชั้น<br/>ลด</th>
-        <th colspan="4" class="bg-blue-50">ราคา (บาท)</th>
-        <th colspan="3" class="bg-yellow-50">ส่วนลด %</th>
-        <th colspan="4" class="bg-green-50">ราคาขาย</th>
-      </tr>
-      <tr class="text-xs">
-        <th class="bg-blue-50">ตั้งต้น</th>
-        <th class="bg-blue-50">หลังลด 1</th>
-        <th class="bg-blue-50">หลังลด 2</th>
-        <th class="bg-blue-50">หลังลด 3</th>
-        <th class="bg-yellow-50">% ชั้น 1</th>
-        <th class="bg-yellow-50">% ชั้น 2</th>
-        <th class="bg-yellow-50">% ชั้น 3</th>
-        <th class="bg-green-50">W1</th>
-        <th class="bg-green-50">W2</th>
-        <th class="bg-green-50">R1</th>
-        <th class="bg-green-50">R2</th>
-      </tr>
-    `;
-    tbody.innerHTML = "";
-    preview.forEach((row) => {
-      const fmt = v => (v != null && v !== 0) ? parseFloat(v).toFixed(2) : '<span class="text-gray-300">-</span>';
+  dataTable.querySelector("thead").innerHTML = "";
+  dataTable.querySelector("tbody").innerHTML = "";
 
-      // คำนวณ % ย้อนกลับจากราคา เมื่อ discount_pct ไม่มีหรือเป็น 0
-      const calcPct = (before, after) => {
-        const b = parseFloat(before), a = parseFloat(after);
-        if (!b || !a || a <= 0 || a >= b) return null;
-        const pct = ((b - a) / b) * 100;
-        if (pct < 0.01) return null;
-        return pct;
-      };
-      const fmtPct = (storedPct, priceBefore, priceAfter) => {
-        if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0) {
-          return `<span title="จาก Excel">${(storedPct * 100).toFixed(2)}%</span>`;
-        }
-        const computed = calcPct(priceBefore, priceAfter);
-        if (computed != null) {
-          return `<span class="text-gray-500 italic" title="คำนวณจากราคา">${computed.toFixed(2)}%</span>`;
-        }
-        return '<span class="text-gray-300">-</span>';
-      };
-
-      const numDisc = row.numDiscounts || 0;
-      const discBadge = numDisc > 0
-        ? `<span class="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">${numDisc} ชั้น</span>`
-        : `<span class="text-gray-300 text-xs">-</span>`;
-      const tr = document.createElement("tr");
-      tr.className = "text-sm";
-      tr.innerHTML = `
-        <td class="font-mono text-xs">${row.sku}</td>
-        <td>${row.productName}</td>
-        <td class="text-gray-600">${row.brand || '-'}</td>
-        <td>${row.branch}</td>
-        <td class="text-center">${discBadge}</td>
-        <td class="text-right">${fmt(row.base_price)}</td>
-        <td class="text-right">${fmt(row.discount_price_1)}</td>
-        <td class="text-right">${fmt(row.discount_price_2)}</td>
-        <td class="text-right">${fmt(row.discount_price_3)}</td>
-        <td class="text-right">${fmtPct(row.discount_pct_1, row.base_price,      row.discount_price_1)}</td>
-        <td class="text-right">${fmtPct(row.discount_pct_2, row.discount_price_1, row.discount_price_2)}</td>
-        <td class="text-right">${fmtPct(row.discount_pct_3, row.discount_price_2, row.discount_price_3)}</td>
-        <td class="text-right">${fmt(row.selling_price_w1)}</td>
-        <td class="text-right">${fmt(row.selling_price_w2)}</td>
-        <td class="text-right">${fmt(row.selling_price_r1)}</td>
-        <td class="text-right">${fmt(row.selling_price_r2)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-
-  // Summary (เหมือนกันทั้ง Gypsum และ Glass)
   rowCount.innerHTML = `
-    <div class="space-y-2 text-sm">
-      <div class="text-lg font-semibold text-blue-600">📊 สรุปข้อมูลที่จะนำเข้า</div>
-      <div class="grid grid-cols-2 gap-2 mt-2">
-        <div><strong>ตาราง:</strong> excel_import_data</div>
-        <div><strong>จำนวน SKU:</strong> ${totalSkus} SKU</div>
-        <div><strong>จำนวนสาขา:</strong> ${branches.length} สาขา</div>
-        <div><strong>รวมแถวทั้งหมด:</strong> ${totalRows} แถว</div>
+    <div class="space-y-4 text-sm">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between">
+        <div class="text-base font-bold text-gray-800">สรุปข้อมูลก่อนนำเข้า</div>
+        <span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium font-mono">
+          ${previewVersionLabel || `รอบที่ ${uploadRoundToday}`}
+        </span>
       </div>
-      <div class="mt-3 p-3 bg-gray-50 rounded">
-        <strong>สาขาทั้งหมด (${branches.length}):</strong>
-        <div class="text-xs mt-1 text-gray-600">${branches.join(', ')}</div>
+
+      <!-- Stats cards -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-blue-50 rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold text-blue-700">${totalSkus.toLocaleString()}</div>
+          <div class="text-xs text-blue-500 mt-0.5">SKU</div>
+        </div>
+        <div class="bg-purple-50 rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold text-purple-700">${branches.length.toLocaleString()}</div>
+          <div class="text-xs text-purple-500 mt-0.5">สาขา</div>
+        </div>
+        <div class="bg-gray-50 rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold text-gray-700">${totalRows.toLocaleString()}</div>
+          <div class="text-xs text-gray-500 mt-0.5">แถวทั้งหมด</div>
+        </div>
       </div>
-      <div class="mt-2 text-xs text-gray-500">
-        * แสดง ${preview.length} SKU แรก (สาขา ${branches[0]} เป็นตัวอย่าง)
+
+      <!-- Branches -->
+      <div class="bg-gray-50 rounded-lg p-3">
+        <div class="text-xs font-medium text-gray-500 mb-1">สาขา (${branches.length})</div>
+        <div class="text-xs text-gray-600 leading-relaxed">${branches.join(', ')}</div>
       </div>
+
+      <!-- Change summary -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="border rounded-lg p-3 text-center ${priceChangesTotal > 0 ? 'border-orange-200 bg-orange-50' : 'border-gray-100'}">
+          <div class="text-xl font-bold ${priceChangesTotal > 0 ? 'text-orange-600' : 'text-gray-400'}">${priceChangesTotal.toLocaleString()}</div>
+          <div class="text-xs mt-0.5 ${priceChangesTotal > 0 ? 'text-orange-500' : 'text-gray-400'}">ราคาเปลี่ยนแปลง</div>
+        </div>
+        <div class="border rounded-lg p-3 text-center ${newSkusTotal > 0 ? 'border-green-200 bg-green-50' : 'border-gray-100'}">
+          <div class="text-xl font-bold ${newSkusTotal > 0 ? 'text-green-600' : 'text-gray-400'}">${newSkusTotal.toLocaleString()}</div>
+          <div class="text-xs mt-0.5 ${newSkusTotal > 0 ? 'text-green-500' : 'text-gray-400'}">SKU ใหม่</div>
+        </div>
+        <div class="border rounded-lg p-3 text-center ${removedSkusTotal > 0 ? 'border-red-200 bg-red-50' : 'border-gray-100'}">
+          <div class="text-xl font-bold ${removedSkusTotal > 0 ? 'text-red-600' : 'text-gray-400'}">${removedSkusTotal.toLocaleString()}</div>
+          <div class="text-xs mt-0.5 ${removedSkusTotal > 0 ? 'text-red-500' : 'text-gray-400'}">SKU ที่หายไป</div>
+        </div>
+      </div>
+
     </div>
   `;
 }
@@ -525,38 +401,54 @@ importBtn.addEventListener("click", async () => {
     showStatus("ไม่มีข้อมูลที่จะนำเข้า", "warning");
     return;
   }
-  
+
+  // แสดง loading overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'importLoadingOverlay';
+  overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+  overlay.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl px-10 py-8 flex flex-col items-center gap-4 min-w-[260px]">
+      <div class="relative w-14 h-14">
+        <svg class="animate-spin w-14 h-14 text-blue-600" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+          <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+        </svg>
+      </div>
+      <div class="text-center">
+        <div class="font-semibold text-gray-800 text-base">กำลังนำเข้าข้อมูล...</div>
+        <div class="text-sm text-gray-400 mt-1">กรุณารอสักครู่ อย่าปิดหน้าต่างนี้</div>
+      </div>
+      <div id="importProgressText" class="text-xs text-blue-500 font-medium"></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
   importBtn.disabled = true;
-  importBtn.innerHTML = '<i class="bi bi-hourglass-split animate-spin"></i> กำลังนำเข้า...';
+  importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> กำลังนำเข้า...';
+
+  const setProgress = (text) => {
+    const el = document.getElementById('importProgressText');
+    if (el) el.textContent = text;
+  };
   
   try {
-    // Read original file as base64 (not re-written workbook)
+    setProgress('กำลังอ่านไฟล์...');
     const excelBuffer = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const bytes = new Uint8Array(e.target.result);
         let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
         resolve(btoa(binary));
       };
       reader.onerror = reject;
       reader.readAsArrayBuffer(currentFile);
     });
-    
-    console.log('Sending import request:', {
-      sheetName: currentSheetName,
-      productType: currentTab,
-      dataRows: currentData.length,
-      availableSheets: currentWorkbook.SheetNames
-    });
-    
+
+    setProgress('กำลังส่งข้อมูลไปยัง server...');
     const response = await fetch(`${API_BASE}/api/excel/import`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sheetName: currentSheetName,
         productType: currentTab,
@@ -565,13 +457,19 @@ importBtn.addEventListener("click", async () => {
         availableSheets: currentWorkbook.SheetNames
       }),
     });
-    
+
+    setProgress('กำลังประมวลผล...');
     const result = await response.json();
     
     if (response.ok) {
-      showStatus(`นำเข้าข้อมูลสำเร็จ! (${result.imported} แถว)`, "success");
+      const label = result.versionLabel ? ` [${result.versionLabel}]` : '';
+      showStatus(`นำเข้าข้อมูลสำเร็จ! ${result.imported} แถว${label} — กรุณาตรวจสอบและกด Publish`, "success");
       clearData();
-      loadImportData(); // refresh data view
+      if (result.logId && result.imported > 0) {
+        openDraftPanel(result.logId, result.versionLabel || result.logId);
+      } else {
+        loadImportData();
+      }
     } else {
       showStatus(`เกิดข้อผิดพลาด: ${result.message}`, "error");
     }
@@ -580,6 +478,7 @@ importBtn.addEventListener("click", async () => {
     showStatus("เกิดข้อผิดพลาดในการเชื่อมต่อ", "error");
     console.error(err);
   } finally {
+    document.getElementById('importLoadingOverlay')?.remove();
     importBtn.disabled = false;
     importBtn.innerHTML = '<i class="bi bi-download"></i> นำเข้าข้อมูล';
   }
@@ -924,3 +823,221 @@ async function loadImportData(page = 1) {
 // initializeProductTypes จะเรียก loadImportData เองผ่าน selectTab
 // ไม่ต้องเรียก loadImportData() แยกเพื่อป้องกัน race condition
 initializeProductTypes();
+
+// ============================================
+// DRAFT PANEL
+// ============================================
+
+let currentDraftLogId = null;
+let currentDraftPage = 1;
+let draftSearchTimer = null;
+
+function debounceDraftSearch() {
+  clearTimeout(draftSearchTimer);
+  draftSearchTimer = setTimeout(() => loadDraftData(), 400);
+}
+
+function openDraftPanel(logId, label) {
+  currentDraftLogId = logId;
+  currentDraftPage = 1;
+  document.getElementById('draftPanel').classList.remove('hidden');
+  document.getElementById('draftVersionBadge').textContent = label;
+  document.getElementById('draftPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  loadDraftData();
+}
+
+function closeDraftPanel() {
+  document.getElementById('draftPanel').classList.add('hidden');
+  currentDraftLogId = null;
+}
+
+async function loadDraftData(page = 1) {
+  if (!currentDraftLogId) return;
+  currentDraftPage = page;
+
+  const tbody = document.getElementById('draftBody');
+  const summary = document.getElementById('draftSummary');
+  const pagination = document.getElementById('draftPagination');
+  const branch = document.getElementById('draftFilterBranch')?.value || '';
+  const search = document.getElementById('draftFilterSku')?.value || '';
+
+  tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-gray-400 text-sm">กำลังโหลด...</td></tr>`;
+
+  try {
+    const params = new URLSearchParams({ page, limit: 50 });
+    if (branch) params.append('branch', branch);
+    if (search) params.append('search', search);
+
+    const response = await fetch(`${API_BASE}/api/excel/draft/${currentDraftLogId}?${params}`);
+    if (!response.ok) throw new Error('โหลด draft ไม่สำเร็จ');
+    const { data, total, totalPages } = await response.json();
+
+    summary.textContent = `พบ ${total.toLocaleString()} รายการ`;
+
+    const fmt = v => v != null && parseFloat(v) !== 0
+      ? parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 })
+      : '<span class="text-gray-300">-</span>';
+
+    const calcPct = (b, a) => {
+      const bv = parseFloat(b), av = parseFloat(a);
+      if (!bv || !av || av <= 0 || av >= bv) return null;
+      const p = ((bv - av) / bv) * 100;
+      return p < 0.01 ? null : p;
+    };
+    const fmtPct = (stored, before, after) => {
+      if (stored != null && stored > 0 && parseFloat(after) > 0)
+        return `<span class="text-orange-600">${(stored * 100).toFixed(1)}%</span>`;
+      const c = calcPct(before, after);
+      return c != null ? `<span class="text-orange-400 italic">${c.toFixed(1)}%</span>` : '<span class="text-gray-300">-</span>';
+    };
+
+    const draftPriceCell = (field, value, rowId) => {
+      const numVal = value != null ? parseFloat(value) : 0;
+      const display = numVal !== 0 ? parseFloat(value).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '<span class="text-gray-300">-</span>';
+      return `<td class="text-right">
+        <span class="editable-draft cursor-pointer hover:bg-yellow-50 hover:text-blue-600 px-1 rounded"
+          data-id="${rowId}" data-field="${field}" data-value="${numVal}"
+          onclick="startEditDraftPrice(this)">${display}</span>
+      </td>`;
+    };
+
+    tbody.innerHTML = data.map(row => `
+      <tr class="text-sm hover:bg-orange-50">
+        <td class="font-mono text-xs">${row.sku || '-'}</td>
+        <td>${row.productName || '-'}</td>
+        <td class="text-gray-500">${row.brand || '-'}</td>
+        <td><span class="font-medium">${row.branch || '-'}</span></td>
+        ${draftPriceCell('base_price', row.basePrice, row.id)}
+        <td class="text-right">${fmtPct(row.discountPct1, row.basePrice, row.discountPrice1)}</td>
+        ${draftPriceCell('discount_price_1', row.discountPrice1, row.id)}
+        <td class="text-right">${fmtPct(row.discountPct2, row.discountPrice1, row.discountPrice2)}</td>
+        ${draftPriceCell('discount_price_2', row.discountPrice2, row.id)}
+      </tr>
+    `).join('');
+
+    if (totalPages > 1) {
+      pagination.innerHTML = `
+        <span>หน้า ${page} / ${totalPages}</span>
+        <div class="flex gap-2">
+          <button onclick="loadDraftData(${page - 1})" class="px-3 py-1 border rounded hover:bg-gray-100 ${page <= 1 ? 'opacity-40 pointer-events-none' : ''}">
+            <i class="bi bi-chevron-left"></i>
+          </button>
+          <button onclick="loadDraftData(${page + 1})" class="px-3 py-1 border rounded hover:bg-gray-100 ${page >= totalPages ? 'opacity-40 pointer-events-none' : ''}">
+            <i class="bi bi-chevron-right"></i>
+          </button>
+        </div>
+      `;
+    } else {
+      pagination.innerHTML = '';
+    }
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-red-400 text-sm">${err.message}</td></tr>`;
+  }
+}
+
+function startEditDraftPrice(el) {
+  if (el.querySelector('input')) return;
+  const currentValue = parseFloat(el.dataset.value) || 0;
+  const field = el.dataset.field;
+  const id = el.dataset.id;
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = '0.01';
+  input.value = currentValue;
+  input.className = 'w-24 text-right border border-blue-400 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500';
+  input._confirmed = false;
+
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const newValue = parseFloat(input.value) || 0;
+      input._confirmed = true;
+      if (newValue === currentValue) { cancelEditDraftPrice(el, currentValue); return; }
+      await saveDraftPrice(el, id, field, currentValue, newValue);
+    }
+    if (e.key === 'Escape') { input._confirmed = true; cancelEditDraftPrice(el, currentValue); }
+  });
+  input.addEventListener('blur', () => { if (!input._confirmed) cancelEditDraftPrice(el, currentValue); });
+
+  el.innerHTML = '';
+  el.appendChild(input);
+  input.select();
+}
+
+function cancelEditDraftPrice(el, originalValue) {
+  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
+  el.dataset.value = originalValue;
+  el.innerHTML = originalValue !== 0 ? fmt(originalValue) : '<span class="text-gray-300">-</span>';
+}
+
+async function saveDraftPrice(el, rowId, field, oldValue, newValue) {
+  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
+  try {
+    const response = await fetch(`${API_BASE}/api/excel/draft/${currentDraftLogId}/rows/${rowId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: newValue })
+    });
+    if (response.ok) {
+      el.dataset.value = newValue;
+      el.innerHTML = newValue !== 0 ? fmt(newValue) : '<span class="text-gray-300">-</span>';
+      showToast(`แก้ไข ${fmt(oldValue)} → ${fmt(newValue)}`, 'success');
+    } else {
+      cancelEditDraftPrice(el, oldValue);
+      showToast('บันทึกไม่สำเร็จ', 'error');
+    }
+  } catch (err) {
+    cancelEditDraftPrice(el, oldValue);
+    showToast('เกิดข้อผิดพลาด', 'error');
+  }
+}
+
+async function publishDraft() {
+  if (!currentDraftLogId) return;
+  if (!confirm('ยืนยันการ Publish ข้อมูลนี้?\nข้อมูลจะถูกนำไปแสดงในระบบทันที')) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50';
+  overlay.innerHTML = `<div class="bg-white rounded-xl px-8 py-6 flex items-center gap-4 shadow-xl">
+    <svg class="animate-spin w-8 h-8 text-green-600" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+      <path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+    </svg>
+    <span class="font-medium text-gray-700">กำลัง Publish...</span>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  try {
+    const response = await fetch(`${API_BASE}/api/excel/draft/${currentDraftLogId}/publish`, { method: 'POST' });
+    const result = await response.json();
+    if (response.ok) {
+      showToast(`Publish สำเร็จ! ${result.published} แถว`, 'success');
+      closeDraftPanel();
+      loadImportData();
+    } else {
+      showToast(`Publish ไม่สำเร็จ: ${result.message}`, 'error');
+    }
+  } catch (err) {
+    showToast('เกิดข้อผิดพลาด', 'error');
+  } finally {
+    overlay.remove();
+  }
+}
+
+async function discardDraft() {
+  if (!currentDraftLogId) return;
+  if (!confirm('ยืนยันการยกเลิก Draft นี้?\nข้อมูลที่ยังไม่ Publish จะถูกลบออก')) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/excel/draft/${currentDraftLogId}`, { method: 'DELETE' });
+    if (response.ok) {
+      showToast('ยกเลิก Draft สำเร็จ', 'success');
+      closeDraftPanel();
+    } else {
+      showToast('ยกเลิกไม่สำเร็จ', 'error');
+    }
+  } catch (err) {
+    showToast('เกิดข้อผิดพลาด', 'error');
+  }
+}

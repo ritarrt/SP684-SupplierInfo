@@ -46,6 +46,65 @@ export async function importExcelData(req, res) {
       bufferData = Buffer.from(excelBuffer, 'base64');
     }
 
+    // สร้าง import log ก่อน เพื่อให้ได้ logId ไปใส่ใน excel_import_data
+    let logId = null;
+    let versionLabel = null;
+    try {
+      const logColCheck = await pool.request().query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = 'excel_import_logs'
+      `);
+      const logCols = logColCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+
+      if (logCols.includes('product_type') && logCols.includes('imported_rows') && logCols.includes('status')) {
+        // Generate version_label: ABBR-YYMMDD[-N]
+        const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL' };
+        const abbr = TYPE_ABBR[detectedType] || (detectedType || 'XX').substring(0, 3).toUpperCase();
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const dateKey = `${abbr}-${yy}${mm}${dd}`;
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+        // นับว่าวันนี้ import product_type นี้ไปแล้วกี่ครั้ง
+        const countResult = await pool.request()
+          .input('pt',    sql.NVarChar(100), detectedType)
+          .input('today', sql.NVarChar(30),  todayStart)
+          .query(`
+            SELECT COUNT(*) AS cnt FROM excel_import_logs
+            WHERE product_type = @pt AND imported_at >= @today
+          `);
+        const runNo = (countResult.recordset[0].cnt || 0) + 1;
+        versionLabel = runNo === 1 ? dateKey : `${dateKey}-${runNo}`;
+
+        const hasVersionLabel = logCols.includes('version_label');
+        const insertQuery = hasVersionLabel
+          ? `INSERT INTO excel_import_logs 
+              (sheet_name, product_type, row_count, imported_rows, status, error_message, version_label, imported_at)
+             OUTPUT INSERTED.id
+             VALUES (@sheetName, @productType, @rowCount, @importedRows, @status, @errorMessage, @versionLabel, GETDATE())`
+          : `INSERT INTO excel_import_logs 
+              (sheet_name, product_type, row_count, imported_rows, status, error_message, imported_at)
+             OUTPUT INSERTED.id
+             VALUES (@sheetName, @productType, @rowCount, @importedRows, @status, @errorMessage, GETDATE())`;
+
+        const logReq = pool.request()
+          .input("sheetName",    sql.NVarChar(255), sheetName)
+          .input("productType",  sql.NVarChar(100), detectedType)
+          .input("rowCount",     sql.Int,           data ? data.length : 0)
+          .input("importedRows", sql.Int,           0)
+          .input("status",       sql.NVarChar(50),  'pending')
+          .input("errorMessage", sql.NVarChar(sql.MAX), "");
+        if (hasVersionLabel) logReq.input("versionLabel", sql.NVarChar(30), versionLabel);
+
+        const logResult = await logReq.query(insertQuery);
+        logId = logResult.recordset[0]?.id || null;
+      }
+    } catch (logErr) {
+      console.error("Failed to create import log:", logErr.message);
+    }
+
     let imported = 0;
     let status = 'success';
     let errorMessage = null;
@@ -53,15 +112,15 @@ export async function importExcelData(req, res) {
     try {
       if (detectedType === "Gypsum") {
         if (bufferData) {
-          imported = await importGypsumDataFromBuffer(pool, bufferData, sheetName);
+          imported = await importGypsumDataFromBuffer(pool, bufferData, sheetName, logId);
         }
       } else if (detectedType === "Glass") {
         if (bufferData) {
-          imported = await importGlassData(pool, bufferData, sheetName);
+          imported = await importGlassData(pool, bufferData, sheetName, logId);
         }
       } else if (detectedType === "Accessories") {
         if (bufferData) {
-          imported = await importAccessoriesData(pool, bufferData, sheetName);
+          imported = await importAccessoriesData(pool, bufferData, sheetName, logId);
         }
       } else {
         imported = data ? data.length : 0;
@@ -72,50 +131,38 @@ export async function importExcelData(req, res) {
       console.error("Import error:", importErr);
     }
 
-    // Save import log (1 log per upload)
-    // Use only columns that exist in original table, new columns added by migration
-    try {
-      const colCheck = await pool.request().query(`
-        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'excel_import_logs'
-      `);
-      const cols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
-
-      if (cols.includes('product_type') && cols.includes('imported_rows') && cols.includes('status')) {
-        // New schema with all columns
+    // อัปเดต log ด้วยผลลัพธ์จริง
+    if (logId) {
+      try {
         await pool.request()
-          .input("sheetName",    sql.NVarChar(255), sheetName)
-          .input("productType",  sql.NVarChar(100), detectedType)
-          .input("rowCount",     sql.Int,           data ? data.length : 0)
+          .input("logId",        sql.Int,           logId)
           .input("importedRows", sql.Int,           imported)
           .input("status",       sql.NVarChar(50),  status)
           .input("errorMessage", sql.NVarChar(sql.MAX), errorMessage || "")
           .query(`
-            INSERT INTO excel_import_logs 
-              (sheet_name, product_type, row_count, imported_rows, status, error_message, imported_at)
-            VALUES 
-              (@sheetName, @productType, @rowCount, @importedRows, @status, @errorMessage, GETDATE())
+            UPDATE excel_import_logs
+            SET imported_rows = @importedRows, status = @status, error_message = @errorMessage
+            WHERE id = @logId
           `);
-      } else {
-        // Old schema - only original columns
-        await pool.request()
-          .input("sheetName",  sql.NVarChar(255), sheetName)
-          .input("rowCount",   sql.Int,           data ? data.length : 0)
-          .input("colCount",   sql.Int,           0)
-          .query(`
-            INSERT INTO excel_import_logs (sheet_name, row_count, column_count, imported_at)
-            VALUES (@sheetName, @rowCount, @colCount, GETDATE())
-          `);
+
+        // Mark ข้อมูลที่ insert ไปทั้งหมดของ logId นี้เป็น 'draft'
+        if (status === 'success' && imported > 0) {
+          await pool.request()
+            .input("logId", sql.Int, logId)
+            .query(`UPDATE excel_import_data SET status = 'draft' WHERE import_log_id = @logId`);
+        }
+      } catch (logErr) {
+        console.error("Failed to update import log:", logErr.message);
       }
-    } catch (logErr) {
-      console.error("Failed to save import log:", logErr.message);
     }
 
     res.json({ 
       success: status === 'success', 
       imported,
       detectedType,
-      message: `นำเข้าข้อมูล ${detectedType} สำเร็จ ${imported} แถว`
+      versionLabel,
+      logId,
+      message: `นำเข้าข้อมูล ${detectedType} สำเร็จ ${imported} แถว (${versionLabel || ''})`
     });
 
   } catch (err) {
@@ -132,7 +179,7 @@ export async function importExcelData(req, res) {
  * Helper: Import Gypsum Data from Excel Buffer
  * =====================================================
  */
-async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
+async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = null) {
   let imported = 0;
 
   try {
@@ -522,7 +569,8 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
                   .input("sellW1",           sql.Decimal(18,2), sellW1)
                   .input("sellW2",           sql.Decimal(18,2), sellW2)
                   .input("sellR1",           sql.Decimal(18,2), sellR1)
-                  .input("sellR2",           sql.Decimal(18,2), sellR2);
+                  .input("sellR2",           sql.Decimal(18,2), sellR2)
+                  .input("logId",            sql.Int,           logId);
 
                 if (hasDiscPct) {
                   req.input("discPct1", sql.Decimal(10,6), discPct1)
@@ -537,14 +585,14 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
                         project_no, project_discount_1, project_discount_2, project_price,
                         carton_price, shipping_cost, free_item,
                         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
-                        discount_pct_1, discount_pct_2, discount_pct_3
+                        discount_pct_1, discount_pct_2, discount_pct_3, import_log_id
                       ) VALUES (
                         @branch, @productType, @sku, @productName, @brand, @unit,
                         @basePrice, @discountPrice1, @discountPrice2, @discountPrice3,
                         @projectNo, @projectDiscount1, @projectDiscount2, @projectPrice,
                         @cartonPrice, @shippingCost, @freeItem,
                         @sellW1, @sellW2, @sellR1, @sellR2,
-                        @discPct1, @discPct2, @discPct3
+                        @discPct1, @discPct2, @discPct3, @logId
                       )
                     `);
                   } else {
@@ -555,14 +603,14 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
                         project_no, project_discount_1, project_discount_2, project_price,
                         carton_price, shipping_cost, free_item,
                         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
-                        discount_pct_1, discount_pct_2
+                        discount_pct_1, discount_pct_2, import_log_id
                       ) VALUES (
                         @branch, @productType, @sku, @productName, @brand, @unit,
                         @basePrice, @discountPrice1, @discountPrice2, @discountPrice3,
                         @projectNo, @projectDiscount1, @projectDiscount2, @projectPrice,
                         @cartonPrice, @shippingCost, @freeItem,
                         @sellW1, @sellW2, @sellR1, @sellR2,
-                        @discPct1, @discPct2
+                        @discPct1, @discPct2, @logId
                       )
                     `);
                   }
@@ -573,13 +621,15 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
                       base_price, discount_price_1, discount_price_2, discount_price_3,
                       project_no, project_discount_1, project_discount_2, project_price,
                       carton_price, shipping_cost, free_item,
-                      selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2
+                      selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+                      import_log_id
                     ) VALUES (
                       @branch, @productType, @sku, @productName, @brand, @unit,
                       @basePrice, @discountPrice1, @discountPrice2, @discountPrice3,
                       @projectNo, @projectDiscount1, @projectDiscount2, @projectPrice,
                       @cartonPrice, @shippingCost, @freeItem,
-                      @sellW1, @sellW2, @sellR1, @sellR2
+                      @sellW1, @sellW2, @sellR1, @sellR2,
+                      @logId
                     )
                   `);
                 }
@@ -629,7 +679,7 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName) {
  *   E   → 06RY,15CB
  *   S   → 13SR,14HY,16PK,19PC
  */
-async function importGlassData(pool, excelBuffer, sheetName) {
+async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
   let imported = 0;
 
   try {
@@ -808,11 +858,11 @@ async function importGlassData(pool, excelBuffer, sheetName) {
          base_price, discount_price_1, discount_price_2, discount_price_3,
          project_no, project_discount_1, project_discount_2, project_price,
          carton_price, shipping_cost, free_item,
-         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2`
+         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, import_log_id`
       : `branch, product_type, sku, product_name, brand, unit,
          base_price, discount_price_1, discount_price_2, discount_price_3,
          project_no, project_discount_1, project_discount_2, project_price,
-         carton_price, shipping_cost, free_item`;
+         carton_price, shipping_cost, free_item, import_log_id`;
 
     for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
       const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
@@ -829,11 +879,12 @@ async function importGlassData(pool, excelBuffer, sheetName) {
         req.input(`w2_${idx}`,         sql.Decimal(18,2), r.w2);
         req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1);
         req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2);
+        req.input(`logId${idx}`,       sql.Int,           logId);
 
         if (hasSellingPrices) {
-          valueParts.push(`(@branch${idx},'Glass',@sku${idx},@productName${idx},@brand${idx},'',@basePrice${idx},0,0,0,'',0,0,0,0,0,'',@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx})`);
+          valueParts.push(`(@branch${idx},'Glass',@sku${idx},@productName${idx},@brand${idx},'',@basePrice${idx},0,0,0,'',0,0,0,0,0,'',@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@logId${idx})`);
         } else {
-          valueParts.push(`(@branch${idx},'Glass',@sku${idx},@productName${idx},@brand${idx},'',@basePrice${idx},0,0,0,'',0,0,0,0,0,'')`);
+          valueParts.push(`(@branch${idx},'Glass',@sku${idx},@productName${idx},@brand${idx},'',@basePrice${idx},0,0,0,'',0,0,0,0,0,'',@logId${idx})`);
         }
       });
 
@@ -895,10 +946,17 @@ export async function getImportData(req, res) {
 
     // WHERE clause สำหรับ filter — ใช้กับ CTE ด้านใน
     let whereParts = [];
-    if (productType) whereParts.push("[product_type] = @productType");
-    if (branch)      whereParts.push("[branch] = @branch");
-    if (search)      whereParts.push("([sku] LIKE @search OR [product_name] LIKE @search OR [brand] LIKE @search)");
-    else if (sku)    whereParts.push("[sku] LIKE @search");
+    if (productType) whereParts.push("d.[product_type] = @productType");
+    if (branch)      whereParts.push("d.[branch] = @branch");
+    if (search)      whereParts.push("(d.[sku] LIKE @search OR d.[product_name] LIKE @search OR d.[brand] LIKE @search)");
+    else if (sku)    whereParts.push("d.[sku] LIKE @search");
+
+    // WHERE clause — hasLogId path มี WHERE อยู่แล้วใน fromClause → ใช้ AND
+    // fallback path: FROM (...) d WHERE d.rn = 1 → ต้องใช้ AND เช่นกัน
+    const buildWhereStr = (useAnd) =>
+      whereParts.length > 0
+        ? `AND ${whereParts.join(' AND ')}`
+        : '';
 
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
 
@@ -911,6 +969,8 @@ export async function getImportData(req, res) {
     const hasSellingPrices = cols.includes('selling_price_w1');
     const hasDiscPct       = cols.includes('discount_pct_1');
 
+    const hasLogId = cols.includes('import_log_id');
+
     const sellingCols = hasSellingPrices ? `
         [selling_price_w1] AS [sellingPriceW1],
         [selling_price_w2] AS [sellingPriceW2],
@@ -920,42 +980,59 @@ export async function getImportData(req, res) {
         NULL AS [sellingPriceR1], NULL AS [sellingPriceR2],`;
 
     const discPctCols = hasDiscPct ? `
-        -- normalize: ถ้าค่า > 1 แสดงว่าเป็น % จริง (ข้อมูลเก่า) ให้หาร 100 ก่อนส่ง
         CASE WHEN [discount_pct_1] > 1 THEN [discount_pct_1] / 100.0 ELSE [discount_pct_1] END AS [discountPct1],
         CASE WHEN [discount_pct_2] > 1 THEN [discount_pct_2] / 100.0 ELSE [discount_pct_2] END AS [discountPct2],
         CASE WHEN [discount_pct_3] > 1 THEN [discount_pct_3] / 100.0 ELSE [discount_pct_3] END AS [discountPct3],` : `
         NULL AS [discountPct1], NULL AS [discountPct2], NULL AS [discountPct3],`;
 
-    // CTE: เลือกเฉพาะ row ล่าสุดต่อ sku+branch+product_name ด้วย ROW_NUMBER()
-    const latestCte = `
-      WITH latest AS (
-        SELECT *,
-          ROW_NUMBER() OVER (
+    // หา import_log_id ล่าสุดต่อ product_type
+    let fromClause = '';
+    if (hasLogId) {
+      fromClause = `
+        FROM [excel_import_data] d
+        INNER JOIN (
+          SELECT l.product_type, MAX(l.id) AS latest_log_id
+          FROM excel_import_logs l
+          WHERE l.status = 'published' AND l.imported_rows > 0
+          GROUP BY l.product_type
+        ) latest_log
+          ON d.product_type = latest_log.product_type
+          AND d.import_log_id = latest_log.latest_log_id
+        WHERE d.status = 'published'
+      `;
+    } else {
+      // fallback: ล่าสุดต่อ sku+branch
+      fromClause = `
+        FROM (
+          SELECT *, ROW_NUMBER() OVER (
             PARTITION BY [sku], [branch], [product_name]
             ORDER BY [created_at] DESC
           ) AS rn
-        FROM [excel_import_data]
-      )
-      SELECT * FROM latest WHERE rn = 1
-    `;
+          FROM [excel_import_data]
+          WHERE status = 'published'
+        ) d WHERE d.rn = 1
+      `;
+    }
 
-    // Count จาก latest rows เท่านั้น
+    // WHERE clause — ใช้ prefix ถูกต้องตาม path
+    // hasLogId path: FROM ... (ไม่มี WHERE ใน FROM) → ใช้ WHERE
+    // fallback path: FROM (...) d WHERE d.rn = 1 → ต้องใช้ AND
+    const whereStr = buildWhereStr(!hasLogId);
+
+    // Count
     const countReq = pool.request();
     if (productType) countReq.input("productType", sql.NVarChar(100), productType);
     if (branch)      countReq.input("branch",      sql.NVarChar(100), branch);
     if (search || sku) countReq.input("search",    sql.NVarChar(255), `%${search || sku}%`);
 
     const countResult = await countReq.query(`
-      WITH latest AS (
-        SELECT *,
-          ROW_NUMBER() OVER (PARTITION BY [sku], [branch], [product_name] ORDER BY [created_at] DESC) AS rn
-        FROM [excel_import_data]
-      )
-      SELECT COUNT(*) AS [total] FROM latest WHERE rn = 1 ${whereParts.length > 0 ? 'AND ' + whereParts.join(' AND ') : ''}
+      SELECT COUNT(*) AS [total]
+      ${fromClause}
+      ${whereStr}
     `);
     const total = countResult.recordset[0].total;
 
-    // Get data — latest per sku+branch+product_name only
+    // Get data
     const dataReq = pool.request();
     if (productType) dataReq.input("productType", sql.NVarChar(100), productType);
     if (branch)      dataReq.input("branch",      sql.NVarChar(100), branch);
@@ -964,24 +1041,19 @@ export async function getImportData(req, res) {
     dataReq.input("offset", sql.Int, offset);
 
     const result = await dataReq.query(`
-      WITH latest AS (
-        SELECT *,
-          ROW_NUMBER() OVER (PARTITION BY [sku], [branch], [product_name] ORDER BY [created_at] DESC) AS rn
-        FROM [excel_import_data]
-      )
       SELECT
-        [id], [branch], [product_type] AS [productType],
-        [sku], [product_name] AS [productName], [brand], [unit],
-        [base_price]       AS [basePrice],
-        [discount_price_1] AS [discountPrice1],
-        [discount_price_2] AS [discountPrice2],
-        [discount_price_3] AS [discountPrice3],
+        d.[id], d.[branch], d.[product_type] AS [productType],
+        d.[sku], d.[product_name] AS [productName], d.[brand], d.[unit],
+        d.[base_price]       AS [basePrice],
+        d.[discount_price_1] AS [discountPrice1],
+        d.[discount_price_2] AS [discountPrice2],
+        d.[discount_price_3] AS [discountPrice3],
         ${discPctCols}
         ${sellingCols}
-        [created_at] AS [createdAt]
-      FROM latest
-      WHERE rn = 1 ${whereParts.length > 0 ? 'AND ' + whereParts.join(' AND ') : ''}
-      ORDER BY [product_type], [sku], [branch]
+        d.[created_at] AS [createdAt]
+      ${fromClause}
+      ${whereStr}
+      ORDER BY d.[product_type], d.[sku], d.[branch]
       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `);
     res.json({
@@ -1056,50 +1128,104 @@ export async function updateImportData(req, res) {
   }
 }
 
+export async function getImportDataByLog(req, res) {
+  try {
+    const { logId } = req.params;
+    const { page = 1, limit = 50, branch, search } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const pool = await getPool();
+
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
+    `);
+    const cols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasSellingPrices = cols.includes('selling_price_w1');
+    const hasDiscPct = cols.includes('discount_pct_1');
+
+    let whereParts = [`d.[import_log_id] = @logId`];
+    if (branch) whereParts.push(`d.[branch] = @branch`);
+    if (search) whereParts.push(`(d.[sku] LIKE @search OR d.[product_name] LIKE @search)`);
+
+    const whereStr = `WHERE ${whereParts.join(' AND ')}`;
+
+    const countReq = pool.request().input('logId', sql.Int, parseInt(logId));
+    if (branch) countReq.input('branch', sql.NVarChar(100), branch);
+    if (search) countReq.input('search', sql.NVarChar(255), `%${search}%`);
+    const countResult = await countReq.query(`SELECT COUNT(*) AS total FROM excel_import_data d ${whereStr}`);
+    const total = countResult.recordset[0].total;
+
+    const sellingCols = hasSellingPrices
+      ? `d.[selling_price_w1] AS [sellingPriceW1], d.[selling_price_w2] AS [sellingPriceW2],
+         d.[selling_price_r1] AS [sellingPriceR1], d.[selling_price_r2] AS [sellingPriceR2],`
+      : `NULL AS [sellingPriceW1], NULL AS [sellingPriceW2], NULL AS [sellingPriceR1], NULL AS [sellingPriceR2],`;
+    const discPctCols = hasDiscPct
+      ? `CASE WHEN d.[discount_pct_1] > 1 THEN d.[discount_pct_1]/100.0 ELSE d.[discount_pct_1] END AS [discountPct1],
+         CASE WHEN d.[discount_pct_2] > 1 THEN d.[discount_pct_2]/100.0 ELSE d.[discount_pct_2] END AS [discountPct2],
+         CASE WHEN d.[discount_pct_3] > 1 THEN d.[discount_pct_3]/100.0 ELSE d.[discount_pct_3] END AS [discountPct3],`
+      : `NULL AS [discountPct1], NULL AS [discountPct2], NULL AS [discountPct3],`;
+
+    const dataReq = pool.request()
+      .input('logId', sql.Int, parseInt(logId))
+      .input('limit', sql.Int, parseInt(limit))
+      .input('offset', sql.Int, offset);
+    if (branch) dataReq.input('branch', sql.NVarChar(100), branch);
+    if (search) dataReq.input('search', sql.NVarChar(255), `%${search}%`);
+
+    const result = await dataReq.query(`
+      SELECT d.[id], d.[branch], d.[product_type] AS [productType],
+        d.[sku], d.[product_name] AS [productName], d.[brand], d.[unit],
+        d.[base_price] AS [basePrice],
+        d.[discount_price_1] AS [discountPrice1],
+        d.[discount_price_2] AS [discountPrice2],
+        d.[discount_price_3] AS [discountPrice3],
+        ${discPctCols}
+        ${sellingCols}
+        d.[created_at] AS [createdAt]
+      FROM excel_import_data d
+      ${whereStr}
+      ORDER BY d.[sku], d.[branch]
+      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+    `);
+
+    res.json({ data: result.recordset, total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) });
+  } catch (err) {
+    console.error("getImportDataByLog error:", err);
+    res.status(500).json({ message: "Failed to fetch history data", error: err.message });
+  }
+}
+
 export async function getImportLogs(req, res) {
   try {
     const pool = await getPool();
+    const { productType } = req.query;
 
-    // Check which columns exist
     const colCheck = await pool.request().query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
       WHERE TABLE_NAME = 'excel_import_logs'
     `);
     const cols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasVersionLabel = cols.includes('version_label');
 
-    let result;
+    const req2 = pool.request();
+    if (productType) req2.input('productType', sql.NVarChar(100), productType);
 
-    if (cols.includes('product_type') && cols.includes('imported_rows') && cols.includes('status')) {
-      // New schema
-      result = await pool.request().query(`
-        SELECT 
-          [id],
-          [sheet_name]    AS [sheetName],
-          [product_type]  AS [productType],
-          [row_count]     AS [rowCount],
-          [imported_rows] AS [importedRows],
-          [status]        AS [status],
-          [error_message] AS [errorMessage],
-          [imported_at]   AS [importedAt]
-        FROM excel_import_logs
-        ORDER BY [imported_at] DESC
-      `);
-    } else {
-      // Old schema - only original columns
-      result = await pool.request().query(`
-        SELECT 
-          [id],
-          [sheet_name]  AS [sheetName],
-          NULL          AS [productType],
-          [row_count]   AS [rowCount],
-          NULL          AS [importedRows],
-          'success'     AS [status],
-          NULL          AS [errorMessage],
-          [imported_at] AS [importedAt]
-        FROM excel_import_logs
-        ORDER BY [imported_at] DESC
-      `);
-    }
+    const whereStr = productType ? 'WHERE product_type = @productType' : '';
+
+    const result = await req2.query(`
+      SELECT 
+        [id],
+        [sheet_name]    AS [sheetName],
+        [product_type]  AS [productType],
+        [row_count]     AS [rowCount],
+        [imported_rows] AS [importedRows],
+        [status]        AS [status],
+        [error_message] AS [errorMessage],
+        ${hasVersionLabel ? '[version_label] AS [versionLabel],' : 'NULL AS [versionLabel],'}
+        [imported_at]   AS [importedAt]
+      FROM excel_import_logs
+      ${whereStr}
+      ORDER BY [imported_at] DESC
+    `);
 
     res.json(result.recordset);
 
@@ -1164,13 +1290,121 @@ export async function previewExcelData(req, res) {
       });
     }
 
+    // ============================================================
+    // คำนวณ summary เพิ่มเติม
+    // ============================================================
+    const pool = await getPool();
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+    // 1. รอบที่เท่าไหร่ของวันนี้ และ version label ที่จะได้
+    const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL' };
+    const abbr = TYPE_ABBR[detectedType] || (detectedType || 'XX').substring(0, 3).toUpperCase();
+    const yy = String(now.getFullYear()).slice(2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dateKey = `${abbr}-${yy}${mm}${dd}`;
+
+    const roundResult = await pool.request()
+      .input('pt',    sql.NVarChar(100), detectedType || '')
+      .input('today', sql.NVarChar(30),  todayStart)
+      .query(`
+        SELECT COUNT(*) AS cnt
+        FROM excel_import_logs
+        WHERE product_type = @pt AND imported_at >= @today
+      `);
+    const uploadRoundToday = (roundResult.recordset[0].cnt || 0) + 1;
+    const previewVersionLabel = uploadRoundToday === 1 ? dateKey : `${dateKey}-${uploadRoundToday}`;
+
+    // 2. เปรียบเทียบราคากับข้อมูลล่าสุดใน DB
+    let priceChanges = [];
+    let newSkus = [];
+    let removedSkus = [];
+
+    if (detectedType && previewData.rows && previewData.rows.length > 0) {
+      // ดึงข้อมูลล่าสุดจาก DB สำหรับ product_type นี้
+      const latestLogResult = await pool.request()
+        .input('pt', sql.NVarChar(100), detectedType)
+        .query(`
+          SELECT TOP 1 id FROM excel_import_logs
+          WHERE product_type = @pt AND status = 'success' AND imported_rows > 0
+          ORDER BY imported_at DESC
+        `);
+
+      if (latestLogResult.recordset.length > 0) {
+        const latestLogId = latestLogResult.recordset[0].id;
+
+        const dbData = await pool.request()
+          .input('logId', sql.Int, latestLogId)
+          .query(`
+            SELECT sku, branch, base_price, discount_price_1, discount_price_2, discount_price_3
+            FROM excel_import_data
+            WHERE import_log_id = @logId
+          `);
+
+        // สร้าง map จาก DB: "sku|branch" → row
+        const dbMap = new Map();
+        for (const r of dbData.recordset) {
+          dbMap.set(`${r.sku}|${r.branch}`, r);
+        }
+
+        // สร้าง map จาก Excel ใหม่: "sku|branch" → row
+        const newMap = new Map();
+        for (const r of (previewData.allRows || previewData.rows)) {
+          const key = `${r.sku}|${r.branch}`;
+          newMap.set(key, r);
+        }
+
+        // หา SKU ใหม่ที่ไม่มีใน DB
+        for (const [key, row] of newMap) {
+          if (!dbMap.has(key)) {
+            newSkus.push({ sku: row.sku, productName: row.productName, branch: row.branch });
+          }
+        }
+
+        // หา SKU ที่หายไปจาก Excel ใหม่
+        for (const [key, row] of dbMap) {
+          if (!newMap.has(key)) {
+            removedSkus.push({ sku: row.sku, branch: row.branch });
+          }
+        }
+
+        // หาราคาที่เปลี่ยนแปลง
+        for (const [key, newRow] of newMap) {
+          const dbRow = dbMap.get(key);
+          if (!dbRow) continue;
+          const fields = [
+            { name: 'ราคาตั้งต้น',   newVal: newRow.base_price,       oldVal: dbRow.base_price },
+            { name: 'ราคาหลังลด 1',  newVal: newRow.discount_price_1, oldVal: dbRow.discount_price_1 },
+            { name: 'ราคาหลังลด 2',  newVal: newRow.discount_price_2, oldVal: dbRow.discount_price_2 },
+          ];
+          for (const f of fields) {
+            const nv = parseFloat(f.newVal) || 0;
+            const ov = parseFloat(f.oldVal) || 0;
+            if (Math.abs(nv - ov) > 0.001) {
+              priceChanges.push({
+                sku: newRow.sku, productName: newRow.productName, branch: newRow.branch,
+                field: f.name, oldPrice: ov, newPrice: nv,
+                diff: nv - ov, diffPct: ov > 0 ? ((nv - ov) / ov * 100) : null
+              });
+            }
+          }
+        }
+      }
+    }
+
     res.json({ 
       success: true,
       detectedType,
-      totalSkus:  previewData.totalSkus  || 0,
-      totalRows:  previewData.totalRows  || 0,
-      branches:   previewData.branches   || [],
-      preview:    (previewData.rows || []).slice(0, 15)
+      totalSkus:       previewData.totalSkus  || 0,
+      totalRows:       previewData.totalRows  || 0,
+      branches:        previewData.branches   || [],
+      uploadRoundToday,
+      previewVersionLabel,
+      priceChangesTotal: priceChanges.length,
+      newSkusTotal:    newSkus.length,
+      removedSkusTotal: removedSkus.length,
     });
 
   } catch (err) {
@@ -1433,9 +1667,8 @@ async function previewGypsumData(excelBuffer, sheetName) {
               productName: skuName,
               brand: brandName,
               branch: firstBranch,                    // ตัวอย่างสาขาแรก
-              totalBranches: branchColumns.length,    // จำนวน branchCode จริงทั้งหมด
+              totalBranches: branchColumns.length,
               numDiscounts,
-              // คอลัมน์ที่จะเก็บ
               base_price:         basePrice,
               discount_pct_1:     discPct1,
               discount_pct_2:     discPct2,
@@ -1460,7 +1693,7 @@ async function previewGypsumData(excelBuffer, sheetName) {
       }
     }
 
-    return { rows: previewRows, totalSkus, totalRows, branches: uniqueBranchCodes };
+    return { rows: previewRows, allRows: previewRows, totalSkus, totalRows, branches: uniqueBranchCodes };
 
   } catch (err) {
     console.error("[Preview] Fatal error:", err);
@@ -1758,7 +1991,7 @@ function parseAccRows(data) {
  * ดึง full SKU + branchCode จาก StockStatusFact (category='Accessories', SKU LIKE 'E%')
  * ถ้าไม่มีใน StockStatusFact → insert ด้วย Excel SKU + branch='ALL'
  */
-async function importAccessoriesData(pool, excelBuffer, sheetName) {
+async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null) {
   let imported = 0;
 
   try {
@@ -1831,18 +2064,19 @@ async function importAccessoriesData(pool, excelBuffer, sheetName) {
         req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
         req.input(`reVat${idx}`,       sql.Decimal(18,2), r.reBeforeVat);
         req.input(`sellPrice${idx}`,   sql.Decimal(18,2), r.sellingPrice);
+        req.input(`logId${idx}`,       sql.Int,           logId);
 
         if (hasSellingPrices) {
           // selling_price_w1 = RE before VAT, selling_price_r1 = selling price incl. VAT
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
             `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',` +
-            `@reVat${idx},0,@sellPrice${idx},0)`
+            `@reVat${idx},0,@sellPrice${idx},0,@logId${idx})`
           );
         } else {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'')`
+            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',@logId${idx})`
           );
         }
       });
@@ -1852,11 +2086,11 @@ async function importAccessoriesData(pool, excelBuffer, sheetName) {
            base_price, discount_price_1, discount_price_2, discount_price_3,
            project_no, project_discount_1, project_discount_2, project_price,
            carton_price, shipping_cost, free_item,
-           selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2`
+           selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, import_log_id`
         : `branch, product_type, sku, product_name, brand, unit,
            base_price, discount_price_1, discount_price_2, discount_price_3,
            project_no, project_discount_1, project_discount_2, project_price,
-           carton_price, shipping_cost, free_item`;
+           carton_price, shipping_cost, free_item, import_log_id`;
 
       try {
         await req.query(`INSERT INTO excel_import_data (${insertCols}) VALUES ${valueParts.join(',')}`);
@@ -1983,5 +2217,216 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
   } catch (err) {
     console.error('[ACC Preview] Fatal error:', err);
     return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
+  }
+}
+
+/**
+ * =====================================================
+ * GET /api/excel/draft/:logId
+ * ดูข้อมูล draft ของ logId นั้น
+ * =====================================================
+ */
+export async function getDraftData(req, res) {
+  try {
+    const { logId } = req.params;
+    const { page = 1, limit = 50, branch, search } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const pool = await getPool();
+
+    // ตรวจสอบว่า log นี้มี draft อยู่ไหม
+    const logResult = await pool.request()
+      .input('logId', sql.Int, parseInt(logId))
+      .query(`
+        SELECT l.id, l.product_type, l.version_label, l.imported_rows, l.status, l.imported_at,
+               COUNT(d.id) AS draft_count
+        FROM excel_import_logs l
+        LEFT JOIN excel_import_data d ON d.import_log_id = l.id AND d.status = 'draft'
+        WHERE l.id = @logId
+        GROUP BY l.id, l.product_type, l.version_label, l.imported_rows, l.status, l.imported_at
+      `);
+
+    if (!logResult.recordset.length) {
+      return res.status(404).json({ message: 'ไม่พบ draft นี้' });
+    }
+    const logInfo = logResult.recordset[0];
+
+    // ดึงข้อมูล draft
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
+    `);
+    const cols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasSellingPrices = cols.includes('selling_price_w1');
+    const hasDiscPct = cols.includes('discount_pct_1');
+
+    let whereParts = [`d.[import_log_id] = @logId`, `d.[status] = 'draft'`];
+    if (branch) whereParts.push(`d.[branch] = @branch`);
+    if (search) whereParts.push(`(d.[sku] LIKE @search OR d.[product_name] LIKE @search OR d.[brand] LIKE @search)`);
+    const whereStr = `WHERE ${whereParts.join(' AND ')}`;
+
+    const countReq = pool.request().input('logId', sql.Int, parseInt(logId));
+    if (branch) countReq.input('branch', sql.NVarChar(100), branch);
+    if (search) countReq.input('search', sql.NVarChar(255), `%${search}%`);
+    const countResult = await countReq.query(`SELECT COUNT(*) AS total FROM excel_import_data d ${whereStr}`);
+    const total = countResult.recordset[0].total;
+
+    const sellingCols = hasSellingPrices
+      ? `d.[selling_price_w1] AS [sellingPriceW1], d.[selling_price_w2] AS [sellingPriceW2],
+         d.[selling_price_r1] AS [sellingPriceR1], d.[selling_price_r2] AS [sellingPriceR2],`
+      : `NULL AS [sellingPriceW1], NULL AS [sellingPriceW2], NULL AS [sellingPriceR1], NULL AS [sellingPriceR2],`;
+    const discPctCols = hasDiscPct
+      ? `CASE WHEN d.[discount_pct_1] > 1 THEN d.[discount_pct_1]/100.0 ELSE d.[discount_pct_1] END AS [discountPct1],
+         CASE WHEN d.[discount_pct_2] > 1 THEN d.[discount_pct_2]/100.0 ELSE d.[discount_pct_2] END AS [discountPct2],
+         CASE WHEN d.[discount_pct_3] > 1 THEN d.[discount_pct_3]/100.0 ELSE d.[discount_pct_3] END AS [discountPct3],`
+      : `NULL AS [discountPct1], NULL AS [discountPct2], NULL AS [discountPct3],`;
+
+    const dataReq = pool.request()
+      .input('logId', sql.Int, parseInt(logId))
+      .input('limit', sql.Int, parseInt(limit))
+      .input('offset', sql.Int, offset);
+    if (branch) dataReq.input('branch', sql.NVarChar(100), branch);
+    if (search) dataReq.input('search', sql.NVarChar(255), `%${search}%`);
+
+    const result = await dataReq.query(`
+      SELECT d.[id], d.[branch], d.[product_type] AS [productType],
+        d.[sku], d.[product_name] AS [productName], d.[brand], d.[unit],
+        d.[base_price] AS [basePrice],
+        d.[discount_price_1] AS [discountPrice1],
+        d.[discount_price_2] AS [discountPrice2],
+        d.[discount_price_3] AS [discountPrice3],
+        ${discPctCols}
+        ${sellingCols}
+        d.[status], d.[created_at] AS [createdAt]
+      FROM excel_import_data d
+      ${whereStr}
+      ORDER BY d.[sku], d.[branch]
+      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+    `);
+
+    res.json({
+      logInfo,
+      data: result.recordset,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(total / parseInt(limit))
+    });
+  } catch (err) {
+    console.error('getDraftData error:', err);
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * PUT /api/excel/draft/:logId/rows/:rowId
+ * แก้ไขราคาใน draft row
+ * =====================================================
+ */
+export async function updateDraftRow(req, res) {
+  try {
+    const { logId, rowId } = req.params;
+    const { base_price, discount_price_1, discount_price_2, discount_price_3,
+            selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2 } = req.body;
+    const pool = await getPool();
+
+    // ตรวจสอบว่า row นี้เป็น draft ของ logId นี้จริง
+    const check = await pool.request()
+      .input('id', sql.Int, parseInt(rowId))
+      .input('logId', sql.Int, parseInt(logId))
+      .query(`SELECT id FROM excel_import_data WHERE id = @id AND import_log_id = @logId AND status = 'draft'`);
+    if (!check.recordset.length) {
+      return res.status(404).json({ message: 'ไม่พบ row นี้ใน draft' });
+    }
+
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
+    `);
+    const cols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasSellingPrices = cols.includes('selling_price_w1');
+
+    const req2 = pool.request().input('id', sql.Int, parseInt(rowId));
+    const setCols = [];
+
+    if (base_price       !== undefined) { req2.input('bp',  sql.Decimal(18,2), parseFloat(base_price)       || 0); setCols.push('[base_price] = @bp'); }
+    if (discount_price_1 !== undefined) { req2.input('dp1', sql.Decimal(18,2), parseFloat(discount_price_1) || 0); setCols.push('[discount_price_1] = @dp1'); }
+    if (discount_price_2 !== undefined) { req2.input('dp2', sql.Decimal(18,2), parseFloat(discount_price_2) || 0); setCols.push('[discount_price_2] = @dp2'); }
+    if (discount_price_3 !== undefined) { req2.input('dp3', sql.Decimal(18,2), parseFloat(discount_price_3) || 0); setCols.push('[discount_price_3] = @dp3'); }
+    if (hasSellingPrices) {
+      if (selling_price_w1 !== undefined) { req2.input('sw1', sql.Decimal(18,2), parseFloat(selling_price_w1) || 0); setCols.push('[selling_price_w1] = @sw1'); }
+      if (selling_price_w2 !== undefined) { req2.input('sw2', sql.Decimal(18,2), parseFloat(selling_price_w2) || 0); setCols.push('[selling_price_w2] = @sw2'); }
+      if (selling_price_r1 !== undefined) { req2.input('sr1', sql.Decimal(18,2), parseFloat(selling_price_r1) || 0); setCols.push('[selling_price_r1] = @sr1'); }
+      if (selling_price_r2 !== undefined) { req2.input('sr2', sql.Decimal(18,2), parseFloat(selling_price_r2) || 0); setCols.push('[selling_price_r2] = @sr2'); }
+    }
+
+    if (!setCols.length) return res.status(400).json({ message: 'ไม่มีฟิลด์ที่จะแก้ไข' });
+    setCols.push('[updated_at] = GETDATE()');
+
+    await req2.query(`UPDATE excel_import_data SET ${setCols.join(', ')} WHERE id = @id`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('updateDraftRow error:', err);
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * POST /api/excel/draft/:logId/publish
+ * Publish draft → เปลี่ยน status เป็น published
+ * =====================================================
+ */
+export async function publishDraft(req, res) {
+  try {
+    const { logId } = req.params;
+    const pool = await getPool();
+
+    // ตรวจสอบว่ามี draft อยู่
+    const check = await pool.request()
+      .input('logId', sql.Int, parseInt(logId))
+      .query(`SELECT COUNT(*) AS cnt FROM excel_import_data WHERE import_log_id = @logId AND status = 'draft'`);
+    if (!check.recordset[0].cnt) {
+      return res.status(404).json({ message: 'ไม่พบ draft นี้ หรือ publish ไปแล้ว' });
+    }
+
+    // Publish: เปลี่ยน status เป็น published
+    const r = await pool.request()
+      .input('logId', sql.Int, parseInt(logId))
+      .query(`UPDATE excel_import_data SET status = 'published' WHERE import_log_id = @logId AND status = 'draft'`);
+
+    // อัปเดต log status
+    await pool.request()
+      .input('logId', sql.Int, parseInt(logId))
+      .query(`UPDATE excel_import_logs SET status = 'published' WHERE id = @logId`);
+
+    res.json({ success: true, published: r.rowsAffected[0] });
+  } catch (err) {
+    console.error('publishDraft error:', err);
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * DELETE /api/excel/draft/:logId
+ * ยกเลิก draft — ลบข้อมูล draft ออก
+ * =====================================================
+ */
+export async function discardDraft(req, res) {
+  try {
+    const { logId } = req.params;
+    const pool = await getPool();
+
+    const r = await pool.request()
+      .input('logId', sql.Int, parseInt(logId))
+      .query(`DELETE FROM excel_import_data WHERE import_log_id = @logId AND status = 'draft'`);
+
+    await pool.request()
+      .input('logId', sql.Int, parseInt(logId))
+      .query(`UPDATE excel_import_logs SET status = 'discarded', imported_rows = 0 WHERE id = @logId`);
+
+    res.json({ success: true, deleted: r.rowsAffected[0] });
+  } catch (err) {
+    console.error('discardDraft error:', err);
+    res.status(500).json({ message: err.message });
   }
 }

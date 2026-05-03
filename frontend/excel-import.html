@@ -113,7 +113,7 @@
         </button>
       </div>
 
-      <div class="table-container border rounded">
+      <div class="table-container border rounded hidden">
         <table id="dataTable" class="w-full text-sm">
           <thead></thead>
           <tbody></tbody>
@@ -127,6 +127,54 @@
     <div id="statusMessage" class="mt-6 hidden p-4 rounded"></div>
 
   </main>
+
+  <!-- DRAFT PANEL -->
+  <div id="draftPanel" class="hidden w-full bg-white mt-6 rounded shadow p-6 mb-4 border-2 border-orange-300">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <div class="flex items-center gap-3">
+        <span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">DRAFT</span>
+        <h2 class="text-lg font-bold text-gray-800" id="draftPanelTitle">ตรวจสอบข้อมูลก่อน Publish</h2>
+        <span id="draftVersionBadge" class="font-mono text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded"></span>
+      </div>
+      <div class="flex gap-2">
+        <select id="draftFilterBranch" onchange="loadDraftData()" class="border rounded px-3 py-1.5 text-sm">
+          <option value="">ทุกสาขา</option>
+          <option>BKK</option><option>CM</option><option>CR</option><option>PL</option>
+          <option>NS</option><option>KK</option><option>SK</option><option>UD</option>
+          <option>UB</option><option>NR</option><option>RB</option><option>PC</option>
+          <option>BS</option><option>AY</option><option>RY</option><option>CB</option>
+          <option>SR</option><option>PK</option><option>HY</option><option>SB</option>
+        </select>
+        <input id="draftFilterSku" type="text" placeholder="ค้นหา SKU..."
+          class="border rounded px-3 py-1.5 text-sm w-40" oninput="debounceDraftSearch()" />
+        <button onclick="publishDraft()"
+          class="px-4 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1.5 font-medium">
+          <i class="bi bi-check-circle"></i> Publish
+        </button>
+        <button onclick="discardDraft()"
+          class="px-3 py-1.5 text-sm bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 flex items-center gap-1.5">
+          <i class="bi bi-trash"></i> ยกเลิก
+        </button>
+      </div>
+    </div>
+    <div id="draftSummary" class="text-sm text-gray-500 mb-3"></div>
+    <div class="table-container border rounded">
+      <table class="w-full text-sm">
+        <thead>
+          <tr>
+            <th>SKU</th><th>ชื่อสินค้า</th><th>แบรนด์</th><th>สาขา</th>
+            <th class="text-right">ราคาตั้งต้น</th>
+            <th class="text-right">ส่วนลด 1</th><th class="text-right">ราคาหลังลด 1</th>
+            <th class="text-right">ส่วนลด 2</th><th class="text-right">ราคาหลังลด 2</th>
+          </tr>
+        </thead>
+        <tbody id="draftBody">
+          <tr><td colspan="9" class="text-center py-6 text-gray-400">กำลังโหลด...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="draftPagination" class="mt-4 flex items-center justify-between text-sm text-gray-600"></div>
+  </div>
 
   <!-- IMPORTED DATA -->
   <main class="w-full bg-white mt-6 rounded shadow p-6 mb-8">
