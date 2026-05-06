@@ -2231,13 +2231,13 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         if (hasSellingPrices) {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},@sellPrice${idx},@sdm${idx},'',0,0,0,0,0,'',` +
+            `@basePrice${idx},@reVat${idx},0,@sdm${idx},'',0,0,0,0,0,'',` +
             `@w1${idx},@w2${idx},@r1${idx},@r2${idx},@logId${idx})`
           );
         } else {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},@sellPrice${idx},@sdm${idx},'',0,0,0,0,0,'',@logId${idx})`
+            `@basePrice${idx},@reVat${idx},0,@sdm${idx},'',0,0,0,0,0,'',@logId${idx})`
           );
         }
       });
@@ -2282,14 +2282,14 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,@sellPrice,@sdm,'',0,0,0,0,0,'',
+                        @basePrice,@reVat,0,@sdm,'',0,0,0,0,0,'',
                         @w1,@w2,@r1,@r2,@logId)
               `);
             } else {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,@sellPrice,@sdm,'',0,0,0,0,0,'',@logId)
+                        @basePrice,@reVat,0,@sdm,'',0,0,0,0,0,'',@logId)
               `);
             }
             imported++;
@@ -2371,7 +2371,7 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
           totalBranches:    allBranchCodes.length,
           base_price:       pr.basePrice,
           discount_price_1: pr.reBeforeVat,    // RE ก่อน VAT (col G)
-          discount_price_2: pr.sellingPrice,   // ชุน รวม VAT (col H)
+          discount_price_2: 0,                 // ทุนรวม VAT — ไม่เก็บ
           discount_price_3: pr.priceSdm,       // SDM (col I)
           selling_price_w1: pr.priceW1,        // W1 (col J)
           selling_price_w2: pr.priceW2,        // W2 (col K)
