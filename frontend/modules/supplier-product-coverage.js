@@ -222,8 +222,11 @@ newRow.dataset.subGroup = "";
   const skuIn = newRow.querySelector(".sku-input");
 if (skuIn) {
   skuIn.value = "";
-  attachSkuAutocomplete(skuIn);   // 👈 ใส่ตรงนี้
+  attachSkuAutocomplete(skuIn);
 }
+
+  const psIn = newRow.querySelector(".package-size-input");
+  if (psIn) psIn.value = "";
 
   // =========================
   // append at top ( newest first )
@@ -549,7 +552,8 @@ function collectProductCoverage() {
       subGroup: row.dataset.subGroup || null,
       SUBGROUP_NAME:
         row.querySelector(".subgroup-display span")?.textContent || null,
-      sku: skuList.length > 0 ? skuList.join(", ") : null // รวมกลับด้วย ", "
+      sku: skuList.length > 0 ? skuList.join(", ") : null, // รวมกลับด้วย ", "
+      packageSize: row.querySelector(".package-size-input")?.value || null
     };
   });
 }
@@ -668,6 +672,14 @@ if (item.subGroup) {
     const sku = row.querySelector(".sku-input");
     if (sku) sku.value = item.sku;
   }
+
+  // =========================
+  // PACKAGE SIZE
+  // =========================
+  if (item.packageSize) {
+    const ps = row.querySelector(".package-size-input");
+    if (ps) ps.value = item.packageSize;
+  }
 }
 
 async function loadLatestCoverageFromHistory(supplierNo) {
@@ -685,18 +697,67 @@ async function loadLatestCoverageFromHistory(supplierNo) {
 
   if (!items.length) return;
 
-  // ล้างฟอร์มเดิม
-  const container = getCoverageContainer();
-  const firstRow = container.querySelector(".product-row");
-  container.innerHTML = "";
-  container.appendChild(firstRow);
+  await renderCoverageItems(items);
+}
 
-  // ใส่ข้อมูลจาก snapshot
-  items.forEach((item, idx) => {
-    if (idx > 0) addProductRow();
-    const row = getAllRows()[idx];
-    applyCoverageToRow(row, item);
-  });
+async function renderCoverageItems(items) {
+  const container = getCoverageContainer();
+  if (!container) return;
+
+  // เก็บ template row จาก HTML (แถวแรกที่อยู่ใน DOM)
+  const templateRow = container.querySelector(".product-row");
+  if (!templateRow) return;
+
+  // ล้าง container แล้วใส่ template กลับ
+  container.innerHTML = "";
+  container.appendChild(templateRow);
+  resetRow(templateRow);
+
+  // สร้างแถวเพิ่มแบบ append ทีละแถว แล้ว apply ข้อมูล
+  for (let idx = 0; idx < items.length; idx++) {
+    if (idx > 0) {
+      // clone จาก template แล้ว append (ไม่ prepend)
+      const newRow = createEmptyRow(templateRow);
+      container.appendChild(newRow);
+    }
+    const rows = getAllRows();
+    await applyCoverageToRow(rows[idx], items[idx]);
+  }
+}
+
+function createEmptyRow(templateRow) {
+  const newRow = templateRow.cloneNode(true);
+  newRow.dataset.category = "";
+  newRow.dataset.brand = "";
+  newRow.dataset.group = "";
+  newRow.dataset.subGroup = "";
+  PRODUCT_ROW_SEQ++;
+  newRow.dataset.rowSeq = String(PRODUCT_ROW_SEQ);
+
+  const catText = newRow.querySelector(".category-display span");
+  if (catText) catText.textContent = "ทั้งหมด";
+  const brandText = newRow.querySelector(".brand-display span");
+  if (brandText) brandText.textContent = "ทั้งหมด";
+  const groupText = newRow.querySelector(".group-display span");
+  if (groupText) groupText.textContent = "ทั้งหมด";
+  const subText = newRow.querySelector(".subgroup-display span");
+  if (subText) subText.textContent = "ทั้งหมด";
+
+  const catDD = newRow.querySelector(".category-dropdown");
+  if (catDD) { catDD.innerHTML = ""; catDD.classList.add("hidden"); }
+  const brandDD = newRow.querySelector(".brand-dropdown");
+  if (brandDD) { brandDD.innerHTML = ""; brandDD.classList.add("hidden"); }
+  const groupDD = newRow.querySelector(".group-dropdown");
+  if (groupDD) { groupDD.innerHTML = ""; groupDD.classList.add("hidden"); }
+  const subDD = newRow.querySelector(".subgroup-dropdown");
+  if (subDD) { subDD.innerHTML = ""; subDD.classList.add("hidden"); }
+
+  const skuIn = newRow.querySelector(".sku-input");
+  if (skuIn) { skuIn.value = ""; attachSkuAutocomplete(skuIn); }
+  const psIn = newRow.querySelector(".package-size-input");
+  if (psIn) psIn.value = "";
+
+  return newRow;
 }
 
 async function loadProductCoverageFromHistoryById(historyId) {
@@ -714,18 +775,7 @@ async function loadProductCoverageFromHistoryById(historyId) {
 
   if (!items.length) return;
 
-  // ล้างฟอร์มเดิม
-  const container = getCoverageContainer();
-  const firstRow = container.querySelector(".product-row");
-  container.innerHTML = "";
-  container.appendChild(firstRow);
-
-  // ใส่ข้อมูลจาก snapshot
-  items.forEach((item, idx) => {
-    if (idx > 0) addProductRow();
-    const row = getAllRows()[idx];
-    applyCoverageToRow(row, item);
-  });
+  await renderCoverageItems(items);
 }
 
 window.loadProductCoverageFromHistoryById = loadProductCoverageFromHistoryById;

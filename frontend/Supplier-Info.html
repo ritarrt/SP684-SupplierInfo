@@ -593,20 +593,24 @@
 </div>
 
     <!-- SKU -->
-    <div class="col-span-12 md:col-span-3">
+    <div class="col-span-12 md:col-span-2">
       <label class="form-label">SKU (ระบุเองได้)</label>
       <input type="text" class="form-control sku-input">
     </div>
 
-    <!-- ปุ่มลบ -->
-    <div class="col-span-12 md:col-span-1 flex items-end">
-      <button
-        type="button"
-        class="btn btn-outline-danger btn-sm"
-        onclick="removeProductRow(this)"
-      >
-        <i class="bi bi-x"></i>
-      </button>
+    <!-- Package Size + ปุ่มลบ -->
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label">Package Size</label>
+      <div class="flex gap-1">
+        <input type="number" min="0" class="form-control package-size-input" placeholder="เช่น 12">
+        <button
+          type="button"
+          class="btn btn-outline-danger btn-sm flex-shrink-0"
+          onclick="removeProductRow(this)"
+        >
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
     </div>
 
   </div>
@@ -837,6 +841,44 @@
         <label class="form-label">หมายเหตุเพิ่มเติม</label>
         <input type="text" class="form-control" id="spClaimNote">
       </div>
+    </div>
+
+    <!-- ===============================
+         3.4 เงื่อนไขระยะเวลาส่งสินค้า (Leadtime)
+         =============================== -->
+    <div class="section-header">
+      <i class="bi bi-truck"></i> 3.4 เงื่อนไขระยะเวลาส่งสินค้า (Leadtime)
+    </div>
+
+    <div class="grid grid-cols-12 gap-3">
+      <div class="col-span-12 md:col-span-3">
+        <label class="form-label">เงื่อนไขการรับสินค้า</label>
+        <select class="form-select" id="spLeadtimeType">
+          <option value="">-- เลือก --</option>
+          <option value="self_pickup">รับเอง</option>
+          <option value="supplier_delivery">ซัพพลายเออร์ส่ง</option>
+        </select>
+      </div>
+
+      <div class="col-span-12 md:col-span-2">
+        <label class="form-label">Leadtime Supplier</label>
+        <div class="flex items-center gap-2">
+          <input type="number" min="0" class="form-control" id="spLeadtimeDays" placeholder="เช่น 7">
+          <span class="text-sm text-gray-500 flex-shrink-0">วัน</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leadtime เฉพาะ -->
+    <div class="flex justify-between items-center mt-3 mb-2">
+      <span class="text-sm font-semibold text-gray-600">Leadtime เฉพาะ (ตาม SKU)</span>
+      <button type="button" class="btn btn-outline-primary btn-sm" onclick="addLeadtimeSkuRow()">
+        <i class="bi bi-plus-lg"></i> เพิ่มรายการ
+      </button>
+    </div>
+
+    <div id="leadtimeSkuContainer" class="space-y-2">
+      <!-- rows จะถูก render ที่นี่ -->
     </div>
 
   </div>
@@ -1465,41 +1507,71 @@
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ประเภทสินค้า</label>
-                   <select class="form-select" id="moqCat">
-  <option value="">ทั้งหมด</option>
-</select>
+                  <select class="form-select" id="moqCat">
+                    <option value="">ทั้งหมด</option>
+                  </select>
                 </div>
 
+                <!-- BRAND multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">แบรนด์</label>
-                  <select class="form-select" id="moqBrand">
-  <option value="">ทั้งหมด</option>
-</select>
-
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('moqBrandDropdown')">
+                      <span id="moqBrandText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="moqBrandDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
+                <!-- GROUP multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">กลุ่มสินค้า</label>
-                  <select class="form-select" id="moqGroup">
-  <option value="">ทั้งหมด</option>
-</select>
-
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('moqGroupDropdown')">
+                      <span id="moqGroupText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="moqGroupDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
+                <!-- SUB GROUP multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">กลุ่มย่อย</label>
-               <select class="form-select" id="moqSub">
-  <option value="">ทั้งหมด</option>
-</select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('moqSubDropdown')">
+                      <span id="moqSubText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="moqSubDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <div class="grid grid-cols-12 gap-3">
+                <!-- COLOR multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">สีของสินค้า</label>
-                  <select class="form-select" id="moqColor">
-  <option value="">ทั้งหมด</option>
-</select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('moqColorDropdown')">
+                      <span id="moqColorText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="moqColorDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
@@ -1512,10 +1584,19 @@
                   </select>
                 </div>
 
+                <!-- THICKNESS multi-select -->
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ความหนา</label>
-                  <select class="form-select" id="moqThick">
-</select>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('moqThickDropdown')">
+                      <span id="moqThickText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="moqThickDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
+                  </div>
                 </div>
 
                 <div class="col-span-12 md:col-span-2">
@@ -1540,7 +1621,7 @@
                   <select class="form-select" id="moqType">
                     <option value="ผลิต">ผลิต</option>
                     <option value="นำเข้า">นำเข้า</option>
-                    <option value="ขนส่ง">ขนส่ง</option>
+                    <option value="ขนส่งฟรี">ขนส่งฟรี</option>
                   </select>
                 </div>
 
@@ -1563,15 +1644,44 @@
                   </select>
                 </div>
 
-                <div class="col-span-12 md:col-span-3">
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">ขั้นต่ำ</label>
+                  <select class="form-select" id="moqHasMin" onchange="toggleMoqQty(this.value)">
+                    <option value="no">ไม่มีขั้นต่ำ</option>
+                    <option value="yes">มีขั้นต่ำ</option>
+                  </select>
+                </div>
+
+                <div class="col-span-12 md:col-span-2 hidden" id="moqQtyWrapper">
                   <label class="form-label">จำนวน / หน่วย <span class="text-red-600">*</span></label>
                   <div class="flex">
-                    <input type="number" class="form-control" id="moqQty" required placeholder="0.00" style="border-radius:4px 0 0 4px;">
-                    <select class="form-select" id="moqUnit" style="border-radius:0 4px 4px 0; max-width:90px; background:#f8f9fa;">
+                    <select class="form-select" id="moqQtyOperator" style="border-radius:4px 0 0 4px; width:auto; padding-left:6px; padding-right:6px; background:#f8f9fa;">
+                      <option value=">">&gt;</option>
+                      <option value=">=">&gt;=</option>
+                      <option value="=">=</option>
+                      <option value="<=">&lt;=</option>
+                      <option value="<">&lt;</option>
+                    </select>
+                    <input type="number" class="form-control" id="moqQty" placeholder="0.00" style="border-radius:0; border-left:0; border-right:0;">
+                    <select class="form-select" id="moqUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:6px; padding-right:6px; background:#f8f9fa;">
                       <option value="kg">kg</option>
                       <option value="บาท">บาท</option>
                       <option value="ชิ้น">ชิ้น</option>
                     </select>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-2">
+                  <label class="form-label">สาขาที่จะไปส่ง</label>
+                  <div class="relative">
+                    <div class="form-control flex justify-between items-center cursor-pointer"
+                         onclick="toggleDropdown('moqDeliveryBranchDropdown')">
+                      <span id="moqDeliveryBranchText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <i class="bi bi-chevron-down ml-2"></i>
+                    </div>
+                    <div id="moqDeliveryBranchDropdown"
+                         class="hidden absolute z-50 bg-white border rounded-lg shadow w-full max-h-56 overflow-y-auto p-2">
+                    </div>
                   </div>
                 </div>
               </div>

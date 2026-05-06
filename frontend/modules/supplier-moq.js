@@ -1,8 +1,34 @@
-import { loadCoverageToForm } from "./coverage-helper.js";
+import { loadCoverageToForm, loadGroups, loadSubGroups, getCheckboxValues, renderCheckboxDropdown } from "./coverage-helper.js";
 import { loadColors, loadThickness } from "./master-helper.js";
-import { loadGroups, loadSubGroups } from "./coverage-helper.js";
 
 console.log("supplier-moq.js loaded");
+
+// ============================================================
+// DROPDOWN TOGGLE
+// ============================================================
+const MOQ_DROPDOWNS = [
+  "moqBrandDropdown", "moqGroupDropdown", "moqSubDropdown",
+  "moqColorDropdown", "moqThickDropdown",
+  "moqRegionDropdown", "moqBranchDropdown", "moqDeliveryBranchDropdown"
+];
+
+if (!window.toggleDropdown) {
+  window.toggleDropdown = function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle("hidden");
+  };
+}
+
+document.addEventListener("click", (e) => {
+  MOQ_DROPDOWNS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!el.contains(e.target) && !e.target.closest(`[onclick*="${id}"]`)) {
+      el.classList.add("hidden");
+    }
+  });
+});
 
 // Show/hide loading for MOQ form
 function showMoqFormLoading(show) {
@@ -154,6 +180,15 @@ function renderMoqBranchDropdown() {
   });
 }
 
+function renderMoqDeliveryBranchDropdown() {
+  const branches = window.branchData || [];
+  const items = branches.map(b => ({
+    value: b.branchCode,
+    label: `${b.branchCode} - ${b.branchName}`
+  }));
+  renderCheckboxDropdown("moqDeliveryBranchDropdown", items, "moqDeliveryBranchText");
+}
+
 function getCheckedValues(dropdownId) {
   return Array.from(
     document.querySelectorAll(`#${dropdownId} input:checked`)
@@ -205,41 +240,21 @@ async function initProductFilter(prefix, supplierNo) {
     sku: `${prefix}Sku`
   });
 
-  // 🔥 โหลด Brand หลังจากข้อมูลมาแล้ว
   const catEl = document.getElementById(`${prefix}Cat`);
-  const brandEl = document.getElementById(`${prefix}Brand`);
-  const groupEl = document.getElementById(`${prefix}Group`);
 
   if (catEl?.value) {
-    loadBrands(catEl.value, `${prefix}Brand`);
-    loadGroups(catEl.value, `${prefix}Group`);
-    loadColors(catEl.value, `${prefix}Color`);
-    loadThickness(catEl.value, `${prefix}Thick`);
+    loadGroups(catEl.value, `${prefix}GroupDropdown`);
+    loadSubGroups(catEl.value, `${prefix}SubDropdown`);
+    loadColors(catEl.value, `${prefix}ColorDropdown`);
+    loadThickness(catEl.value, `${prefix}ThickDropdown`);
   }
 
-  // 🔥 โหลด sub group หลังจาก group มีค่า
-  if (groupEl?.value) {
-    loadSubGroups(catEl?.value, `${prefix}Sub`);
-  }
-
-// 🔥 1. category → brand + group + color + thickness
-catEl?.addEventListener("change", () => {
-  loadBrands(catEl.value, `${prefix}Brand`);
-  loadGroups(catEl.value, `${prefix}Group`);
-
-  document.getElementById(`${prefix}Sub`).innerHTML = `<option value="">ทั้งหมด</option>`;
-
-  loadColors(catEl.value, `${prefix}Color`);
-  loadThickness(catEl.value, `${prefix}Thick`);
-});
-
-// 🔥 2. brand → (ไม่มีผลต่อ group แล้ว)
-
-// 🔥 3. group → sub
-groupEl?.addEventListener("change", () => {
-  loadSubGroups(catEl.value, `${prefix}Sub`);
-});
-
+  catEl?.addEventListener("change", () => {
+    loadGroups(catEl.value, `${prefix}GroupDropdown`);
+    loadSubGroups(catEl.value, `${prefix}SubDropdown`);
+    loadColors(catEl.value, `${prefix}ColorDropdown`);
+    loadThickness(catEl.value, `${prefix}ThickDropdown`);
+  });
 }
 
 function handleMoqBranchChange() {
@@ -253,6 +268,20 @@ function handleMoqBranchChange() {
 }
 
 window.handleMoqBranchChange = handleMoqBranchChange;
+
+function toggleMoqQty(value) {
+  const wrapper = document.getElementById("moqQtyWrapper");
+  if (!wrapper) return;
+  if (value === "yes") {
+    wrapper.classList.remove("hidden");
+    document.getElementById("moqQty").required = true;
+  } else {
+    wrapper.classList.add("hidden");
+    document.getElementById("moqQty").required = false;
+    document.getElementById("moqQty").value = "";
+  }
+}
+window.toggleMoqQty = toggleMoqQty;
 
 /* ===============================
    🔥 MULTI SELECT HELPER
@@ -283,12 +312,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("moqCat")?.dispatchEvent(new Event("change"));
   }, 100);
 
-
   loadMoqList(supplierNo);
   await loadBranchData();
 
   renderMoqRegionDropdown();
   renderMoqBranchDropdown();
+  renderMoqDeliveryBranchDropdown();
 
   // Hide form loading after all data is loaded
   showMoqFormLoading(false);
@@ -323,32 +352,41 @@ branch: getCheckedValues("moqBranchDropdown").join(","),
       category: document.getElementById("moqCat")?.value,
 
       // 🔥 FIX normalize
-      brand: document.getElementById("moqBrand")?.selectedOptions[0]?.text,
-      brand_code: document.getElementById("moqBrand")?.value,
+      brand: getCheckboxValues("moqBrandDropdown").join(",") || null,
+      brand_code: getCheckboxValues("moqBrandDropdown").join(",") || null,
 
-      product_group: document.getElementById("moqGroup")?.selectedOptions[0]?.text,
-      product_group_code: document.getElementById("moqGroup")?.value,
+      product_group: getCheckboxValues("moqGroupDropdown").join(",") || null,
+      product_group_code: getCheckboxValues("moqGroupDropdown").join(",") || null,
 
-      sub_group: document.getElementById("moqSub")?.selectedOptions[0]?.text,
-      sub_group_code: document.getElementById("moqSub")?.value,
+      sub_group: getCheckboxValues("moqSubDropdown").join(",") || null,
+      sub_group_code: getCheckboxValues("moqSubDropdown").join(",") || null,
 
-      color: document.getElementById("moqColor")?.value,
+      color: getCheckboxValues("moqColorDropdown").join(",") || null,
       mold: document.getElementById("moqMold")?.value,
-      thickness: document.getElementById("moqThick")?.value,
+      thickness: getCheckboxValues("moqThickDropdown").join(",") || null,
 
       sku: document.getElementById("moqSku")?.value,
 
       moq_type: document.getElementById("moqType")?.value,
       vehicle_type: document.getElementById("moqVehicle")?.value,
+      delivery_branch: getCheckboxValues("moqDeliveryBranchDropdown").join(",") || null,
       measure_type: document.getElementById("moqMeasure")?.value,
 
-      moq_qty: Number(document.getElementById("moqQty")?.value || 0),
-      moq_unit: document.getElementById("moqUnit")?.value,
+      has_min: document.getElementById("moqHasMin")?.value === "yes",
+      moq_qty_operator: document.getElementById("moqHasMin")?.value === "yes"
+        ? document.getElementById("moqQtyOperator")?.value
+        : null,
+      moq_qty: document.getElementById("moqHasMin")?.value === "yes"
+        ? Number(document.getElementById("moqQty")?.value || 0)
+        : null,
+      moq_unit: document.getElementById("moqHasMin")?.value === "yes"
+        ? document.getElementById("moqUnit")?.value
+        : null,
     };
 
     try {
       const res = await fetch(
-        `${API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/moq`,
+        `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/moq`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -390,7 +428,7 @@ function setupModalEvents() {
 
     try {
       const res = await fetch(
-        `${API_BASE}/api/suppliers/${supplierNo}/moq/${currentCancelMoqId}/toggle`,
+        `${window.API_BASE}/api/suppliers/${supplierNo}/moq/${currentCancelMoqId}/toggle`,
         { method: "PUT" }
       );
 
@@ -419,7 +457,7 @@ async function loadMoqList(supplierNo) {
   
   try {
     const res = await fetch(
-      `${API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/moq`
+      `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/moq`
     );
 
     if (!res.ok) throw new Error(await res.text());
@@ -606,7 +644,7 @@ function formatThaiDateTime(dateStr) {
 
 async function loadBranchData() {
   try {
-    const res = await fetch(`${API_BASE}/api/master/branches`);
+    const res = await fetch(`${window.API_BASE}/api/master/branches`);
     const data = await res.json();
 
     console.log("🔥 branch loaded:", data);

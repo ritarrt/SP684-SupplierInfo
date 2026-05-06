@@ -2,7 +2,7 @@ let COVERAGE_DATA = [];
 
 export async function loadCoverageToForm(supplierNo, mapping) {
 
-  const res = await fetch(`${API_BASE}/api/suppliers/${supplierNo}/coverage`);
+  const res = await fetch(`${window.API_BASE}/api/suppliers/${supplierNo}/coverage`);
   const data = await res.json();
 
   if (!Array.isArray(data)) return;

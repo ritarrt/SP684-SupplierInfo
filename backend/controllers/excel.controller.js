@@ -600,15 +600,32 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
               // reExVat               = ราคาสุดท้ายหลังหักทุกชั้น
               const numDiscounts = discountPctRows.length; // จำนวนชั้น discount จริง
 
-              // normalize % → ถ้าค่า > 1 แสดงว่า Excel เก็บเป็น % จริง (เช่น 4.6) ให้หาร 100
-              // ถ้าค่า <= 1 แสดงว่าเป็น decimal แล้ว (เช่น 0.046) ใช้ตรงๆ
+              // normalize % → ถ้าค่า <= 1 แสดงว่าเป็น decimal (0.03 = 3%) ใช้ตรงๆ
+              // ถ้าค่า > 1 อาจเป็น % จริง (3.0 = 3%) หรือจำนวนเงิน (2.31 บาท)
+              // ถ้ามี discountPriceRow → คำนวณ % จากราคาจริงแทน (แม่นยำกว่า)
               const normPct = v => {
                 const n = parseFloat(v) || 0;
                 return n > 1 ? n / 100 : n;
               };
-              const discPct1 = discountPctRows[0] ? normPct(discountPctRows[0][colIdx]) : 0;
-              const discPct2 = discountPctRows[1] ? normPct(discountPctRows[1][colIdx]) : 0;
-              const discPct3 = discountPctRows[2] ? normPct(discountPctRows[2][colIdx]) : 0;
+
+              // คำนวณ % จากราคาจริง (ถ้ามี discountPriceRow)
+              const calcPctFromPrice = (priceBefore, priceAfter) => {
+                const b = parseFloat(priceBefore) || 0;
+                const a = parseFloat(priceAfter) || 0;
+                if (!b || !a || a <= 0 || a >= b) return 0;
+                return (b - a) / b;
+              };
+
+              // ใช้ราคาจริงคำนวณ % ถ้ามี discountPriceRow, ไม่งั้นใช้ normPct
+              const getDiscPct = (pctRow, priceRow, colIdx, priceBefore) => {
+                if (priceRow) {
+                  const priceAfter = parseFloat(priceRow[colIdx]);
+                  if (priceAfter > 0 && priceAfter < priceBefore) {
+                    return calcPctFromPrice(priceBefore, priceAfter);
+                  }
+                }
+                return pctRow ? normPct(pctRow[colIdx]) : 0;
+              };
 
               const reExVatVal = reExVat ? parseFloat(reExVat[colIdx]) || 0 : 0;
 
@@ -621,6 +638,8 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
                 return (v && !isNaN(v)) ? v : fallback;
               };
 
+              const getRealDiscPrice = getDiscPrice;
+
               // นับเฉพาะ discount ชั้นที่มี % จริง (> 0) หรือมีราคาหลังลดจริง
               // กรอง "Discount 0%" ออก เพราะไม่ใช่ส่วนลดจริง
               const realDiscountPctRows   = discountPctRows.filter((r, idx) => {
@@ -631,36 +650,32 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
               const realDiscountPriceRows = realDiscountPctRows.map((r, idx) => discountPriceRows[idx] || null);
               const realNumDiscounts = realDiscountPctRows.length;
 
-              const realDiscPct1 = realDiscountPctRows[0] ? normPct(realDiscountPctRows[0][colIdx]) : 0;
-              const realDiscPct2 = realDiscountPctRows[1] ? normPct(realDiscountPctRows[1][colIdx]) : 0;
-              const realDiscPct3 = realDiscountPctRows[2] ? normPct(realDiscountPctRows[2][colIdx]) : 0;
-
-              const getRealDiscPrice = (rowArr, idx, fallback) => {
-                if (!rowArr[idx]) return fallback;
-                const v = parseFloat(rowArr[idx][colIdx]);
-                return (v && !isNaN(v)) ? v : fallback;
-              };
-
               if (realNumDiscounts === 0) {
                 discPrice1 = reExVatVal;
               } else if (realNumDiscounts === 1) {
                 discPrice1 = getRealDiscPrice(realDiscountPriceRows, 0, reExVatVal);
               } else if (realNumDiscounts === 2) {
-                const fallback1 = realDiscPct1 > 0 ? Math.round(basePrice * (1 - realDiscPct1) * 100) / 100 : reExVatVal;
+                const fallback1 = normPct(realDiscountPctRows[0]?.[colIdx]) > 0
+                  ? Math.round(basePrice * (1 - normPct(realDiscountPctRows[0][colIdx])) * 100) / 100
+                  : reExVatVal;
                 discPrice1 = getRealDiscPrice(realDiscountPriceRows, 0, fallback1);
                 discPrice2 = getRealDiscPrice(realDiscountPriceRows, 1, reExVatVal);
               } else {
-                const fallback1 = realDiscPct1 > 0 ? Math.round(basePrice * (1 - realDiscPct1) * 100) / 100 : reExVatVal;
+                const fallback1 = normPct(realDiscountPctRows[0]?.[colIdx]) > 0
+                  ? Math.round(basePrice * (1 - normPct(realDiscountPctRows[0][colIdx])) * 100) / 100
+                  : reExVatVal;
                 discPrice1 = getRealDiscPrice(realDiscountPriceRows, 0, fallback1);
-                const fallback2 = realDiscPct2 > 0 ? Math.round(discPrice1 * (1 - realDiscPct2) * 100) / 100 : reExVatVal;
+                const fallback2 = normPct(realDiscountPctRows[1]?.[colIdx]) > 0
+                  ? Math.round(discPrice1 * (1 - normPct(realDiscountPctRows[1][colIdx])) * 100) / 100
+                  : reExVatVal;
                 discPrice2 = getRealDiscPrice(realDiscountPriceRows, 1, fallback2);
                 discPrice3 = getRealDiscPrice(realDiscountPriceRows, 2, reExVatVal);
               }
 
-              // ใช้ realDiscPct สำหรับ insert
-              const finalDiscPct1 = realDiscPct1;
-              const finalDiscPct2 = realDiscPct2;
-              const finalDiscPct3 = realDiscPct3;
+              // คำนวณ % จากราคาจริง (แม่นยำกว่า normPct เพราะ Excel อาจเก็บเป็นบาทหรือ %)
+              const finalDiscPct1 = getDiscPct(realDiscountPctRows[0], realDiscountPriceRows[0], colIdx, basePrice);
+              const finalDiscPct2 = getDiscPct(realDiscountPctRows[1], realDiscountPriceRows[1], colIdx, discPrice1);
+              const finalDiscPct3 = getDiscPct(realDiscountPctRows[2], realDiscountPriceRows[2], colIdx, discPrice2);
 
               try {
                 const req = pool.request()
@@ -2093,7 +2108,11 @@ function parseAccRows(data) {
         priceSdm === 0 && priceW1 === 0 && priceW2 === 0 && priceR1 === 0 && priceR2 === 0) continue;
 
     // col B อาจมีหลาย SKU คั่นด้วย newline, comma, หรือ /
-    const rawSkus = colB.split(/[\n,\/]/).map(s => s.trim()).filter(s => s.length > 0);
+    // แต่ต้อง normalize N/A ก่อน split เพื่อไม่ให้ถูกตีความเป็น SKU
+    const normalizedColB = colB.replace(/\bN\/A\b/gi, '').trim();
+    if (!normalizedColB) continue;
+
+    const rawSkus = normalizedColB.split(/[\n,\/]/).map(s => s.trim()).filter(s => s.length >= 3);
     if (rawSkus.length === 0) continue;
 
     const productName  = colC || currentSection || 'Accessories';

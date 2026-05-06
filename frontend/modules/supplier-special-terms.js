@@ -25,6 +25,17 @@ function collectSpecialTerms() {
       period: document.getElementById("spClaimPeriod")?.value || null,
       condition: document.getElementById("spClaimCondition")?.value || null,
       note: document.getElementById("spClaimNote")?.value || null
+    },
+
+    leadtime: {
+      type: document.getElementById("spLeadtimeType")?.value || null,
+      days: document.getElementById("spLeadtimeDays")?.value || null,
+      skuRows: Array.from(
+        document.querySelectorAll("#leadtimeSkuContainer .leadtime-sku-row")
+      ).map(row => ({
+        days: row.querySelector(".leadtime-sku-days")?.value || null,
+        sku: row.querySelector(".leadtime-sku-input")?.value || null
+      })).filter(r => r.days || r.sku)
     }
   };
 }
@@ -145,6 +156,23 @@ function applySpecialTermsToForm(terms) {
   if (claim.note)
     document.getElementById("spClaimNote").value = claim.note;
 
+  // ===== leadtime =====
+  const leadtime = terms.leadtime || {};
+
+  if (leadtime.type)
+    document.getElementById("spLeadtimeType").value = leadtime.type;
+
+  if (leadtime.days)
+    document.getElementById("spLeadtimeDays").value = leadtime.days;
+
+  // leadtime sku rows
+  const skuRows = leadtime.skuRows || [];
+  const skuContainer = document.getElementById("leadtimeSkuContainer");
+  if (skuContainer) {
+    skuContainer.innerHTML = "";
+    skuRows.forEach(r => addLeadtimeSkuRow(r));
+  }
+
   // ===== payment methods =====
   // ===== payment methods =====
 const container = document.getElementById("paymentMethodContainer");
@@ -200,3 +228,61 @@ function addPaymentMethodRow(data = {}) {
   container.appendChild(row);
 }
 
+
+// ===================================================
+// LEADTIME SKU ROWS
+// ===================================================
+function addLeadtimeSkuRow(data = {}) {
+  const container = document.getElementById("leadtimeSkuContainer");
+  if (!container) return;
+
+  const row = document.createElement("div");
+  row.className = "leadtime-sku-row grid grid-cols-12 gap-2 items-center";
+
+  row.innerHTML = `
+    <div class="col-span-12 md:col-span-2">
+      <div class="flex">
+        <input
+          type="number"
+          min="0"
+          class="form-control leadtime-sku-days"
+          placeholder="Leadtime"
+          value="${data.days || ""}"
+        >
+        <span class="text-sm text-gray-500 flex-shrink-0 px-1">วัน</span>
+      </div>
+    </div>
+    <div class="col-span-12 md:col-span-4 relative">
+      <input
+        type="text"
+        class="form-control leadtime-sku-input"
+        placeholder="SKU"
+        value="${data.sku || ""}"
+      >
+    </div>
+    <div class="col-span-12 md:col-span-1">
+      <button
+        type="button"
+        class="btn btn-outline-danger btn-sm"
+        onclick="removeLeadtimeSkuRow(this)"
+      >
+        <i class="bi bi-x"></i>
+      </button>
+    </div>
+  `;
+
+  container.appendChild(row);
+
+  // attach SKU autocomplete เหมือนกับส่วนสินค้าที่บริษัทดูแล
+  const skuInput = row.querySelector(".leadtime-sku-input");
+  if (skuInput && typeof attachSkuAutocomplete === "function") {
+    attachSkuAutocomplete(skuInput);
+  }
+}
+
+function removeLeadtimeSkuRow(btn) {
+  btn.closest(".leadtime-sku-row")?.remove();
+}
+
+window.addLeadtimeSkuRow = addLeadtimeSkuRow;
+window.removeLeadtimeSkuRow = removeLeadtimeSkuRow;
