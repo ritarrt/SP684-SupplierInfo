@@ -11,6 +11,7 @@ import {
   updateDraftRow,
   publishDraft,
   discardDraft,
+  getPendingDraft,
 } from "../controllers/excel.controller.js";
 
 const router = express.Router();
@@ -28,5 +29,6 @@ router.get("/draft/:logId",               getDraftData);
 router.put("/draft/:logId/rows/:rowId",   updateDraftRow);
 router.post("/draft/:logId/publish",      publishDraft);
 router.delete("/draft/:logId",            discardDraft);
+router.get("/pending-draft",              getPendingDraft);
 
 export default router;

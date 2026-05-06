@@ -3,6 +3,67 @@ import XLSX from 'xlsx';
 
 /**
  * =====================================================
+ * Helper: โหลด branch mapping จาก BranchMaster
+ * คืนค่า:
+ *   zoneToBranches  — { 'BKK': ['00TR',...], 'C': [...], ... }  (Excel zone label → branchCodes)
+ *   branchMap       — { '00TR': { branchName, province, region }, ... }
+ *
+ * Zone mapping rules (ตาม Excel header ที่ใช้):
+ *   BKK → กรุงเทพมหานคร (province)
+ *   C   → ภาคกลาง (ยกเว้น กทม.)
+ *   N   → ภาคเหนือ
+ *   NE  → ภาคตะวันออกเฉียงเหนือ
+ *   E   → ภาคตะวันออก
+ *   S   → ภาคใต้ + ภาคตะวันตก
+ * =====================================================
+ */
+let _branchCache = null;
+async function loadBranchMapping() {
+  if (_branchCache) return _branchCache;
+
+  const pool = await getPool();
+  const result = await pool.request().query(`
+    SELECT branchCode, branchName, province, region FROM BranchMaster ORDER BY branchCode
+  `);
+
+  const branchMap = {};
+  const zoneToBranches = { BKK: [], C: [], N: [], NE: [], E: [], S: [] };
+
+  for (const row of result.recordset) {
+    const { branchCode, branchName, province, region } = row;
+    branchMap[branchCode] = { branchName, province, region };
+
+    if (province === 'กรุงเทพมหานคร') {
+      zoneToBranches.BKK.push(branchCode);
+    } else if (region === 'ภาคเหนือ') {
+      zoneToBranches.N.push(branchCode);
+    } else if (region === 'ภาคตะวันออกเฉียงเหนือ') {
+      zoneToBranches.NE.push(branchCode);
+    } else if (region === 'ภาคตะวันออก') {
+      zoneToBranches.E.push(branchCode);
+    } else if (region === 'ภาคใต้' || region === 'ภาคตะวันตก') {
+      zoneToBranches.S.push(branchCode);
+    } else {
+      // ภาคกลาง (ยกเว้น กทม.)
+      zoneToBranches.C.push(branchCode);
+    }
+  }
+
+  // suffixToBranchCode: CM → 12CM, CR → 17CR, ...
+  const suffixToBranchCode = {};
+  for (const bc of result.recordset.map(r => r.branchCode)) {
+    const suffix = bc.slice(2); // เช่น 12CM → CM
+    if (suffix && !suffixToBranchCode[suffix]) {
+      suffixToBranchCode[suffix] = bc;
+    }
+  }
+
+  _branchCache = { zoneToBranches, branchMap, allBranchCodes: result.recordset.map(r => r.branchCode), suffixToBranchCode };
+  return _branchCache;
+}
+
+/**
+ * =====================================================
  * POST /api/excel/import
  * Import data from Excel
  * =====================================================
@@ -19,9 +80,7 @@ export async function importExcelData(req, res) {
 
     const pool = await getPool();
 
-    // Detect product type from tab selection or sheet name
-    // ถ้า user เลือก tab มาแล้ว (productType มีค่า) ให้ใช้ค่านั้นตรงๆ
-    // auto-detect จาก sheet name เฉพาะเมื่อไม่มี productType เท่านั้น
+    // Detect product type
     let detectedType = productType;
     if (!detectedType) {
       const sheetLower = sheetName.toLowerCase();
@@ -35,6 +94,31 @@ export async function importExcelData(req, res) {
         detectedType = 'Aluminum';
       } else if (sheetLower === 'acc' || sheetLower.includes('accessories') || sheetLower.includes('อุปกรณ์')) {
         detectedType = 'Accessories';
+      }
+    }
+
+    // Discard draft เก่าของ product_type นี้ก่อน (ถ้ามี)
+    if (detectedType) {
+      try {
+        const oldDrafts = await pool.request()
+          .input('pt', sql.NVarChar(100), detectedType)
+          .query(`
+            SELECT id FROM excel_import_logs
+            WHERE product_type = @pt AND status = 'draft'
+          `);
+        for (const old of oldDrafts.recordset) {
+          await pool.request()
+            .input('logId', sql.Int, old.id)
+            .query(`DELETE FROM excel_import_data WHERE import_log_id = @logId AND status = 'draft'`);
+          await pool.request()
+            .input('logId', sql.Int, old.id)
+            .query(`UPDATE excel_import_logs SET status = 'discarded', imported_rows = 0 WHERE id = @logId`);
+        }
+        if (oldDrafts.recordset.length > 0) {
+          console.log(`[Import] Discarded ${oldDrafts.recordset.length} old draft(s) for ${detectedType}`);
+        }
+      } catch (discardErr) {
+        console.error('Failed to discard old drafts:', discardErr.message);
       }
     }
 
@@ -134,10 +218,14 @@ export async function importExcelData(req, res) {
     // อัปเดต log ด้วยผลลัพธ์จริง
     if (logId) {
       try {
+        // ถ้า import สำเร็จ → status = 'draft' (รอ publish)
+        // ถ้า error → status = 'error'
+        const logStatus = status === 'success' ? 'draft' : status;
+
         await pool.request()
           .input("logId",        sql.Int,           logId)
           .input("importedRows", sql.Int,           imported)
-          .input("status",       sql.NVarChar(50),  status)
+          .input("status",       sql.NVarChar(50),  logStatus)
           .input("errorMessage", sql.NVarChar(sql.MAX), errorMessage || "")
           .query(`
             UPDATE excel_import_logs
@@ -215,21 +303,14 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
     console.log(`[Gypsum Parser] Raw data rows: ${rawData.length}`);
 
     // ตรวจสอบ sheet format:
-    // - Y1 format: branches อยู่ใน row 1 col 3+, SKU ขึ้นต้น Y อยู่ใน col0
-    // - SB format: ข้อมูลอยู่ใน col0 (product name), branches อยู่ใน row 0 col 2+
-    //              ไม่มี Y-SKU → ข้ามไป
-    // - DCM format: section header "Y 1: Gypsum" ไม่ใช่ SKU จริง → ข้ามไป
+    // - sheet ราคายิปซัม: col0 = ชื่อสินค้า (เช่น "STD 9 mm.") หรือว่าง
+    //   SKU จริงได้มาจาก Sheet1 lookup (productName → [Y-SKU list])
+    // - SB/DCM format: ไม่มี Sheet1 หรือ branch headers → ข้ามไป
 
-    // ตรวจสอบว่ามี Y-SKU จริงๆ ไหม (ต้องมี col0 ขึ้นต้น Y ตามด้วยตัวเลข)
-    // และต้องมี branches (row 1 col 3+) ด้วย ไม่งั้นเป็น lookup table หรือ DCM sheet
-    const hasYSku = rawData.some(row => {
-      if (!row) return false;
-      const c0 = String(row[0] ?? '').trim();
-      return /^Y\d/.test(c0); // Y ตามด้วยตัวเลข เช่น Y01010100109120240
-    });
-
-    if (!hasYSku) {
-      console.log(`[Gypsum Parser] Sheet "${sheetName}" has no Y-SKUs (numeric), skipping`);
+    // ตรวจสอบว่ามี Sheet1 (source of truth สำหรับ SKU)
+    const sheet1Check = workbook.Sheets['Sheet1'];
+    if (!sheet1Check) {
+      console.log(`[Gypsum Parser] Sheet "${sheetName}" skipped: no Sheet1 reference`);
       return 0;
     }
 
@@ -255,15 +336,8 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
       console.warn(`[Gypsum Parser] Sheet1 not found, will use merged-cell SKU detection`);
     }
 
-    // Zone → branchCodes mapping (Excel เก่าใช้ชื่อ zone แทน branchCode จริง)
-    const ZONE_TO_BRANCHES = {
-      'BKK': ['00TR','01TJ','02TN','03TS','04TP'],
-      'C':   ['05AY','21BS','22BP','24TL','25SB','07RB'],
-      'N':   ['11PL','12CM','17CR','23NS'],
-      'NE':  ['08NR','09UB','10KK','18UD','20SK'],
-      'E':   ['06RY','15CB'],
-      'S':   ['13SR','14HY','16PK','19PC'],
-    };
+    // Zone → branchCodes mapping จาก BranchMaster (แทน hardcode)
+    const { zoneToBranches: ZONE_TO_BRANCHES, suffixToBranchCode } = await loadBranchMapping();
 
     // Auto-detect branch header row และ startCol
     // รองรับ 2 format:
@@ -289,7 +363,7 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
         const v = row[col];
         if (!v || typeof v !== 'string') continue;
         const h = v.trim();
-        if (ALL_ZONE_KEYS.has(h) || BRANCH_CODE_RE.test(h)) {
+        if (ALL_ZONE_KEYS.has(h) || BRANCH_CODE_RE.test(h) || suffixToBranchCode[h]) {
           matchCount++;
           if (firstMatchCol === -1) firstMatchCol = col;
         }
@@ -311,24 +385,42 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
 
     const branchHeaderRow = rawData[branchHeaderRowIdx];
     if (branchHeaderRow) {
+      const seenHeaders = new Set();
       for (let col = branchStartCol; col < branchHeaderRow.length; col++) {
         const header = branchHeaderRow[col];
         if (!header || typeof header !== 'string' || !header.trim()) continue;
         const h = header.trim();
+
+        // หยุดเมื่อเจอ header ซ้ำ — แสดงว่าเป็นชุดที่ 2 (นอกตาราง)
+        if (seenHeaders.has(h)) {
+          console.log(`[Gypsum Parser] Duplicate branch header "${h}" at col ${col}, stopping`);
+          break;
+        }
+        seenHeaders.add(h);
         branches.push(h);
 
         if (ZONE_TO_BRANCHES[h]) {
+          // zone name (BKK, C, N, NE, E, S) → expand
           for (const branchCode of ZONE_TO_BRANCHES[h]) {
             branchColumns.push({ colIdx: col, branchCode });
           }
+        } else if (/^\d{2}[A-Z]{2}$/.test(h)) {
+          // branchCode จริง (00TR, 01TJ, ...)
+          branchColumns.push({ colIdx: col, branchCode: h });
+        } else if (suffixToBranchCode[h]) {
+          // suffix (CM, CR, PL, ...) → lookup branchCode จริง
+          branchColumns.push({ colIdx: col, branchCode: suffixToBranchCode[h] });
         } else {
+          // ไม่รู้จัก → ใช้ตรงๆ
           branchColumns.push({ colIdx: col, branchCode: h });
         }
       }
     }
 
-    // data rows เริ่มหลัง branch header row
-    const dataStartRow = branchHeaderRowIdx + 1;
+    // data rows เริ่มจาก branch header row เลย
+    // เพราะ branch header row อาจมี block header (Y-SKU) อยู่ใน col0 ด้วย (format SB)
+    // ถ้าเริ่มจาก branchHeaderRowIdx + 1 จะข้าม block header แรกไป
+    const dataStartRow = branchHeaderRowIdx;
 
     if (branchColumns.length === 0) {
       console.error("[Gypsum Parser] No branches found");
@@ -362,9 +454,9 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
 
     const PRICE_LABELS = new Set(['Price List','Discount','RE (ex VAT)','VAT','Net Price (inc VAT)',
       'Transportation','COGS','Promotion Rebate','Net Cost',
-      'Price : W1','Price : W2','Price : R1','Price : R2',
-      'MG/Bht : W1','MG/Bht : W2','MG/Bht : R1','MG/Bht : R2',
-      'MG/% : W1','MG/% : W2','MG/% : R1','MG/% : R2']);
+      'Price : W1','Price : W2','Price : R1','Price : R2','Price : SDM',
+      'MG/Bht : W1','MG/Bht : W2','MG/Bht : R1','MG/Bht : R2','MG/Bht : SDM',
+      'MG/% : W1','MG/% : W2','MG/% : R1','MG/% : R2','MG/% : SDM']);
     
     let productCount = 0;
     let i = dataStartRow;
@@ -434,7 +526,7 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
         const priceListRow = rawData[priceListRowIndex];
         let priceList = priceListRow;
         let reExVat = null;
-        let priceW1 = null, priceW2 = null, priceR1 = null, priceR2 = null;
+        let priceW1 = null, priceW2 = null, priceR1 = null, priceR2 = null, priceSDM = null;
         // discount สูงสุด 3 ชั้น: แต่ละชั้นมี % row และ ราคาหลังหัก row
         const discountPctRows  = [];  // [row1%, row2%, row3%]
         const discountPriceRows = []; // [rowAfter1, rowAfter2, rowAfter3]
@@ -471,6 +563,7 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
           else if (nextCol1 === 'Price : W2')     priceW2 = dataRow;
           else if (nextCol1 === 'Price : R1')     priceR1 = dataRow;
           else if (nextCol1 === 'Price : R2')     priceR2 = dataRow;
+          else if (nextCol1 === 'Price : SDM')    priceSDM = dataRow;
           else if (nextCol1 === 'Discount') {
             // หยุดเก็บ discount หลังจากเจอ Price : W1 แล้ว (ป้องกัน discount ปลอม)
             if (!priceW1) discountPctRows.push(dataRow);
@@ -499,6 +592,7 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
               const sellW2     = parseFloat(priceW2[colIdx]) || 0;
               const sellR1     = parseFloat(priceR1[colIdx]) || 0;
               const sellR2     = parseFloat(priceR2[colIdx]) || 0;
+              const sellSDM    = priceSDM ? parseFloat(priceSDM[colIdx]) || 0 : 0;
 
               // discount ทีละชั้น (สูงสุด 3 ชั้น)
               // discountPctRows[n]    = % ของชั้นนั้น
@@ -527,25 +621,46 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
                 return (v && !isNaN(v)) ? v : fallback;
               };
 
-              if (numDiscounts === 0) {
-                // ไม่มี discount → discount_price_1 = RE (ex VAT)
+              // นับเฉพาะ discount ชั้นที่มี % จริง (> 0) หรือมีราคาหลังลดจริง
+              // กรอง "Discount 0%" ออก เพราะไม่ใช่ส่วนลดจริง
+              const realDiscountPctRows   = discountPctRows.filter((r, idx) => {
+                const pct = normPct(r[colIdx]);
+                const hasPrice = discountPriceRows[idx] && parseFloat(discountPriceRows[idx][colIdx]) > 0;
+                return pct > 0 || hasPrice;
+              });
+              const realDiscountPriceRows = realDiscountPctRows.map((r, idx) => discountPriceRows[idx] || null);
+              const realNumDiscounts = realDiscountPctRows.length;
+
+              const realDiscPct1 = realDiscountPctRows[0] ? normPct(realDiscountPctRows[0][colIdx]) : 0;
+              const realDiscPct2 = realDiscountPctRows[1] ? normPct(realDiscountPctRows[1][colIdx]) : 0;
+              const realDiscPct3 = realDiscountPctRows[2] ? normPct(realDiscountPctRows[2][colIdx]) : 0;
+
+              const getRealDiscPrice = (rowArr, idx, fallback) => {
+                if (!rowArr[idx]) return fallback;
+                const v = parseFloat(rowArr[idx][colIdx]);
+                return (v && !isNaN(v)) ? v : fallback;
+              };
+
+              if (realNumDiscounts === 0) {
                 discPrice1 = reExVatVal;
-              } else if (numDiscounts === 1) {
-                // 1 ชั้น: discount_price_1 = ราคาหลังหัก = RE (ex VAT)
-                discPrice1 = getDiscPrice(discountPriceRows, 0, reExVatVal);
-              } else if (numDiscounts === 2) {
-                // 2 ชั้น: discount_price_1 = หลังชั้น 1, discount_price_2 = RE (ex VAT)
-                const fallback1 = discPct1 > 0 ? Math.round(basePrice * (1 - discPct1) * 100) / 100 : reExVatVal;
-                discPrice1 = getDiscPrice(discountPriceRows, 0, fallback1);
-                discPrice2 = getDiscPrice(discountPriceRows, 1, reExVatVal);
+              } else if (realNumDiscounts === 1) {
+                discPrice1 = getRealDiscPrice(realDiscountPriceRows, 0, reExVatVal);
+              } else if (realNumDiscounts === 2) {
+                const fallback1 = realDiscPct1 > 0 ? Math.round(basePrice * (1 - realDiscPct1) * 100) / 100 : reExVatVal;
+                discPrice1 = getRealDiscPrice(realDiscountPriceRows, 0, fallback1);
+                discPrice2 = getRealDiscPrice(realDiscountPriceRows, 1, reExVatVal);
               } else {
-                // 3 ชั้น: discount_price_1 = หลังชั้น 1, discount_price_2 = หลังชั้น 2, discount_price_3 = RE (ex VAT)
-                const fallback1 = discPct1 > 0 ? Math.round(basePrice * (1 - discPct1) * 100) / 100 : reExVatVal;
-                discPrice1 = getDiscPrice(discountPriceRows, 0, fallback1);
-                const fallback2 = discPct2 > 0 ? Math.round(discPrice1 * (1 - discPct2) * 100) / 100 : reExVatVal;
-                discPrice2 = getDiscPrice(discountPriceRows, 1, fallback2);
-                discPrice3 = getDiscPrice(discountPriceRows, 2, reExVatVal);
+                const fallback1 = realDiscPct1 > 0 ? Math.round(basePrice * (1 - realDiscPct1) * 100) / 100 : reExVatVal;
+                discPrice1 = getRealDiscPrice(realDiscountPriceRows, 0, fallback1);
+                const fallback2 = realDiscPct2 > 0 ? Math.round(discPrice1 * (1 - realDiscPct2) * 100) / 100 : reExVatVal;
+                discPrice2 = getRealDiscPrice(realDiscountPriceRows, 1, fallback2);
+                discPrice3 = getRealDiscPrice(realDiscountPriceRows, 2, reExVatVal);
               }
+
+              // ใช้ realDiscPct สำหรับ insert
+              const finalDiscPct1 = realDiscPct1;
+              const finalDiscPct2 = realDiscPct2;
+              const finalDiscPct3 = realDiscPct3;
 
               try {
                 const req = pool.request()
@@ -570,12 +685,13 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
                   .input("sellW2",           sql.Decimal(18,2), sellW2)
                   .input("sellR1",           sql.Decimal(18,2), sellR1)
                   .input("sellR2",           sql.Decimal(18,2), sellR2)
+                  .input("sellSDM",          sql.Decimal(18,2), sellSDM)
                   .input("logId",            sql.Int,           logId);
 
                 if (hasDiscPct) {
-                  req.input("discPct1", sql.Decimal(10,6), discPct1)
-                     .input("discPct2", sql.Decimal(10,6), discPct2)
-                     .input("discPct3", sql.Decimal(10,6), discPct3);
+                  req.input("discPct1", sql.Decimal(10,6), finalDiscPct1)
+                     .input("discPct2", sql.Decimal(10,6), finalDiscPct2)
+                     .input("discPct3", sql.Decimal(10,6), finalDiscPct3);
 
                   if (hasDiscPct3) {
                     await req.query(`
@@ -584,14 +700,14 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
                         base_price, discount_price_1, discount_price_2, discount_price_3,
                         project_no, project_discount_1, project_discount_2, project_price,
                         carton_price, shipping_cost, free_item,
-                        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+                        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, selling_price_sdm,
                         discount_pct_1, discount_pct_2, discount_pct_3, import_log_id
                       ) VALUES (
                         @branch, @productType, @sku, @productName, @brand, @unit,
                         @basePrice, @discountPrice1, @discountPrice2, @discountPrice3,
                         @projectNo, @projectDiscount1, @projectDiscount2, @projectPrice,
                         @cartonPrice, @shippingCost, @freeItem,
-                        @sellW1, @sellW2, @sellR1, @sellR2,
+                        @sellW1, @sellW2, @sellR1, @sellR2, @sellSDM,
                         @discPct1, @discPct2, @discPct3, @logId
                       )
                     `);
@@ -602,14 +718,14 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
                         base_price, discount_price_1, discount_price_2, discount_price_3,
                         project_no, project_discount_1, project_discount_2, project_price,
                         carton_price, shipping_cost, free_item,
-                        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+                        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, selling_price_sdm,
                         discount_pct_1, discount_pct_2, import_log_id
                       ) VALUES (
                         @branch, @productType, @sku, @productName, @brand, @unit,
                         @basePrice, @discountPrice1, @discountPrice2, @discountPrice3,
                         @projectNo, @projectDiscount1, @projectDiscount2, @projectPrice,
                         @cartonPrice, @shippingCost, @freeItem,
-                        @sellW1, @sellW2, @sellR1, @sellR2,
+                        @sellW1, @sellW2, @sellR1, @sellR2, @sellSDM,
                         @discPct1, @discPct2, @logId
                       )
                     `);
@@ -621,14 +737,14 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
                       base_price, discount_price_1, discount_price_2, discount_price_3,
                       project_no, project_discount_1, project_discount_2, project_price,
                       carton_price, shipping_cost, free_item,
-                      selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+                      selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, selling_price_sdm,
                       import_log_id
                     ) VALUES (
                       @branch, @productType, @sku, @productName, @brand, @unit,
                       @basePrice, @discountPrice1, @discountPrice2, @discountPrice3,
                       @projectNo, @projectDiscount1, @projectDiscount2, @projectPrice,
                       @cartonPrice, @shippingCost, @freeItem,
-                      @sellW1, @sellW2, @sellR1, @sellR2,
+                      @sellW1, @sellW2, @sellR1, @sellR2, @sellSDM,
                       @logId
                     )
                   `);
@@ -705,15 +821,8 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
     });
     console.log(`[Glass Parser] Brand map loaded: ${Object.keys(brandMap).length} brands`);
 
-    // Region → branchCodes mapping
-    const REGION_BRANCHES = {
-      BKK: ['00TR','01TJ','02TN','03TS','04TP'],
-      C:   ['05AY','21BS','22BP','24TL','25SB','07RB'],
-      N:   ['11PL','12CM','17CR','23NS'],
-      NE:  ['08NR','09UB','10KK','18UD','20SK'],
-      E:   ['06RY','15CB'],
-      S:   ['13SR','14HY','16PK','19PC'],
-    };
+    // Region → branchCodes mapping จาก BranchMaster
+    const { zoneToBranches: REGION_BRANCHES } = await loadBranchMapping();
 
     // branchCode → region (reverse map สำหรับ lookup ราคา)
     const BRANCH_REGION = {};
@@ -737,18 +846,12 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
 
     // โหลด full SKU จาก StockStatusFact ล่วงหน้า จัดกลุ่มตาม prefix 12 หลัก
     console.log('[Glass Parser] Loading full SKUs from StockStatusFact via LIKE...');
+    const branchInList = allBranchCodes.map(b => `'${b}'`).join(',');
     const stockResult = await pool.request().query(`
       SELECT DISTINCT skuNumber, branchCode, productName
       FROM StockStatusFact
       WHERE category = 'Glass' AND skuNumber LIKE 'G%'
-        AND branchCode IN (
-          '00TR','01TJ','02TN','03TS','04TP',
-          '05AY','21BS','22BP','24TL','25SB','07RB',
-          '11PL','12CM','17CR','23NS',
-          '08NR','09UB','10KK','18UD','20SK',
-          '06RY','15CB',
-          '13SR','14HY','16PK','19PC'
-        )
+        AND branchCode IN (${branchInList})
     `);
     // Map: prefix12 → [{skuNumber, branchCode, productName}]
     const skuByPrefix = new Map();
@@ -1328,7 +1431,7 @@ export async function previewExcelData(req, res) {
         .input('pt', sql.NVarChar(100), detectedType)
         .query(`
           SELECT TOP 1 id FROM excel_import_logs
-          WHERE product_type = @pt AND status = 'success' AND imported_rows > 0
+          WHERE product_type = @pt AND status IN ('success','published') AND imported_rows > 0
           ORDER BY imported_at DESC
         `);
 
@@ -1424,9 +1527,9 @@ export async function previewExcelData(req, res) {
 async function previewGypsumData(excelBuffer, sheetName) {
   const PRICE_LABELS = new Set(['Price List','Discount','RE (ex VAT)','VAT','Net Price (inc VAT)',
     'Transportation','COGS','Promotion Rebate','Net Cost',
-    'Price : W1','Price : W2','Price : R1','Price : R2',
-    'MG/Bht : W1','MG/Bht : W2','MG/Bht : R1','MG/Bht : R2',
-    'MG/% : W1','MG/% : W2','MG/% : R1','MG/% : R2']);
+    'Price : W1','Price : W2','Price : R1','Price : R2','Price : SDM',
+    'MG/Bht : W1','MG/Bht : W2','MG/Bht : R1','MG/Bht : R2','MG/Bht : SDM',
+    'MG/% : W1','MG/% : W2','MG/% : R1','MG/% : R2','MG/% : SDM']);
 
   try {
     const pool = await getPool();
@@ -1460,15 +1563,8 @@ async function previewGypsumData(excelBuffer, sheetName) {
       });
     }
 
-    // Zone → branchCodes mapping (เหมือน import function)
-    const ZONE_TO_BRANCHES = {
-      'BKK': ['00TR','01TJ','02TN','03TS','04TP'],
-      'C':   ['05AY','21BS','22BP','24TL','25SB','07RB'],
-      'N':   ['11PL','12CM','17CR','23NS'],
-      'NE':  ['08NR','09UB','10KK','18UD','20SK'],
-      'E':   ['06RY','15CB'],
-      'S':   ['13SR','14HY','16PK','19PC'],
-    };
+    // Zone → branchCodes mapping จาก BranchMaster (แทน hardcode)
+    const { zoneToBranches: ZONE_TO_BRANCHES, suffixToBranchCode } = await loadBranchMapping();
 
     const branchColumns = []; // { colIdx, branchCode }[]
     const branches = [];      // header ดิบ (ใช้ตรวจ Format C)
@@ -1487,7 +1583,7 @@ async function previewGypsumData(excelBuffer, sheetName) {
         const v = row[col];
         if (!v || typeof v !== 'string') continue;
         const h = v.trim();
-        if (ALL_ZONE_KEYS_P.has(h) || BRANCH_CODE_RE_P.test(h)) {
+        if (ALL_ZONE_KEYS_P.has(h) || BRANCH_CODE_RE_P.test(h) || suffixToBranchCode[h]) {
           matchCount++;
           if (firstMatchCol === -1) firstMatchCol = col;
         }
@@ -1499,21 +1595,28 @@ async function previewGypsumData(excelBuffer, sheetName) {
 
     const branchHeaderRow = rawData[branchHeaderRowIdx];
     if (branchHeaderRow) {
+      const seenHeaders = new Set();
       for (let col = branchStartCol; col < branchHeaderRow.length; col++) {
         const header = branchHeaderRow[col];
         if (!header || typeof header !== 'string' || !header.trim()) continue;
         const h = header.trim();
+        if (seenHeaders.has(h)) break; // หยุดเมื่อเจอ header ซ้ำ
+        seenHeaders.add(h);
         branches.push(h);
         if (ZONE_TO_BRANCHES[h]) {
           for (const branchCode of ZONE_TO_BRANCHES[h]) {
             branchColumns.push({ colIdx: col, branchCode });
           }
+        } else if (/^\d{2}[A-Z]{2}$/.test(h)) {
+          branchColumns.push({ colIdx: col, branchCode: h });
+        } else if (suffixToBranchCode[h]) {
+          branchColumns.push({ colIdx: col, branchCode: suffixToBranchCode[h] });
         } else {
           branchColumns.push({ colIdx: col, branchCode: h });
         }
       }
     }
-    const dataStartRowP = branchHeaderRowIdx + 1;
+    const dataStartRowP = branchHeaderRowIdx;
 
     const uniqueBranchCodes = [...new Set(branchColumns.map(b => b.branchCode))];
 
@@ -1634,9 +1737,6 @@ async function previewGypsumData(excelBuffer, sheetName) {
             const numDiscounts = discountPctRows.length;
             // normalize % → ถ้าค่า > 1 แสดงว่า Excel เก็บเป็น % จริง (เช่น 4.6) ให้หาร 100
             const normPct = v => { const n = parseFloat(v) || 0; return n > 1 ? n / 100 : n; };
-            const discPct1 = discountPctRows[0] ? normPct(discountPctRows[0][colIdx]) : 0;
-            const discPct2 = discountPctRows[1] ? normPct(discountPctRows[1][colIdx]) : 0;
-            const discPct3 = discountPctRows[2] ? normPct(discountPctRows[2][colIdx]) : 0;
             const reExVatVal = reExVat ? parseFloat(reExVat[colIdx]) || 0 : 0;
 
             const getDiscPrice = (rowArr, idx, fallback) => {
@@ -1645,30 +1745,43 @@ async function previewGypsumData(excelBuffer, sheetName) {
               return (v && !isNaN(v)) ? v : fallback;
             };
 
+            // กรอง discount ที่ % = 0 และไม่มีราคาหลังลดจริงออก
+            const realDiscountPctRows = discountPctRows.filter((r, idx) => {
+              const pct = normPct(r[colIdx]);
+              const hasPrice = discountPriceRows[idx] && parseFloat(discountPriceRows[idx][colIdx]) > 0;
+              return pct > 0 || hasPrice;
+            });
+            const realDiscountPriceRows = realDiscountPctRows.map((r, idx) => discountPriceRows[idx] || null);
+            const realNumDiscounts = realDiscountPctRows.length;
+
+            const discPct1 = realDiscountPctRows[0] ? normPct(realDiscountPctRows[0][colIdx]) : 0;
+            const discPct2 = realDiscountPctRows[1] ? normPct(realDiscountPctRows[1][colIdx]) : 0;
+            const discPct3 = realDiscountPctRows[2] ? normPct(realDiscountPctRows[2][colIdx]) : 0;
+
             let discPrice1 = 0, discPrice2 = 0, discPrice3 = 0;
-            if (numDiscounts === 0) {
+            if (realNumDiscounts === 0) {
               discPrice1 = reExVatVal;
-            } else if (numDiscounts === 1) {
-              discPrice1 = getDiscPrice(discountPriceRows, 0, reExVatVal);
-            } else if (numDiscounts === 2) {
+            } else if (realNumDiscounts === 1) {
+              discPrice1 = getDiscPrice(realDiscountPriceRows, 0, reExVatVal);
+            } else if (realNumDiscounts === 2) {
               const fallback1 = discPct1 > 0 ? Math.round(basePrice * (1 - discPct1) * 100) / 100 : reExVatVal;
-              discPrice1 = getDiscPrice(discountPriceRows, 0, fallback1);
-              discPrice2 = getDiscPrice(discountPriceRows, 1, reExVatVal);
+              discPrice1 = getDiscPrice(realDiscountPriceRows, 0, fallback1);
+              discPrice2 = getDiscPrice(realDiscountPriceRows, 1, reExVatVal);
             } else {
               const fallback1 = discPct1 > 0 ? Math.round(basePrice * (1 - discPct1) * 100) / 100 : reExVatVal;
-              discPrice1 = getDiscPrice(discountPriceRows, 0, fallback1);
+              discPrice1 = getDiscPrice(realDiscountPriceRows, 0, fallback1);
               const fallback2 = discPct2 > 0 ? Math.round(discPrice1 * (1 - discPct2) * 100) / 100 : reExVatVal;
-              discPrice2 = getDiscPrice(discountPriceRows, 1, fallback2);
-              discPrice3 = getDiscPrice(discountPriceRows, 2, reExVatVal);
+              discPrice2 = getDiscPrice(realDiscountPriceRows, 1, fallback2);
+              discPrice3 = getDiscPrice(realDiscountPriceRows, 2, reExVatVal);
             }
 
             previewRows.push({
               sku,
               productName: skuName,
               brand: brandName,
-              branch: firstBranch,                    // ตัวอย่างสาขาแรก
+              branch: firstBranch,
               totalBranches: branchColumns.length,
-              numDiscounts,
+              numDiscounts: realNumDiscounts,
               base_price:         basePrice,
               discount_pct_1:     discPct1,
               discount_pct_2:     discPct2,
@@ -1721,15 +1834,8 @@ async function previewGlassData(excelBuffer, sheetName) {
 
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-    // Region → branchCodes
-    const REGION_BRANCHES = {
-      BKK: ['00TR','01TJ','02TN','03TS','04TP'],
-      C:   ['05AY','21BS','22BP','24TL','25SB','07RB'],
-      N:   ['11PL','12CM','17CR','23NS'],
-      NE:  ['08NR','09UB','10KK','18UD','20SK'],
-      E:   ['06RY','15CB'],
-      S:   ['13SR','14HY','16PK','19PC'],
-    };
+    // Region → branchCodes จาก BranchMaster
+    const { zoneToBranches: REGION_BRANCHES, allBranchCodes } = await loadBranchMapping();
     const REGION_COLS = [
       { region:'BKK', reCol:5,  w1Col:21, w2Col:22, r1Col:23, r2Col:24 },
       { region:'N',   reCol:6,  w1Col:26, w2Col:27, r1Col:28, r2Col:29 },
@@ -1740,11 +1846,11 @@ async function previewGlassData(excelBuffer, sheetName) {
     ];
 
     // Load StockStatusFact prefix map
+    const branchInListP = allBranchCodes.map(b => `'${b}'`).join(',');
     const stockResult = await pool.request().query(`
       SELECT DISTINCT skuNumber, branchCode FROM StockStatusFact
       WHERE category = 'Glass' AND skuNumber LIKE 'G%'
-        AND branchCode IN ('00TR','01TJ','02TN','03TS','04TP','05AY','21BS','22BP','24TL','25SB','07RB',
-          '11PL','12CM','17CR','23NS','08NR','09UB','10KK','18UD','20SK','06RY','15CB','13SR','14HY','16PK','19PC')
+        AND branchCode IN (${branchInListP})
     `);
     const skuByPrefix = new Map();
     for (const r of stockResult.recordset) {
@@ -1885,32 +1991,41 @@ export async function debugAccExcel(req, res) {
  * Helper: Parse ACC Excel rows (shared logic)
  * =====================================================
  *
- * ACC file structure (Internal Memo format):
+ * ACC file structure (ACC-NA Internal Memo format):
  *   Row 0-5 : header/memo rows (skip)
- *   Row 6   : column headers  (sup, รหัส, รายการ, สี, บรรจุ/มาตรหน่วย, ราคาตั้ง, RE ก่อน VAT, ชุน รวม VAT)
- *   Row 7   : sub-header row  (skip)
- *   Row 8+  : data rows
+ *   Row 6   : main column headers
+ *   Row 7   : sub-header row (ซ้ำ header — skip)
+ *   Row 8+  : data rows / section headers
  *
  * Column index (0-based):
- *   col 0 = supplier name
- *   col 1 = SKU (รหัส) — starts with E, or section header if col 1 empty & col 2 has text
- *   col 2 = product name (รายการ)
- *   col 3 = color (สี)
- *   col 4 = unit/pack (บรรจุ/มาตรหน่วย)
- *   col 5 = base price (ราคาตั้ง)
- *   col 6 = RE before VAT
- *   col 7 = selling price incl. VAT (ชุน รวม VAT)
+ *   col A(0) = supplier name (sup)
+ *   col B(1) = SKU (รหัส)
+ *   col C(2) = product name (รายการ)
+ *   col D(3) = color (สี)
+ *   col E(4) = unit/pack (บรรจุ/มาตรหน่วย)
+ *   col F(5) = base price (ราคาตั้ง)
+ *   col G(6) = RE before VAT (RE ก่อน VAT)
+ *   col H(7) = selling price incl. VAT (ชุน รวม VAT)
+ *   col I(8) = SDM price
+ *   col J(9) = W1 price
+ *   col K(10)= W2 price
+ *   col L(11)= R1 price
+ *   col M(12)= R2 price
  *
- * Section headers: rows where col 1 is empty and col 2 has a group name
+ * Section headers: rows where col B(1) is empty and col C(2) has a group name
  * =====================================================
  */
 function parseAccRows(data) {
-  const fv = v => parseFloat(v) || 0;
+  const fv = v => {
+    if (v === undefined || v === null || v === '') return 0;
+    const n = parseFloat(String(v).replace(/,/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
   const rows = [];
   let currentSection = '';
 
-  // Auto-detect header row: หา row ที่มี "รหัส" หรือ "SKU" ใน col 1
-  // แล้วเริ่ม parse จาก row ถัดไป
+  // Auto-detect header row: หา row ที่มี "รหัส" ใน col B(1) หรือ "รายการ" ใน col C(2)
+  // แล้วเริ่ม parse จาก row ถัดไป (ข้าม sub-header อีก 1 row)
   let dataStartRow = 8; // default
   for (let i = 0; i < Math.min(15, data.length); i++) {
     const row = data[i];
@@ -1918,64 +2033,87 @@ function parseAccRows(data) {
     const c1 = String(row[1] ?? '').trim().toLowerCase();
     const c2 = String(row[2] ?? '').trim().toLowerCase();
     if (c1 === 'รหัส' || c1 === 'sku' || c2 === 'รายการ') {
-      dataStartRow = i + 1; // เริ่มหลัง header row
+      dataStartRow = i + 2; // +2 เพราะมี sub-header row ถัดไปอีก 1 แถว
       break;
     }
   }
+
+  // Label keywords ที่ใช้กรอง header/sub-header rows ออก
+  const SKIP_LABELS = new Set([
+    'รหัส', 'sku', 'sup', 'รายการ', 'สี', 'บรรจุ/มาตรหน่วย', 'บรรจุ',
+    'มาตรหน่วย', 'ราคาตั้ง', 're ก่อนvat', 're ก่อน vat', 'ชุน รวม vat',
+    'sdm', 'w1', 'w2', 'r1', 'r2',
+  ]);
 
   for (let i = dataStartRow; i < data.length; i++) {
     const row = data[i];
     if (!row) continue;
 
-    const col1 = row[1] !== undefined ? String(row[1]).trim() : '';
-    const col2 = row[2] !== undefined ? String(row[2]).trim() : '';
-    const col3 = row[3] !== undefined ? String(row[3]).trim() : '';
-    const col4 = row[4] !== undefined ? String(row[4]).trim() : '';
-    const col5 = row[5];
-    const col6 = row[6];
-    const col7 = row[7];
+    const colB = row[1] !== undefined ? String(row[1]).trim() : '';  // SKU
+    const colC = row[2] !== undefined ? String(row[2]).trim() : '';  // รายการ
+    const colD = row[3] !== undefined ? String(row[3]).trim() : '';  // สี
+    const colE = row[4] !== undefined ? String(row[4]).trim() : '';  // หน่วย
+    const colF = row[5];   // ราคาตั้ง
+    const colG = row[6];   // RE ก่อน VAT
+    const colH = row[7];   // ชุน รวม VAT
+    const colI = row[8];   // SDM
+    const colJ = row[9];   // W1
+    const colK = row[10];  // W2
+    const colL = row[11];  // R1
+    const colM = row[12];  // R2
 
-    // Section header: col1 ว่าง, col2 มีข้อความ, ไม่มีราคา
-    if (!col1 && col2 && fv(col5) === 0 && fv(col6) === 0 && fv(col7) === 0) {
-      if (col2 !== 'รายการ' && col2 !== 'sup' && col2 !== 'รหัส') {
-        currentSection = col2;
+    const basePrice    = fv(colF);
+    const reBeforeVat  = fv(colG);
+    const sellingPrice = fv(colH);
+    const priceSdm     = fv(colI);
+    const priceW1      = fv(colJ);
+    const priceW2      = fv(colK);
+    const priceR1      = fv(colL);
+    const priceR2      = fv(colM);
+
+    // Section header: col B ว่าง, col C มีข้อความ, ไม่มีราคาใดเลย
+    if (!colB && colC &&
+        basePrice === 0 && reBeforeVat === 0 && sellingPrice === 0 &&
+        priceSdm === 0 && priceW1 === 0 && priceW2 === 0 && priceR1 === 0 && priceR2 === 0) {
+      const label = colC.toLowerCase();
+      if (!SKIP_LABELS.has(label)) {
+        currentSection = colC;
       }
       continue;
     }
 
-    // ต้องมี col1 และมีค่าที่ดูเหมือน SKU (ตัวอักษร+ตัวเลข ยาวพอสมควร)
-    // รองรับทั้ง E-prefix และ format อื่นๆ ที่อาจมี
-    if (!col1) continue;
+    // ต้องมี SKU ใน col B
+    if (!colB) continue;
 
     // กรอง header/label rows ออก
-    const lowerCol1 = col1.toLowerCase();
-    if (lowerCol1 === 'รหัส' || lowerCol1 === 'sku' || lowerCol1 === 'sup' ||
-        lowerCol1 === 'รายการ' || lowerCol1 === 'สี') continue;
+    if (SKIP_LABELS.has(colB.toLowerCase())) continue;
 
-    // col1 อาจมีหลาย SKU คั่นด้วย newline, comma, หรือ /
-    const rawSkus = col1.split(/[\n,\/]/).map(s => s.trim()).filter(s => s.length > 0);
+    // ข้ามแถวที่ไม่มีราคาใดเลย
+    if (basePrice === 0 && reBeforeVat === 0 && sellingPrice === 0 &&
+        priceSdm === 0 && priceW1 === 0 && priceW2 === 0 && priceR1 === 0 && priceR2 === 0) continue;
+
+    // col B อาจมีหลาย SKU คั่นด้วย newline, comma, หรือ /
+    const rawSkus = colB.split(/[\n,\/]/).map(s => s.trim()).filter(s => s.length > 0);
     if (rawSkus.length === 0) continue;
 
-    const productName = col2 || currentSection || 'Accessories';
-    const color       = col3;
-    const unit        = col4;
-    const basePrice   = fv(col5);
-    const reBeforeVat = fv(col6);
-    const sellingPrice = fv(col7);
-
-    // ข้ามแถวที่ไม่มีราคาเลย
-    if (basePrice === 0 && reBeforeVat === 0 && sellingPrice === 0) continue;
+    const productName  = colC || currentSection || 'Accessories';
+    const displayName  = colD ? `${productName} ${colD}`.trim() : productName;
 
     for (const sku of rawSkus) {
       if (!sku) continue;
       rows.push({
         sku,
-        productName: color ? `${productName} ${color}`.trim() : productName,
+        productName: displayName,
         section: currentSection,
-        unit,
+        unit: colE,
         basePrice,
         reBeforeVat,
         sellingPrice,
+        priceSdm,
+        priceW1,
+        priceW2,
+        priceR1,
+        priceR2,
       });
     }
   }
@@ -1987,9 +2125,7 @@ function parseAccRows(data) {
  * =====================================================
  * Helper: Import Accessories (ACC) Data from Excel Buffer
  * =====================================================
- * ACC ไม่แยก region — ราคาเดียวใช้ทุกสาขา
- * ดึง full SKU + branchCode จาก StockStatusFact (category='Accessories', SKU LIKE 'E%')
- * ถ้าไม่มีใน StockStatusFact → insert ด้วย Excel SKU + branch='ALL'
+ * ACC ราคาเดียวใช้ทุกสาขา — expand 1 SKU → N rows (1 row ต่อสาขาจาก BranchMaster)
  */
 async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null) {
   let imported = 0;
@@ -2008,7 +2144,6 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     console.log(`[ACC Parser] Raw rows: ${data.length}`);
 
     // Load brand mapping from Accessory_BRAND
-    // Load brand mapping from Accessory_BRAND
     let brandMap = {};
     try {
       const brandResult = await pool.request().query(`SELECT BRAND_NO, BRAND_NAME FROM Accessory_BRAND`);
@@ -2020,6 +2155,10 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
       console.warn(`[ACC Parser] Could not load Accessory_BRAND: ${e.message}`);
     }
 
+    // Load all branch codes from BranchMaster
+    const { allBranchCodes } = await loadBranchMapping();
+    console.log(`[ACC Parser] Branch codes loaded: ${allBranchCodes.length} branches`);
+
     // Check DB columns
     const colCheck = await pool.request().query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
@@ -2027,29 +2166,47 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
     const hasSellingPrices = dbCols.includes('selling_price_w1');
 
-    // Parse Excel rows — ใช้ SKU จาก Excel ตรงๆ
+    // Parse Excel rows
     const parsedRows = parseAccRows(data);
-    console.log(`[ACC Parser] Parsed ${parsedRows.length} product rows`);
+    console.log(`[ACC Parser] Parsed ${parsedRows.length} SKU rows → expanding to ${parsedRows.length * allBranchCodes.length} rows`);
 
-    // Build insert rows — 1 row ต่อ SKU, branch='ALL'
-    const insertRows = parsedRows.map(pr => ({
-      branch: 'ALL',
-      sku: pr.sku,
-      productName: pr.productName,
-      brand: brandMap[pr.sku.substring(1, 3)] || '',
-      unit: pr.unit,
-      basePrice: pr.basePrice,
-      reBeforeVat: pr.reBeforeVat,
-      sellingPrice: pr.sellingPrice,
-    }));
+    // Build insert rows — expand 1 SKU → 1 row ต่อสาขา (ราคาเหมือนกันทุกสาขา)
+    const insertRows = [];
+    for (const pr of parsedRows) {
+      const brand = brandMap[pr.sku.substring(1, 3)] || '';
+      for (const branchCode of allBranchCodes) {
+        insertRows.push({
+          branch:       branchCode,
+          sku:          pr.sku,
+          productName:  pr.productName,
+          brand,
+          unit:         pr.unit,
+          basePrice:    pr.basePrice,
+          reBeforeVat:  pr.reBeforeVat,
+          sellingPrice: pr.sellingPrice,
+          priceSdm:     pr.priceSdm,
+          priceW1:      pr.priceW1,
+          priceW2:      pr.priceW2,
+          priceR1:      pr.priceR1,
+          priceR2:      pr.priceR2,
+        });
+      }
+    }
 
     console.log(`[ACC Parser] Prepared ${insertRows.length} rows, inserting in batches...`);
 
     // Batch insert 200 rows
     const BATCH_SIZE = 200;
 
-    // selling_price_w1 ใช้เก็บ RE before VAT, selling_price_r1 ใช้เก็บ selling price incl. VAT
-    // (ใช้ field ที่มีอยู่แล้วในตาราง)
+    // Column mapping (ACC-NA format):
+    //   base_price        = ราคาตั้ง (col F)
+    //   discount_price_1  = RE ก่อน VAT (col G)
+    //   discount_price_2  = ชุน รวม VAT (col H)
+    //   discount_price_3  = SDM (col I)
+    //   selling_price_w1  = W1 (col J)
+    //   selling_price_w2  = W2 (col K)
+    //   selling_price_r1  = R1 (col L)
+    //   selling_price_r2  = R2 (col M)
     for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
       const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
       const req = pool.request();
@@ -2064,19 +2221,23 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
         req.input(`reVat${idx}`,       sql.Decimal(18,2), r.reBeforeVat);
         req.input(`sellPrice${idx}`,   sql.Decimal(18,2), r.sellingPrice);
+        req.input(`sdm${idx}`,         sql.Decimal(18,2), r.priceSdm);
+        req.input(`w1${idx}`,          sql.Decimal(18,2), r.priceW1);
+        req.input(`w2${idx}`,          sql.Decimal(18,2), r.priceW2);
+        req.input(`r1${idx}`,          sql.Decimal(18,2), r.priceR1);
+        req.input(`r2${idx}`,          sql.Decimal(18,2), r.priceR2);
         req.input(`logId${idx}`,       sql.Int,           logId);
 
         if (hasSellingPrices) {
-          // selling_price_w1 = RE before VAT, selling_price_r1 = selling price incl. VAT
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',` +
-            `@reVat${idx},0,@sellPrice${idx},0,@logId${idx})`
+            `@basePrice${idx},@reVat${idx},@sellPrice${idx},@sdm${idx},'',0,0,0,0,0,'',` +
+            `@w1${idx},@w2${idx},@r1${idx},@r2${idx},@logId${idx})`
           );
         } else {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',@logId${idx})`
+            `@basePrice${idx},@reVat${idx},@sellPrice${idx},@sdm${idx},'',0,0,0,0,0,'',@logId${idx})`
           );
         }
       });
@@ -2109,20 +2270,26 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
               .input('unit',        sql.NVarChar(50),  r.unit)
               .input('basePrice',   sql.Decimal(18,2), r.basePrice)
               .input('reVat',       sql.Decimal(18,2), r.reBeforeVat)
-              .input('sellPrice',   sql.Decimal(18,2), r.sellingPrice);
+              .input('sellPrice',   sql.Decimal(18,2), r.sellingPrice)
+              .input('sdm',         sql.Decimal(18,2), r.priceSdm)
+              .input('w1',          sql.Decimal(18,2), r.priceW1)
+              .input('w2',          sql.Decimal(18,2), r.priceW2)
+              .input('r1',          sql.Decimal(18,2), r.priceR1)
+              .input('r2',          sql.Decimal(18,2), r.priceR2)
+              .input('logId',       sql.Int,           logId);
 
             if (hasSellingPrices) {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,0,0,'',0,0,0,0,0,'',
-                        @reVat,0,@sellPrice,0)
+                        @basePrice,@reVat,@sellPrice,@sdm,'',0,0,0,0,0,'',
+                        @w1,@w2,@r1,@r2,@logId)
               `);
             } else {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,0,0,'',0,0,0,0,0,'')
+                        @basePrice,@reVat,@sellPrice,@sdm,'',0,0,0,0,0,'',@logId)
               `);
             }
             imported++;
@@ -2162,6 +2329,9 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
       console.warn(`[ACC Preview] Could not load Accessory_BRAND: ${e.message}`);
     }
 
+    // Load all branch codes from BranchMaster
+    const { allBranchCodes } = await loadBranchMapping();
+
     const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
     const worksheet = workbook.Sheets[sheetName] || workbook.Sheets[workbook.SheetNames[0]];
     if (!worksheet) return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
@@ -2173,46 +2343,45 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
     for (let i = 0; i < Math.min(15, data.length); i++) {
       const row = data[i];
       if (!row) continue;
-      const cols = row.slice(0, 10).map((v, ci) => `[${ci}]=${JSON.stringify(v)}`).join(' | ');
+      const cols = row.slice(0, 13).map((v, ci) => `[${ci}]=${JSON.stringify(v)}`).join(' | ');
       console.log(`  row${i}: ${cols}`);
     }
 
     const parsedRows = parseAccRows(data);
-    console.log(`[ACC Preview] parsedRows: ${parsedRows.length}`);
+    console.log(`[ACC Preview] parsedRows: ${parsedRows.length}, branches: ${allBranchCodes.length}`);
     if (parsedRows.length > 0) {
       console.log(`[ACC Preview] first parsed:`, JSON.stringify(parsedRows[0]));
     }
 
     const previewRows = [];
-    let totalSkus = 0;
-    let totalRows = 0;
+    const totalSkus = parsedRows.length;
+    const totalRows = parsedRows.length * allBranchCodes.length;
 
     for (const pr of parsedRows) {
       const brandName = brandMap[pr.sku.substring(1, 3)] || '';
 
-      totalSkus++;
-      totalRows++;  // 1 row ต่อ SKU (branch='ALL')
-
+      // แสดง preview เฉพาะ row แรก (สาขาแรก) ต่อ SKU เพื่อไม่ให้ preview ยาวเกิน
       if (previewRows.length < 15) {
         previewRows.push({
-          sku: pr.sku,
-          productName: pr.productName,
-          brand: brandName,
-          unit: pr.unit,
-          branch: 'ALL',
-          totalBranches: 1,
+          sku:              pr.sku,
+          productName:      pr.productName,
+          brand:            brandName,
+          unit:             pr.unit,
+          branch:           `ทุกสาขา (${allBranchCodes.length})`,
+          totalBranches:    allBranchCodes.length,
           base_price:       pr.basePrice,
-          selling_price_w1: pr.reBeforeVat,   // RE before VAT
-          selling_price_r1: pr.sellingPrice,  // selling price incl. VAT
-          selling_price_w2: 0,
-          selling_price_r2: 0,
+          discount_price_1: pr.reBeforeVat,    // RE ก่อน VAT (col G)
+          discount_price_2: pr.sellingPrice,   // ชุน รวม VAT (col H)
+          discount_price_3: pr.priceSdm,       // SDM (col I)
+          selling_price_w1: pr.priceW1,        // W1 (col J)
+          selling_price_w2: pr.priceW2,        // W2 (col K)
+          selling_price_r1: pr.priceR1,        // R1 (col L)
+          selling_price_r2: pr.priceR2,        // R2 (col M)
         });
       }
     }
 
-    const allBranches = ['ALL'];
-
-    return { rows: previewRows, totalSkus, totalRows, branches: allBranches };
+    return { rows: previewRows, totalSkus, totalRows, branches: allBranchCodes };
 
   } catch (err) {
     console.error('[ACC Preview] Fatal error:', err);
@@ -2427,6 +2596,41 @@ export async function discardDraft(req, res) {
     res.json({ success: true, deleted: r.rowsAffected[0] });
   } catch (err) {
     console.error('discardDraft error:', err);
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * GET /api/excel/pending-draft?productType=
+ * ตรวจสอบว่ามี draft ค้างอยู่ไหม (สำหรับ restore ตอนโหลดหน้า)
+ * =====================================================
+ */
+export async function getPendingDraft(req, res) {
+  try {
+    const { productType } = req.query;
+    const pool = await getPool();
+
+    const req2 = pool.request();
+    const whereStr = productType
+      ? `WHERE l.status = 'draft' AND l.product_type = @pt`
+      : `WHERE l.status = 'draft'`;
+    if (productType) req2.input('pt', sql.NVarChar(100), productType);
+
+    const result = await req2.query(`
+      SELECT l.id, l.product_type AS productType, l.version_label AS versionLabel,
+             l.imported_rows AS importedRows, l.imported_at AS importedAt,
+             COUNT(d.id) AS draftCount
+      FROM excel_import_logs l
+      LEFT JOIN excel_import_data d ON d.import_log_id = l.id AND d.status = 'draft'
+      ${whereStr}
+      GROUP BY l.id, l.product_type, l.version_label, l.imported_rows, l.imported_at
+      ORDER BY l.imported_at DESC
+    `);
+
+    res.json(result.recordset);
+  } catch (err) {
+    console.error('getPendingDraft error:', err);
     res.status(500).json({ message: err.message });
   }
 }

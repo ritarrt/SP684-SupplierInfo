@@ -6,6 +6,7 @@ let currentData = [];
 let currentTab = null;
 let currentFile = null;
 let productTypes = [];
+let selectedSheets = new Set();
 
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
@@ -111,6 +112,9 @@ function selectTab(type) {
   dataTable.querySelector("thead").innerHTML = "";
   dataTable.querySelector("tbody").innerHTML = "";
 
+  // ตรวจสอบว่ามี draft ค้างอยู่ไหม
+  checkPendingDraft(type);
+
   // โหลดข้อมูลตาราง — filter ตาม tab ที่เลือก
   const ptFilter = document.getElementById("filterProductType");
   if (ptFilter) ptFilter.value = type;
@@ -158,42 +162,46 @@ function handleFile(file) {
 // SHEET SELECTION
 // ============================================
 
+// ============================================
+// SHEET SELECTION (single select)
+// ============================================
+
 function showSheetSelection() {
   if (!currentWorkbook) return;
   
   sheetButtons.innerHTML = "";
-  
+  selectedSheets.clear();
+
   currentWorkbook.SheetNames.forEach((name) => {
     const btn = document.createElement("button");
-    btn.className = "px-4 py-2 border rounded hover:bg-gray-100";
+    btn.className = "px-3 py-1.5 border rounded hover:bg-gray-100 text-sm";
     btn.textContent = name;
-    btn.onclick = () => selectSheet(name);
+    btn.dataset.sheet = name;
+    btn.onclick = () => selectSheet(name, btn);
     sheetButtons.appendChild(btn);
   });
   
   sheetSection.classList.remove("hidden");
   
   // Auto-select first sheet
-  selectSheet(currentWorkbook.SheetNames[0]);
+  const firstBtn = sheetButtons.querySelector('[data-sheet]');
+  if (firstBtn) selectSheet(currentWorkbook.SheetNames[0], firstBtn);
 }
 
-function selectSheet(name) {
+function selectSheet(name, btn) {
   currentSheetName = name;
-  
+  selectedSheets.clear();
+  selectedSheets.add(name);
+
   // Update button styles
-  Array.from(sheetButtons.children).forEach((btn) => {
-    if (btn.textContent === name) {
-      btn.className = "px-4 py-2 border rounded bg-blue-600 text-white";
-    } else {
-      btn.className = "px-4 py-2 border rounded hover:bg-gray-100";
-    }
+  Array.from(sheetButtons.querySelectorAll('[data-sheet]')).forEach(b => {
+    b.className = b.dataset.sheet === name
+      ? "px-3 py-1.5 border rounded bg-blue-600 text-white text-sm"
+      : "px-3 py-1.5 border rounded hover:bg-gray-100 text-sm";
   });
-  
-  // Get data from sheet
+
   const sheet = currentWorkbook.Sheets[name];
-  const data = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  
-  currentData = data;
+  currentData = XLSX.utils.sheet_to_json(sheet, { defval: "" });
   showDataPreview();
 }
 
@@ -238,7 +246,6 @@ function showDataPreview() {
 }
 
 async function loadGypsumPreview() {
-  // แสดง loading state
   dataTable.querySelector("thead").innerHTML = "";
   dataTable.querySelector("tbody").innerHTML = "";
   rowCount.innerHTML = `<div class="text-sm text-gray-400 animate-pulse">⏳ กำลังวิเคราะห์ไฟล์...</div>`;
@@ -393,21 +400,15 @@ function renderTable(data) {
 
 importBtn.addEventListener("click", async () => {
   if (!currentWorkbook || !currentSheetName) {
-    showStatus("ไม่มีไฟล์ที่จะนำเข้า", "warning");
-    return;
-  }
-  
-  if (currentData.length === 0) {
-    showStatus("ไม่มีข้อมูลที่จะนำเข้า", "warning");
+    showStatus("ไม่มีไฟล์หรือไม่ได้เลือก sheet", "warning");
     return;
   }
 
-  // แสดง loading overlay
   const overlay = document.createElement('div');
   overlay.id = 'importLoadingOverlay';
   overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
   overlay.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl px-10 py-8 flex flex-col items-center gap-4 min-w-[260px]">
+    <div class="bg-white rounded-2xl shadow-2xl px-10 py-8 flex flex-col items-center gap-4 min-w-[280px]">
       <div class="relative w-14 h-14">
         <svg class="animate-spin w-14 h-14 text-blue-600" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
@@ -430,7 +431,7 @@ importBtn.addEventListener("click", async () => {
     const el = document.getElementById('importProgressText');
     if (el) el.textContent = text;
   };
-  
+
   try {
     setProgress('กำลังอ่านไฟล์...');
     const excelBuffer = await new Promise((resolve, reject) => {
@@ -453,14 +454,14 @@ importBtn.addEventListener("click", async () => {
         sheetName: currentSheetName,
         productType: currentTab,
         data: currentData,
-        excelBuffer: excelBuffer,
+        excelBuffer,
         availableSheets: currentWorkbook.SheetNames
       }),
     });
 
     setProgress('กำลังประมวลผล...');
     const result = await response.json();
-    
+
     if (response.ok) {
       const label = result.versionLabel ? ` [${result.versionLabel}]` : '';
       showStatus(`นำเข้าข้อมูลสำเร็จ! ${result.imported} แถว${label} — กรุณาตรวจสอบและกด Publish`, "success");
@@ -473,7 +474,7 @@ importBtn.addEventListener("click", async () => {
     } else {
       showStatus(`เกิดข้อผิดพลาด: ${result.message}`, "error");
     }
-    
+
   } catch (err) {
     showStatus("เกิดข้อผิดพลาดในการเชื่อมต่อ", "error");
     console.error(err);
@@ -491,6 +492,7 @@ function clearData() {
   currentSheetName = null;
   currentData = [];
   currentFile = null;
+  selectedSheets.clear();
   
   fileInput.value = "";
   fileInfo.classList.add("hidden");
@@ -508,7 +510,7 @@ function clearData() {
 // ============================================
 
 function showStatus(message, type = "info") {
-  statusMessage.textContent = message;
+  statusMessage.innerHTML = message;
   statusMessage.classList.remove("hidden", "bg-blue-50", "text-blue-700", "bg-green-50", "text-green-700", "bg-yellow-50", "text-yellow-700", "bg-red-50", "text-red-700");
   
   if (type === "success") {
@@ -825,6 +827,77 @@ async function loadImportData(page = 1) {
 initializeProductTypes();
 
 // ============================================
+// CHECK PENDING DRAFT ON TAB CHANGE
+// ============================================
+
+async function checkPendingDraft(productType) {
+  // ซ่อน draft panel ก่อน (อาจเป็น tab อื่น)
+  closeDraftPanel();
+
+  try {
+    const response = await fetch(`${API_BASE}/api/excel/pending-draft?productType=${encodeURIComponent(productType)}`);
+    if (!response.ok) return;
+    const drafts = await response.json();
+
+    // เอาเฉพาะ draft ที่มีข้อมูลจริง (draftCount > 0)
+    const activeDraft = drafts.find(d => d.draftCount > 0);
+    if (!activeDraft) return;
+
+    // แสดง banner แจ้งเตือน
+    showDraftBanner(activeDraft);
+  } catch (err) {
+    console.error('checkPendingDraft error:', err);
+  }
+}
+
+function showDraftBanner(draft) {
+  // ลบ banner เก่าออกก่อน
+  document.getElementById('draftBanner')?.remove();
+
+  const date = new Date(draft.importedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+  const banner = document.createElement('div');
+  banner.id = 'draftBanner';
+  banner.className = 'w-full bg-orange-50 border border-orange-300 rounded p-3 mb-4 flex items-center justify-between gap-3 text-sm';
+  banner.innerHTML = `
+    <div class="flex items-center gap-2">
+      <i class="bi bi-exclamation-triangle-fill text-orange-500"></i>
+      <span class="text-orange-800">
+        มี Draft ค้างอยู่: <span class="font-mono font-semibold">${draft.versionLabel || draft.id}</span>
+        (${draft.draftCount.toLocaleString()} แถว · อัปโหลดเมื่อ ${date})
+        — ยังไม่ได้ Publish
+      </span>
+    </div>
+    <div class="flex gap-2 shrink-0">
+      <button onclick="openDraftPanel(${draft.id}, '${draft.versionLabel || draft.id}')"
+        class="px-3 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600 font-medium">
+        <i class="bi bi-pencil"></i> ดู/แก้ไข Draft
+      </button>
+      <button onclick="discardDraftById(${draft.id})"
+        class="px-3 py-1 bg-white border border-orange-300 text-orange-600 rounded text-xs hover:bg-orange-50">
+        <i class="bi bi-trash"></i> ยกเลิก
+      </button>
+    </div>
+  `;
+
+  // แทรก banner ก่อน upload section
+  const uploadSection = document.querySelector('main');
+  if (uploadSection) uploadSection.prepend(banner);
+}
+
+async function discardDraftById(logId) {
+  if (!confirm('ยืนยันการยกเลิก Draft นี้?')) return;
+  try {
+    const response = await fetch(`${API_BASE}/api/excel/draft/${logId}`, { method: 'DELETE' });
+    if (response.ok) {
+      document.getElementById('draftBanner')?.remove();
+      showToast('ยกเลิก Draft สำเร็จ', 'success');
+    }
+  } catch (err) {
+    showToast('เกิดข้อผิดพลาด', 'error');
+  }
+}
+
+// ============================================
 // DRAFT PANEL
 // ============================================
 
@@ -861,7 +934,7 @@ async function loadDraftData(page = 1) {
   const branch = document.getElementById('draftFilterBranch')?.value || '';
   const search = document.getElementById('draftFilterSku')?.value || '';
 
-  tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-gray-400 text-sm">กำลังโหลด...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="11" class="text-center py-4 text-gray-400 text-sm">กำลังโหลด...</td></tr>`;
 
   try {
     const params = new URLSearchParams({ page, limit: 50 });
@@ -912,6 +985,8 @@ async function loadDraftData(page = 1) {
         ${draftPriceCell('discount_price_1', row.discountPrice1, row.id)}
         <td class="text-right">${fmtPct(row.discountPct2, row.discountPrice1, row.discountPrice2)}</td>
         ${draftPriceCell('discount_price_2', row.discountPrice2, row.id)}
+        <td class="text-right">${fmtPct(row.discountPct3, row.discountPrice2, row.discountPrice3)}</td>
+        ${draftPriceCell('discount_price_3', row.discountPrice3, row.id)}
       </tr>
     `).join('');
 
@@ -1014,6 +1089,7 @@ async function publishDraft() {
     if (response.ok) {
       showToast(`Publish สำเร็จ! ${result.published} แถว`, 'success');
       closeDraftPanel();
+      document.getElementById('draftBanner')?.remove();
       loadImportData();
     } else {
       showToast(`Publish ไม่สำเร็จ: ${result.message}`, 'error');
@@ -1034,6 +1110,7 @@ async function discardDraft() {
     if (response.ok) {
       showToast('ยกเลิก Draft สำเร็จ', 'success');
       closeDraftPanel();
+      document.getElementById('draftBanner')?.remove();
     } else {
       showToast('ยกเลิกไม่สำเร็จ', 'error');
     }
