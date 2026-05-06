@@ -822,7 +822,7 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
     console.log(`[Glass Parser] Brand map loaded: ${Object.keys(brandMap).length} brands`);
 
     // Region → branchCodes mapping จาก BranchMaster
-    const { zoneToBranches: REGION_BRANCHES } = await loadBranchMapping();
+    const { zoneToBranches: REGION_BRANCHES, allBranchCodes } = await loadBranchMapping();
 
     // branchCode → region (reverse map สำหรับ lookup ราคา)
     const BRANCH_REGION = {};
