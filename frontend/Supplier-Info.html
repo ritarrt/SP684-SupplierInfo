@@ -329,9 +329,6 @@
         <button class="nav-link" data-tab="pills-moq" type="button">เงื่อนไขการสั่ง/ส่งสินค้า</button>
       </li>
       <li class="nav-item">
-        <button class="nav-link" data-tab="pills-deal" type="button">ดีลราคา</button>
-      </li>
-      <li class="nav-item">
         <button class="nav-link" data-tab="pills-deal-limit" type="button">จำกัดดีลราคา</button>
       </li>
       <li class="nav-item">
@@ -1613,7 +1610,7 @@
                 </div>
               </div>
 
-              <div class="section-header"><i class="bi bi-list-check"></i> 3. เงื่อนไขในการสั่งสินค้า</div>
+              <div class="section-header"><i class="bi bi-list-check"></i> 3. เงื่อนไขการสั่ง / ส่งสินค้า</div>
 
               <div class="grid grid-cols-12 gap-3 items-end">
                 <div class="col-span-12 md:col-span-2">
@@ -1740,81 +1737,6 @@
 
 <!-- =========================================================
             TAB: DEAL (SKU by Branch)
-            ========================================================= -->
-      <div class="tab-pane" id="pills-deal">
-
-        <!-- Branch and Category Filter for Deal -->
-        <div class="flex gap-2 mb-4 items-center flex-wrap" id="dealBranchFilter">
-          <label class="text-sm font-medium">สาขา:</label>
-          <select id="dealBranchSelect" class="form-select form-select-sm" style="width: 150px;" onchange="onDealBranchChange()">
-            <option value="">ทุกสาขา</option>
-          </select>
-          <label class="text-sm font-medium">ประเภทสินค้า:</label>
-          <select id="dealCategorySelect" class="form-select form-select-sm" style="width: 150px;" onchange="onDealCategoryChange()">
-            <option value="">ทุกประเภท</option>
-          </select>
-          <label class="text-sm font-medium">ผู้ให้ราคา:</label>
-          <select id="dealContactSelect" class="form-select form-select-sm" style="width: 160px;" onchange="onDealContactChange()">
-            <option value="">ทุกคน</option>
-          </select>
-          <span class="text-gray-400 text-sm mr-1">ดีลราคา:</span>
-          <button type="button" class="btn btn-outline-success btn-sm" onclick="exportDealToExcel()">
-            <i class="bi bi-file-earmark-excel"></i> Export Excel
-          </button>
-          <label class="btn btn-outline-primary btn-sm cursor-pointer">
-            <i class="bi bi-file-earmark-arrow-up"></i> Import Excel
-            <input type="file" accept=".xlsx,.xls" onchange="importDealFromExcel(event)" class="hidden">
-          </label>
-        </div>
-
-        <!-- DEAL TABLE (List SKU by Branch) -->
-        <div class="card card-table">
-          <div class="card-header">
-            <div class="flex justify-between items-center">
-              <div class="inline-flex" role="group" style="gap:6px;">
-                <input type="radio" class="hidden" name="dealFilter" id="dealFilterHistory" value="history" onchange="renderDealTable()">
-                <label class="btn btn-sm btn-outline-secondary" for="dealFilterHistory"><i class="bi bi-journal-text"></i> ประวัติทั้งหมด</label>
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportDealHistoryCSV()">
-                  <i class="bi bi-download"></i> ดาวน์โหลด CSV
-                </button>
-              </div>
-              <span class="badge bg-light text-dark border" id="dealRecordCount">0 รายการ</span>
-            </div>
-          </div>
-
-          <div class="table-wrap">
-            <table class="table table-hover table-bordered mb-0">
-              <thead id="dealTableHead">
-                <tr id="dealTableHeadRow">
-                  <th>#</th>
-                  <th>สถานะ</th>
-                  <th>ผู้ให้ราคา</th>
-                  <th>ชื่อดีลราคา</th>
-                  <th>Project No</th>
-                  <th>SKU</th>
-                  <th>สาขา</th>
-                  <th>ราคาตั้งต้น</th>
-                  <th>กรอบเงื่อนไข</th>
-                  <th>Tier</th>
-                  <th>จาก</th>
-                  <th>ถึง</th>
-                  <th>ราคาดีล/ส่วนลด</th>
-                  <th>หน่วย</th>
-                  <th>ประเภทดีล</th>
-                  <th>วันที่เริ่ม</th>
-                  <th>วันที่สิ้นสุด</th>
-                  <th>ลงลัง</th>
-                  <th>Supplier ส่ง</th>
-                  <th>หมายเหตุ</th>
-                  <th>แก้ไขล่าสุด</th>
-                </tr>
-              </thead>
-              <tbody id="dealTableBody"></tbody>
-            </table>
-</div>
-        </div>
-      </div>
-
       <!-- =========================================================
            TAB: DEAL LIMIT
            ========================================================= -->

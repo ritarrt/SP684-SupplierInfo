@@ -642,13 +642,22 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
 
               // นับเฉพาะ discount ชั้นที่มี % จริง (> 0) หรือมีราคาหลังลดจริง
               // กรอง "Discount 0%" ออก เพราะไม่ใช่ส่วนลดจริง
-              const realDiscountPctRows   = discountPctRows.filter((r, idx) => {
-                const pct = normPct(r[colIdx]);
-                const hasPrice = discountPriceRows[idx] && parseFloat(discountPriceRows[idx][colIdx]) > 0;
-                return pct > 0 || hasPrice;
-              });
-              const realDiscountPriceRows = realDiscountPctRows.map((r, idx) => discountPriceRows[idx] || null);
-              const realNumDiscounts = realDiscountPctRows.length;
+              // เก็บ original index ไว้เพื่อ map discountPriceRows ให้ถูกต้อง
+              const realDiscounts = discountPctRows
+                .map((r, origIdx) => ({
+                  pctRow: r,
+                  priceRow: discountPriceRows[origIdx] || null,
+                  origIdx
+                }))
+                .filter(({ pctRow, priceRow }) => {
+                  const pct = normPct(pctRow[colIdx]);
+                  const hasPrice = priceRow && parseFloat(priceRow[colIdx]) > 0;
+                  return pct > 0 || hasPrice;
+                });
+
+              const realDiscountPctRows   = realDiscounts.map(d => d.pctRow);
+              const realDiscountPriceRows = realDiscounts.map(d => d.priceRow);
+              const realNumDiscounts = realDiscounts.length;
 
               if (realNumDiscounts === 0) {
                 discPrice1 = reExVatVal;
@@ -672,10 +681,16 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
                 discPrice3 = getRealDiscPrice(realDiscountPriceRows, 2, reExVatVal);
               }
 
-              // คำนวณ % จากราคาจริง (แม่นยำกว่า normPct เพราะ Excel อาจเก็บเป็นบาทหรือ %)
-              const finalDiscPct1 = getDiscPct(realDiscountPctRows[0], realDiscountPriceRows[0], colIdx, basePrice);
-              const finalDiscPct2 = getDiscPct(realDiscountPctRows[1], realDiscountPriceRows[1], colIdx, discPrice1);
-              const finalDiscPct3 = getDiscPct(realDiscountPctRows[2], realDiscountPriceRows[2], colIdx, discPrice2);
+              // คำนวณ % จากราคาจริงเสมอ — ไม่ใช้ค่าจาก Excel
+              const calcPct = (before, after) => {
+                const b = parseFloat(before) || 0, a = parseFloat(after) || 0;
+                if (!b || !a || a <= 0 || a >= b) return 0;
+                return (b - a) / b;
+              };
+
+              const finalDiscPct1 = calcPct(basePrice,   discPrice1);
+              const finalDiscPct2 = calcPct(discPrice1,  discPrice2);
+              const finalDiscPct3 = calcPct(discPrice2,  discPrice3);
 
               try {
                 const req = pool.request()
@@ -1752,6 +1767,11 @@ async function previewGypsumData(excelBuffer, sheetName) {
             const numDiscounts = discountPctRows.length;
             // normalize % → ถ้าค่า > 1 แสดงว่า Excel เก็บเป็น % จริง (เช่น 4.6) ให้หาร 100
             const normPct = v => { const n = parseFloat(v) || 0; return n > 1 ? n / 100 : n; };
+            const calcPctFromPrice = (before, after) => {
+              const b = parseFloat(before) || 0, a = parseFloat(after) || 0;
+              if (!b || !a || a <= 0 || a >= b) return 0;
+              return (b - a) / b;
+            };
             const reExVatVal = reExVat ? parseFloat(reExVat[colIdx]) || 0 : 0;
 
             const getDiscPrice = (rowArr, idx, fallback) => {
@@ -1760,18 +1780,22 @@ async function previewGypsumData(excelBuffer, sheetName) {
               return (v && !isNaN(v)) ? v : fallback;
             };
 
-            // กรอง discount ที่ % = 0 และไม่มีราคาหลังลดจริงออก
-            const realDiscountPctRows = discountPctRows.filter((r, idx) => {
-              const pct = normPct(r[colIdx]);
-              const hasPrice = discountPriceRows[idx] && parseFloat(discountPriceRows[idx][colIdx]) > 0;
-              return pct > 0 || hasPrice;
-            });
-            const realDiscountPriceRows = realDiscountPctRows.map((r, idx) => discountPriceRows[idx] || null);
-            const realNumDiscounts = realDiscountPctRows.length;
+            // กรอง discount ที่ % = 0 และไม่มีราคาหลังลดจริงออก — เก็บ original index
+            const realDiscounts = discountPctRows
+              .map((r, origIdx) => ({
+                pctRow: r,
+                priceRow: discountPriceRows[origIdx] || null,
+                origIdx
+              }))
+              .filter(({ pctRow, priceRow }) => {
+                const pct = normPct(pctRow[colIdx]);
+                const hasPrice = priceRow && parseFloat(priceRow[colIdx]) > 0;
+                return pct > 0 || hasPrice;
+              });
 
-            const discPct1 = realDiscountPctRows[0] ? normPct(realDiscountPctRows[0][colIdx]) : 0;
-            const discPct2 = realDiscountPctRows[1] ? normPct(realDiscountPctRows[1][colIdx]) : 0;
-            const discPct3 = realDiscountPctRows[2] ? normPct(realDiscountPctRows[2][colIdx]) : 0;
+            const realDiscountPctRows   = realDiscounts.map(d => d.pctRow);
+            const realDiscountPriceRows = realDiscounts.map(d => d.priceRow);
+            const realNumDiscounts = realDiscounts.length;
 
             let discPrice1 = 0, discPrice2 = 0, discPrice3 = 0;
             if (realNumDiscounts === 0) {
@@ -1779,16 +1803,21 @@ async function previewGypsumData(excelBuffer, sheetName) {
             } else if (realNumDiscounts === 1) {
               discPrice1 = getDiscPrice(realDiscountPriceRows, 0, reExVatVal);
             } else if (realNumDiscounts === 2) {
-              const fallback1 = discPct1 > 0 ? Math.round(basePrice * (1 - discPct1) * 100) / 100 : reExVatVal;
-              discPrice1 = getDiscPrice(realDiscountPriceRows, 0, fallback1);
+              discPrice1 = getDiscPrice(realDiscountPriceRows, 0, reExVatVal);
               discPrice2 = getDiscPrice(realDiscountPriceRows, 1, reExVatVal);
             } else {
-              const fallback1 = discPct1 > 0 ? Math.round(basePrice * (1 - discPct1) * 100) / 100 : reExVatVal;
-              discPrice1 = getDiscPrice(realDiscountPriceRows, 0, fallback1);
-              const fallback2 = discPct2 > 0 ? Math.round(discPrice1 * (1 - discPct2) * 100) / 100 : reExVatVal;
-              discPrice2 = getDiscPrice(realDiscountPriceRows, 1, fallback2);
+              discPrice1 = getDiscPrice(realDiscountPriceRows, 0, reExVatVal);
+              discPrice2 = getDiscPrice(realDiscountPriceRows, 1, reExVatVal);
               discPrice3 = getDiscPrice(realDiscountPriceRows, 2, reExVatVal);
             }
+
+            // คำนวณ % จากราคาจริงเสมอ — ไม่ใช้ค่าจาก Excel
+            const discPct1 = (basePrice > 0 && discPrice1 > 0 && discPrice1 < basePrice)
+              ? (basePrice - discPrice1) / basePrice : 0;
+            const discPct2 = (discPrice1 > 0 && discPrice2 > 0 && discPrice2 < discPrice1)
+              ? (discPrice1 - discPrice2) / discPrice1 : 0;
+            const discPct3 = (discPrice2 > 0 && discPrice3 > 0 && discPrice3 < discPrice2)
+              ? (discPrice2 - discPrice3) / discPrice2 : 0;
 
             previewRows.push({
               sku,
