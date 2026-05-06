@@ -2165,6 +2165,7 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     `);
     const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
     const hasSellingPrices = dbCols.includes('selling_price_w1');
+    const hasSellingPriceSdm = dbCols.includes('selling_price_sdm');
 
     // Parse Excel rows
     const parsedRows = parseAccRows(data);
@@ -2199,14 +2200,13 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     const BATCH_SIZE = 200;
 
     // Column mapping (ACC-NA format):
-    //   base_price        = ราคาตั้ง (col F)
-    //   discount_price_1  = RE ก่อน VAT (col G)
-    //   discount_price_2  = ชุน รวม VAT (col H)
-    //   discount_price_3  = SDM (col I)
-    //   selling_price_w1  = W1 (col J)
-    //   selling_price_w2  = W2 (col K)
-    //   selling_price_r1  = R1 (col L)
-    //   selling_price_r2  = R2 (col M)
+    //   base_price         = ราคาตั้ง (col F)
+    //   discount_price_1   = RE ก่อน VAT (col G)
+    //   selling_price_sdm  = SDM (col I)
+    //   selling_price_w1   = W1 (col J)
+    //   selling_price_w2   = W2 (col K)
+    //   selling_price_r1   = R1 (col L)
+    //   selling_price_r2   = R2 (col M)
     for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
       const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
       const req = pool.request();
@@ -2220,7 +2220,6 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         req.input(`unit${idx}`,        sql.NVarChar(50),  r.unit);
         req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
         req.input(`reVat${idx}`,       sql.Decimal(18,2), r.reBeforeVat);
-        req.input(`sellPrice${idx}`,   sql.Decimal(18,2), r.sellingPrice);
         req.input(`sdm${idx}`,         sql.Decimal(18,2), r.priceSdm);
         req.input(`w1${idx}`,          sql.Decimal(18,2), r.priceW1);
         req.input(`w2${idx}`,          sql.Decimal(18,2), r.priceW2);
@@ -2228,21 +2227,34 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         req.input(`r2${idx}`,          sql.Decimal(18,2), r.priceR2);
         req.input(`logId${idx}`,       sql.Int,           logId);
 
-        if (hasSellingPrices) {
+        if (hasSellingPrices && hasSellingPriceSdm) {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},0,@sdm${idx},'',0,0,0,0,0,'',` +
+            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',` +
+            `@w1${idx},@w2${idx},@r1${idx},@r2${idx},@logId${idx},@sdm${idx})`
+          );
+        } else if (hasSellingPrices) {
+          valueParts.push(
+            `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
+            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',` +
             `@w1${idx},@w2${idx},@r1${idx},@r2${idx},@logId${idx})`
           );
         } else {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},0,@sdm${idx},'',0,0,0,0,0,'',@logId${idx})`
+            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',@logId${idx})`
           );
         }
       });
 
-      const insertCols = hasSellingPrices
+      const insertCols = hasSellingPrices && hasSellingPriceSdm
+        ? `branch, product_type, sku, product_name, brand, unit,
+           base_price, discount_price_1, discount_price_2, discount_price_3,
+           project_no, project_discount_1, project_discount_2, project_price,
+           carton_price, shipping_cost, free_item,
+           selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, import_log_id,
+           selling_price_sdm`
+        : hasSellingPrices
         ? `branch, product_type, sku, product_name, brand, unit,
            base_price, discount_price_1, discount_price_2, discount_price_3,
            project_no, project_discount_1, project_discount_2, project_price,
@@ -2270,7 +2282,6 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
               .input('unit',        sql.NVarChar(50),  r.unit)
               .input('basePrice',   sql.Decimal(18,2), r.basePrice)
               .input('reVat',       sql.Decimal(18,2), r.reBeforeVat)
-              .input('sellPrice',   sql.Decimal(18,2), r.sellingPrice)
               .input('sdm',         sql.Decimal(18,2), r.priceSdm)
               .input('w1',          sql.Decimal(18,2), r.priceW1)
               .input('w2',          sql.Decimal(18,2), r.priceW2)
@@ -2278,18 +2289,25 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
               .input('r2',          sql.Decimal(18,2), r.priceR2)
               .input('logId',       sql.Int,           logId);
 
-            if (hasSellingPrices) {
+            if (hasSellingPrices && hasSellingPriceSdm) {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,0,@sdm,'',0,0,0,0,0,'',
+                        @basePrice,@reVat,0,0,'',0,0,0,0,0,'',
+                        @w1,@w2,@r1,@r2,@logId,@sdm)
+              `);
+            } else if (hasSellingPrices) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
+                        @basePrice,@reVat,0,0,'',0,0,0,0,0,'',
                         @w1,@w2,@r1,@r2,@logId)
               `);
             } else {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,0,@sdm,'',0,0,0,0,0,'',@logId)
+                        @basePrice,@reVat,0,0,'',0,0,0,0,0,'',@logId)
               `);
             }
             imported++;
@@ -2372,7 +2390,8 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
           base_price:       pr.basePrice,
           discount_price_1: pr.reBeforeVat,    // RE ก่อน VAT (col G)
           discount_price_2: 0,                 // ทุนรวม VAT — ไม่เก็บ
-          discount_price_3: pr.priceSdm,       // SDM (col I)
+          discount_price_3: 0,
+          selling_price_sdm: pr.priceSdm,      // SDM (col I)
           selling_price_w1: pr.priceW1,        // W1 (col J)
           selling_price_w2: pr.priceW2,        // W2 (col K)
           selling_price_r1: pr.priceR1,        // R1 (col L)
