@@ -1213,26 +1213,66 @@ export async function updateImportData(req, res) {
     const { id } = req.params;
     const {
       base_price, discount_price_1, discount_price_2, discount_price_3,
+      discount_pct_1, discount_pct_2, discount_pct_3,
       selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2
     } = req.body;
 
     const pool = await getPool();
 
-    // Check which selling_price columns exist
+    // Check which columns exist
     const colCheck = await pool.request().query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
       WHERE TABLE_NAME = 'excel_import_data'
     `);
     const cols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
     const hasSellingPrices = cols.includes('selling_price_w1');
+    const hasDiscPct       = cols.includes('discount_pct_1');
+
+    // ถ้ามีการส่ง discount_pct มา ให้คำนวณ discount_price ที่ตรงกันด้วย
+    // ต้องดึง base_price และ discount_price ปัจจุบันจาก DB ก่อน
+    let computedPrices = {};
+    if (hasDiscPct && (discount_pct_1 !== undefined || discount_pct_2 !== undefined || discount_pct_3 !== undefined)) {
+      const current = await pool.request()
+        .input('id', sql.Int, parseInt(id))
+        .query(`SELECT base_price, discount_price_1, discount_price_2 FROM excel_import_data WHERE id = @id`);
+      const cur = current.recordset[0] || {};
+
+      if (discount_pct_1 !== undefined) {
+        const pct = parseFloat(discount_pct_1); // 0-1
+        const base = parseFloat(base_price ?? cur.base_price) || 0;
+        computedPrices.discount_price_1 = base > 0 ? parseFloat((base * (1 - pct)).toFixed(2)) : 0;
+      }
+      if (discount_pct_2 !== undefined) {
+        const pct = parseFloat(discount_pct_2);
+        const prev = computedPrices.discount_price_1 ?? parseFloat(discount_price_1 ?? cur.discount_price_1) ?? 0;
+        computedPrices.discount_price_2 = prev > 0 ? parseFloat((prev * (1 - pct)).toFixed(2)) : 0;
+      }
+      if (discount_pct_3 !== undefined) {
+        const pct = parseFloat(discount_pct_3);
+        const prev = computedPrices.discount_price_2 ?? parseFloat(discount_price_2 ?? cur.discount_price_2) ?? 0;
+        computedPrices.discount_price_3 = prev > 0 ? parseFloat((prev * (1 - pct)).toFixed(2)) : 0;
+      }
+    }
 
     const req2 = pool.request().input("id", sql.Int, parseInt(id));
     let setCols = [];
 
     if (base_price       !== undefined) { req2.input("basePrice",      sql.Decimal(18,2), parseFloat(base_price)       || 0); setCols.push("[base_price] = @basePrice"); }
-    if (discount_price_1 !== undefined) { req2.input("discountPrice1", sql.Decimal(18,2), parseFloat(discount_price_1) || 0); setCols.push("[discount_price_1] = @discountPrice1"); }
-    if (discount_price_2 !== undefined) { req2.input("discountPrice2", sql.Decimal(18,2), parseFloat(discount_price_2) || 0); setCols.push("[discount_price_2] = @discountPrice2"); }
-    if (discount_price_3 !== undefined) { req2.input("discountPrice3", sql.Decimal(18,2), parseFloat(discount_price_3) || 0); setCols.push("[discount_price_3] = @discountPrice3"); }
+
+    // discount_price — ใช้ค่าที่คำนวณจาก pct ถ้ามี ไม่งั้นใช้ค่าที่ส่งมาตรงๆ
+    const dp1 = computedPrices.discount_price_1 ?? (discount_price_1 !== undefined ? parseFloat(discount_price_1) || 0 : undefined);
+    const dp2 = computedPrices.discount_price_2 ?? (discount_price_2 !== undefined ? parseFloat(discount_price_2) || 0 : undefined);
+    const dp3 = computedPrices.discount_price_3 ?? (discount_price_3 !== undefined ? parseFloat(discount_price_3) || 0 : undefined);
+    if (dp1 !== undefined) { req2.input("discountPrice1", sql.Decimal(18,2), dp1); setCols.push("[discount_price_1] = @discountPrice1"); }
+    if (dp2 !== undefined) { req2.input("discountPrice2", sql.Decimal(18,2), dp2); setCols.push("[discount_price_2] = @discountPrice2"); }
+    if (dp3 !== undefined) { req2.input("discountPrice3", sql.Decimal(18,2), dp3); setCols.push("[discount_price_3] = @discountPrice3"); }
+
+    // discount_pct
+    if (hasDiscPct) {
+      if (discount_pct_1 !== undefined) { req2.input("discPct1", sql.Decimal(10,6), parseFloat(discount_pct_1) || 0); setCols.push("[discount_pct_1] = @discPct1"); }
+      if (discount_pct_2 !== undefined) { req2.input("discPct2", sql.Decimal(10,6), parseFloat(discount_pct_2) || 0); setCols.push("[discount_pct_2] = @discPct2"); }
+      if (discount_pct_3 !== undefined) { req2.input("discPct3", sql.Decimal(10,6), parseFloat(discount_pct_3) || 0); setCols.push("[discount_pct_3] = @discPct3"); }
+    }
 
     if (hasSellingPrices) {
       if (selling_price_w1 !== undefined) { req2.input("sellW1", sql.Decimal(18,2), parseFloat(selling_price_w1) || 0); setCols.push("[selling_price_w1] = @sellW1"); }
@@ -1453,29 +1493,27 @@ export async function previewExcelData(req, res) {
     // 2. เปรียบเทียบราคากับข้อมูลล่าสุดใน DB
     let priceChanges = [];
     let newSkus = [];
-    let removedSkus = [];
 
     if (detectedType && previewData.rows && previewData.rows.length > 0) {
-      // ดึงข้อมูลล่าสุดจาก DB สำหรับ product_type นี้
-      const latestLogResult = await pool.request()
+      // ดึงราคาล่าสุดของแต่ละ SKU|branch สำหรับ product_type นี้
+      // ใช้ ROW_NUMBER เพื่อเอาเฉพาะ row ล่าสุดต่อ SKU|branch (อาจมาจาก log คนละรอบ)
+      const dbData = await pool.request()
         .input('pt', sql.NVarChar(100), detectedType)
         .query(`
-          SELECT TOP 1 id FROM excel_import_logs
-          WHERE product_type = @pt AND status IN ('success','published') AND imported_rows > 0
-          ORDER BY imported_at DESC
+          SELECT sku, branch, base_price, discount_price_1, discount_price_2, discount_price_3
+          FROM (
+            SELECT d.sku, d.branch, d.base_price, d.discount_price_1, d.discount_price_2, d.discount_price_3,
+                   ROW_NUMBER() OVER (PARTITION BY d.sku, d.branch ORDER BY l.imported_at DESC) AS rn
+            FROM excel_import_data d
+            JOIN excel_import_logs l ON l.id = d.import_log_id
+            WHERE d.product_type = @pt
+              AND l.status IN ('success', 'published')
+              AND l.imported_rows > 0
+          ) t
+          WHERE rn = 1
         `);
 
-      if (latestLogResult.recordset.length > 0) {
-        const latestLogId = latestLogResult.recordset[0].id;
-
-        const dbData = await pool.request()
-          .input('logId', sql.Int, latestLogId)
-          .query(`
-            SELECT sku, branch, base_price, discount_price_1, discount_price_2, discount_price_3
-            FROM excel_import_data
-            WHERE import_log_id = @logId
-          `);
-
+      if (dbData.recordset.length > 0) {
         // สร้าง map จาก DB: "sku|branch" → row
         const dbMap = new Map();
         for (const r of dbData.recordset) {
@@ -1496,14 +1534,7 @@ export async function previewExcelData(req, res) {
           }
         }
 
-        // หา SKU ที่หายไปจาก Excel ใหม่
-        for (const [key, row] of dbMap) {
-          if (!newMap.has(key)) {
-            removedSkus.push({ sku: row.sku, branch: row.branch });
-          }
-        }
-
-        // หาราคาที่เปลี่ยนแปลง
+        // หาราคาที่เปลี่ยนแปลง — นับ 1 ต่อ SKU|branch ที่มีราคาเปลี่ยน
         for (const [key, newRow] of newMap) {
           const dbRow = dbMap.get(key);
           if (!dbRow) continue;
@@ -1512,16 +1543,20 @@ export async function previewExcelData(req, res) {
             { name: 'ราคาหลังลด 1',  newVal: newRow.discount_price_1, oldVal: dbRow.discount_price_1 },
             { name: 'ราคาหลังลด 2',  newVal: newRow.discount_price_2, oldVal: dbRow.discount_price_2 },
           ];
-          for (const f of fields) {
+          const changedFields = fields.filter(f => {
             const nv = parseFloat(f.newVal) || 0;
             const ov = parseFloat(f.oldVal) || 0;
-            if (Math.abs(nv - ov) > 0.001) {
-              priceChanges.push({
-                sku: newRow.sku, productName: newRow.productName, branch: newRow.branch,
-                field: f.name, oldPrice: ov, newPrice: nv,
-                diff: nv - ov, diffPct: ov > 0 ? ((nv - ov) / ov * 100) : null
-              });
-            }
+            return Math.abs(nv - ov) > 0.001;
+          });
+          if (changedFields.length > 0) {
+            priceChanges.push({
+              sku: newRow.sku, productName: newRow.productName, branch: newRow.branch,
+              changedFields: changedFields.map(f => ({
+                name: f.name,
+                oldPrice: parseFloat(f.oldVal) || 0,
+                newPrice: parseFloat(f.newVal) || 0,
+              }))
+            });
           }
         }
       }
@@ -1537,7 +1572,6 @@ export async function previewExcelData(req, res) {
       previewVersionLabel,
       priceChangesTotal: priceChanges.length,
       newSkusTotal:    newSkus.length,
-      removedSkusTotal: removedSkus.length,
     });
 
   } catch (err) {
@@ -1908,6 +1942,7 @@ async function previewGlassData(excelBuffer, sheetName) {
 
     let currentBrand = '', currentProductName = '';
     const previewRows = [];
+    const allRows = [];
     let totalSkus = 0, totalRows = 0;
 
     for (let i = 6; i < data.length; i++) {
@@ -1960,28 +1995,30 @@ async function previewGlassData(excelBuffer, sheetName) {
         totalSkus++;
         totalRows += branchCount;
 
+        const rowData = {
+          sku: excelSku,
+          productName: fullName,
+          brand: brandName,
+          branch: '00TR',           // ตัวอย่างสาขาแรก (BKK)
+          totalBranches: branchCount,
+          base_price:       re_bkk,
+          selling_price_w1: w1_bkk,
+          selling_price_w2: w2_bkk,
+          selling_price_r1: r1_bkk,
+          selling_price_r2: r2_bkk,
+          discount_pct_1: 0,
+          discount_pct_2: 0,
+          discount_price_1: 0,
+          discount_price_2: 0,
+        };
+        allRows.push(rowData);
         if (previewRows.length < 15) {
-          previewRows.push({
-            sku: excelSku,
-            productName: fullName,
-            brand: brandName,
-            branch: '00TR',           // ตัวอย่างสาขาแรก (BKK)
-            totalBranches: branchCount,
-            base_price:       re_bkk,
-            selling_price_w1: w1_bkk,
-            selling_price_w2: w2_bkk,
-            selling_price_r1: r1_bkk,
-            selling_price_r2: r2_bkk,
-            discount_pct_1: 0,
-            discount_pct_2: 0,
-            discount_price_1: 0,
-            discount_price_2: 0,
-          });
+          previewRows.push(rowData);
         }
       }
     }
 
-    return { rows: previewRows, totalSkus, totalRows, branches: allBranches };
+    return { rows: previewRows, allRows, totalSkus, totalRows, branches: allBranches };
 
   } catch (err) {
     console.error('[Glass Preview] Fatal error:', err);
@@ -2420,35 +2457,38 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
     }
 
     const previewRows = [];
+    const allRows = [];
     const totalSkus = parsedRows.length;
     const totalRows = parsedRows.length * allBranchCodes.length;
 
     for (const pr of parsedRows) {
       const brandName = brandMap[pr.sku.substring(1, 3)] || '';
 
+      const rowData = {
+        sku:              pr.sku,
+        productName:      pr.productName,
+        brand:            brandName,
+        unit:             pr.unit,
+        branch:           `ทุกสาขา (${allBranchCodes.length})`,
+        totalBranches:    allBranchCodes.length,
+        base_price:       pr.basePrice,
+        discount_price_1: pr.reBeforeVat,
+        discount_price_2: 0,
+        discount_price_3: 0,
+        selling_price_sdm: pr.priceSdm,
+        selling_price_w1: pr.priceW1,
+        selling_price_w2: pr.priceW2,
+        selling_price_r1: pr.priceR1,
+        selling_price_r2: pr.priceR2,
+      };
+      allRows.push(rowData);
       // แสดง preview เฉพาะ row แรก (สาขาแรก) ต่อ SKU เพื่อไม่ให้ preview ยาวเกิน
       if (previewRows.length < 15) {
-        previewRows.push({
-          sku:              pr.sku,
-          productName:      pr.productName,
-          brand:            brandName,
-          unit:             pr.unit,
-          branch:           `ทุกสาขา (${allBranchCodes.length})`,
-          totalBranches:    allBranchCodes.length,
-          base_price:       pr.basePrice,
-          discount_price_1: pr.reBeforeVat,    // RE ก่อน VAT (col G)
-          discount_price_2: 0,                 // ทุนรวม VAT — ไม่เก็บ
-          discount_price_3: 0,
-          selling_price_sdm: pr.priceSdm,      // SDM (col I)
-          selling_price_w1: pr.priceW1,        // W1 (col J)
-          selling_price_w2: pr.priceW2,        // W2 (col K)
-          selling_price_r1: pr.priceR1,        // R1 (col L)
-          selling_price_r2: pr.priceR2,        // R2 (col M)
-        });
+        previewRows.push(rowData);
       }
     }
 
-    return { rows: previewRows, totalSkus, totalRows, branches: allBranchCodes };
+    return { rows: previewRows, allRows, totalSkus, totalRows, branches: allBranchCodes };
 
   } catch (err) {
     console.error('[ACC Preview] Fatal error:', err);

@@ -296,7 +296,6 @@ function renderImportSummary(result) {
     uploadRoundToday, previewVersionLabel,
     priceChangesTotal,
     newSkusTotal,
-    removedSkusTotal,
   } = result;
 
   dataTable.querySelector("thead").innerHTML = "";
@@ -336,7 +335,7 @@ function renderImportSummary(result) {
       </div>
 
       <!-- Change summary -->
-      <div class="grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-2 gap-3">
         <div class="border rounded-lg p-3 text-center ${priceChangesTotal > 0 ? 'border-orange-200 bg-orange-50' : 'border-gray-100'}">
           <div class="text-xl font-bold ${priceChangesTotal > 0 ? 'text-orange-600' : 'text-gray-400'}">${priceChangesTotal.toLocaleString()}</div>
           <div class="text-xs mt-0.5 ${priceChangesTotal > 0 ? 'text-orange-500' : 'text-gray-400'}">ราคาเปลี่ยนแปลง</div>
@@ -344,10 +343,6 @@ function renderImportSummary(result) {
         <div class="border rounded-lg p-3 text-center ${newSkusTotal > 0 ? 'border-green-200 bg-green-50' : 'border-gray-100'}">
           <div class="text-xl font-bold ${newSkusTotal > 0 ? 'text-green-600' : 'text-gray-400'}">${newSkusTotal.toLocaleString()}</div>
           <div class="text-xs mt-0.5 ${newSkusTotal > 0 ? 'text-green-500' : 'text-gray-400'}">SKU ใหม่</div>
-        </div>
-        <div class="border rounded-lg p-3 text-center ${removedSkusTotal > 0 ? 'border-red-200 bg-red-50' : 'border-gray-100'}">
-          <div class="text-xl font-bold ${removedSkusTotal > 0 ? 'text-red-600' : 'text-gray-400'}">${removedSkusTotal.toLocaleString()}</div>
-          <div class="text-xs mt-0.5 ${removedSkusTotal > 0 ? 'text-red-500' : 'text-gray-400'}">SKU ที่หายไป</div>
         </div>
       </div>
 
@@ -464,7 +459,7 @@ importBtn.addEventListener("click", async () => {
 
     if (response.ok) {
       const label = result.versionLabel ? ` [${result.versionLabel}]` : '';
-      showStatus(`นำเข้าข้อมูลสำเร็จ! ${result.imported} แถว${label} — กรุณาตรวจสอบและกด Publish`, "success");
+      showStatus(`นำเข้าข้อมูลสำเร็จ! ${result.imported} แถว${label} — กรุณาตรวจสอบและกด ประกาศใช้`, "success");
       clearData();
       if (result.logId && result.imported > 0) {
         openDraftPanel(result.logId, result.versionLabel || result.logId);
@@ -574,7 +569,142 @@ function cancelEditPrice(el, originalValue) {
   if (!el) return;
   const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
   el.dataset.value = originalValue;
-  el.innerHTML = fmt(originalValue);
+  el.innerHTML = originalValue > 0 ? fmt(originalValue) : '<span class="text-gray-300">-</span>';
+}
+
+// ============================================
+// EDIT DISCOUNT PCT
+// ============================================
+
+function startEditPct(el) {
+  if (el.querySelector('input')) return;
+
+  const currentPct   = parseFloat(el.dataset.value) || 0;
+  const priceBefore  = parseFloat(el.dataset.priceBefore) || 0;
+  const field        = el.dataset.field;       // discount_pct_1 / 2 / 3
+  const priceField   = el.dataset.priceField;  // discount_price_1 / 2 / 3
+  const id           = el.dataset.id;
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = '0.1';
+  input.min  = '0';
+  input.max  = '100';
+  input.value = currentPct;
+  input.className = 'w-16 text-right border border-orange-400 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500';
+  input._confirmed = false;
+
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const newPct = parseFloat(input.value);
+      if (isNaN(newPct) || newPct < 0 || newPct > 100) {
+        input.classList.add('border-red-500');
+        return;
+      }
+      input._confirmed = true;
+      el.innerHTML = currentPct > 0 ? `${currentPct.toFixed(1)}%` : '<span class="text-gray-300">-</span>';
+      if (newPct === currentPct) return;
+      // คำนวณ discount_price ใหม่จาก %
+      const newDiscountPrice = priceBefore > 0 ? priceBefore * (1 - newPct / 100) : 0;
+      showConfirmPctDialog(currentPct, newPct, newDiscountPrice, id, field, priceField, priceBefore);
+    }
+    if (event.key === 'Escape') {
+      input._confirmed = true;
+      cancelEditPct(el, currentPct);
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    if (!input._confirmed) cancelEditPct(el, currentPct);
+  });
+
+  el.innerHTML = '';
+  el.appendChild(input);
+  input.select();
+}
+
+function cancelEditPct(el, originalPct) {
+  if (!el) return;
+  el.dataset.value = originalPct;
+  el.innerHTML = originalPct > 0 ? `${originalPct.toFixed(1)}%` : '<span class="text-gray-300">-</span>';
+}
+
+function showConfirmPctDialog(oldPct, newPct, newDiscountPrice, id, field, priceField, priceBefore) {
+  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
+
+  const overlay = document.createElement('div');
+  overlay.id = 'confirmOverlay';
+  overlay.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50';
+  overlay.innerHTML = `
+    <div class="bg-white rounded-xl shadow-2xl p-6 w-96 text-center">
+      <div class="text-gray-500 text-sm mb-2">ยืนยันการเปลี่ยนแปลงส่วนลด</div>
+      <div class="flex items-center justify-center gap-3 my-3">
+        <span class="text-xl font-bold text-gray-400">${oldPct.toFixed(1)}%</span>
+        <i class="bi bi-arrow-right text-gray-400 text-lg"></i>
+        <span class="text-xl font-bold text-orange-600">${newPct.toFixed(1)}%</span>
+      </div>
+      <div class="text-sm text-gray-500 mb-4">
+        ราคาหลังลด: <span class="font-semibold text-blue-600">${fmt(newDiscountPrice)}</span>
+        <span class="text-xs text-gray-400 ml-1">(จาก ${fmt(priceBefore)})</span>
+      </div>
+      <div class="flex gap-3 justify-center">
+        <button class="px-5 py-2 border rounded-lg hover:bg-gray-100 text-sm" onclick="closeConfirmDialog()">ยกเลิก</button>
+        <button id="confirmOkBtn" class="px-5 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
+          onclick="confirmSavePct(${oldPct}, ${newPct}, ${newDiscountPrice}, '${id}', '${field}', '${priceField}')">ยืนยัน</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  setTimeout(() => {
+    overlay._keyHandler = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmSavePct(oldPct, newPct, newDiscountPrice, id, field, priceField); }
+      if (e.key === 'Escape') closeConfirmDialog();
+    };
+    document.addEventListener('keydown', overlay._keyHandler);
+  }, 200);
+}
+
+async function confirmSavePct(oldPct, newPct, newDiscountPrice, id, field, priceField) {
+  closeConfirmDialog();
+  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
+  const pctEl   = document.querySelector(`.editable-pct[data-id="${id}"][data-field="${field}"]`);
+  const priceEl = document.querySelector(`.editable-price[data-id="${id}"][data-field="${priceField}"]`);
+
+  try {
+    const response = await fetch(`${API_BASE}/api/excel/data/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        [field]:      newPct / 100,        // เก็บเป็น 0-1 ใน DB
+        [priceField]: newDiscountPrice      // อัปเดตราคาหลังลดด้วย
+      })
+    });
+
+    if (response.ok) {
+      // อัปเดต pct cell
+      if (pctEl) {
+        pctEl.dataset.value = newPct;
+        pctEl.innerHTML = newPct > 0 ? `${newPct.toFixed(1)}%` : '<span class="text-gray-300">-</span>';
+      }
+      // อัปเดต price cell
+      if (priceEl) {
+        const priceBefore = parseFloat(pctEl?.dataset.priceBefore) || 0;
+        const hasDiscount = newDiscountPrice > 0 && newDiscountPrice < priceBefore;
+        priceEl.dataset.value = newDiscountPrice;
+        priceEl.innerHTML = hasDiscount
+          ? fmt(newDiscountPrice)
+          : '<span class="text-gray-300">-</span>';
+      }
+      showToast(`ส่วนลด ${oldPct.toFixed(1)}% → ${newPct.toFixed(1)}%`, 'success');
+    } else {
+      const err = await response.json();
+      showToast(`บันทึกไม่สำเร็จ: ${err.message}`, 'error');
+    }
+  } catch (err) {
+    showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ", 'error');
+  }
 }
 
 // ============================================
@@ -675,6 +805,71 @@ function showToast(message, type = 'success') {
 }
 
 // ============================================
+// CONFIRM MODAL (แทน browser confirm())
+// ============================================
+
+/**
+ * showConfirmModal({ icon, iconColor, iconBg, title, message, confirmText, confirmClass })
+ * returns Promise<boolean>
+ */
+function showConfirmModal({ icon = 'question-circle', iconColor = 'text-blue-600', iconBg = 'bg-blue-50',
+                            title = 'ยืนยัน', message = '', confirmText = 'ยืนยัน',
+                            confirmClass = 'bg-blue-600 hover:bg-blue-700 text-white' } = {}) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-[9999] animate-fade-in';
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+        <!-- Icon header -->
+        <div class="flex flex-col items-center pt-8 pb-4 px-6">
+          <div class="w-14 h-14 rounded-full ${iconBg} flex items-center justify-center mb-4">
+            <i class="bi bi-${icon} text-2xl ${iconColor}"></i>
+          </div>
+          <h3 class="text-lg font-bold text-gray-800 mb-1">${title}</h3>
+          <p class="text-sm text-gray-500 text-center leading-relaxed">${message}</p>
+        </div>
+        <!-- Divider -->
+        <div class="border-t border-gray-100 mx-6"></div>
+        <!-- Actions -->
+        <div class="flex gap-3 p-5">
+          <button id="_confirmModalCancel"
+            class="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            ยกเลิก
+          </button>
+          <button id="_confirmModalOk"
+            class="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${confirmClass}">
+            ${confirmText}
+          </button>
+        </div>
+      </div>
+    `;
+
+    const cleanup = (result) => {
+      document.removeEventListener('keydown', keyHandler);
+      overlay.classList.add('opacity-0');
+      overlay.style.transition = 'opacity 0.15s';
+      setTimeout(() => overlay.remove(), 150);
+      resolve(result);
+    };
+
+    const keyHandler = (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); cleanup(true); }
+      if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+    };
+
+    overlay.querySelector('#_confirmModalOk').addEventListener('click',     () => cleanup(true));
+    overlay.querySelector('#_confirmModalCancel').addEventListener('click',  () => cleanup(false));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(false); });
+
+    document.body.appendChild(overlay);
+    setTimeout(() => document.addEventListener('keydown', keyHandler), 100);
+
+    // focus ปุ่มยืนยันเพื่อให้กด Enter ได้ทันที
+    setTimeout(() => overlay.querySelector('#_confirmModalOk')?.focus(), 50);
+  });
+}
+
+// ============================================
 // IMPORT DATA VIEW
 // ============================================
 
@@ -732,9 +927,11 @@ async function loadImportData(page = 1) {
       const fmt = v => v != null ? parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-';
 
       // Editable price cell — แสดง "-" ถ้าค่าเป็น 0 แต่ยังคลิกแก้ไขได้เสมอ
-      const priceCell = (field, value) => {
+      // priceBefore: ราคาก่อนหน้า — ถ้า value >= priceBefore หรือ value = 0 แสดงเป็น - แต่ยังคลิกแก้ไขได้เสมอ
+      const priceCell = (field, value, priceBefore = null) => {
         const numVal = value != null ? parseFloat(value) : 0;
-        const display = numVal !== 0 ? fmt(value) : '<span class="text-gray-300">-</span>';
+        const hasDiscount = numVal > 0 && (priceBefore == null || numVal < parseFloat(priceBefore));
+        const display = hasDiscount ? fmt(value) : '<span class="text-gray-300">-</span>';
         return `
           <td class="text-right">
             <span 
@@ -743,6 +940,7 @@ async function loadImportData(page = 1) {
               data-field="${field}"
               data-value="${numVal}"
               onclick="startEditPrice(this)"
+              title="คลิกเพื่อแก้ไข"
             >${display}</span>
           </td>
         `;
@@ -760,18 +958,37 @@ async function loadImportData(page = 1) {
         return pct;
       };
 
-      const fmtPct = (storedPct, priceBefore, priceAfter) => {
-        // ถ้ามีค่า discountPct จาก DB ให้ใช้ก่อน (แม่นยำกว่า)
-        // แต่ต้องมี priceAfter > 0 ด้วย ไม่งั้นแปลว่าข้อมูลผิด
+      // pctCell — คลิกแก้ไข % ได้ คำนวณ discount_price ใหม่อัตโนมัติ
+      // field: 'discount_pct_1' | 'discount_pct_2' | 'discount_pct_3'
+      // priceField: 'discount_price_1' | 'discount_price_2' | 'discount_price_3'
+      // storedPct: ค่า % จาก DB (0-1), priceBefore: ราคาก่อนลด, priceAfter: ราคาหลังลด
+      const pctCell = (field, priceField, storedPct, priceBefore, priceAfter) => {
+        // คำนวณ % ที่จะแสดง
+        let displayPct = null;
         if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0) {
-          return `<span title="จาก DB">${(storedPct * 100).toFixed(1)}%</span>`;
+          displayPct = storedPct * 100; // DB เก็บเป็น 0-1
+        } else {
+          displayPct = calcPct(priceBefore, priceAfter);
         }
-        // ไม่มีใน DB หรือ priceAfter = 0 → คำนวณย้อนกลับจากราคา
-        const computed = calcPct(priceBefore, priceAfter);
-        if (computed != null) {
-          return `<span class="text-gray-500 italic" title="คำนวณจากราคา">${computed.toFixed(1)}%</span>`;
-        }
-        return '<span class="text-gray-300">-</span>';
+        const display = displayPct != null
+          ? `${displayPct.toFixed(1)}%`
+          : '<span class="text-gray-300">-</span>';
+        const currentPct = displayPct != null ? displayPct : 0;
+
+        return `
+          <td class="text-right text-orange-600 font-medium">
+            <span
+              class="editable-pct cursor-pointer hover:bg-yellow-50 hover:text-orange-700 px-1 rounded"
+              data-id="${row.id}"
+              data-field="${field}"
+              data-price-field="${priceField}"
+              data-price-before="${parseFloat(priceBefore) || 0}"
+              data-value="${currentPct}"
+              onclick="startEditPct(this)"
+              title="คลิกเพื่อแก้ไข %"
+            >${display}</span>
+          </td>
+        `;
       };
 
       return `
@@ -782,12 +999,12 @@ async function loadImportData(page = 1) {
           <td class="text-gray-600">${row.brand || '-'}</td>
           <td><span class="font-medium">${row.branch || '-'}</span></td>
           ${priceCell('base_price',       row.basePrice)}
-          <td class="text-right text-orange-600 font-medium">${fmtPct(row.discountPct1, row.basePrice,      row.discountPrice1)}</td>
-          ${priceCell('discount_price_1', row.discountPrice1)}
-          <td class="text-right text-orange-600 font-medium">${fmtPct(row.discountPct2, row.discountPrice1, row.discountPrice2)}</td>
-          ${priceCell('discount_price_2', row.discountPrice2)}
-          <td class="text-right text-orange-600 font-medium">${fmtPct(row.discountPct3, row.discountPrice2, row.discountPrice3)}</td>
-          ${priceCell('discount_price_3', row.discountPrice3)}
+          ${pctCell('discount_pct_1', 'discount_price_1', row.discountPct1, row.basePrice,      row.discountPrice1)}
+          ${priceCell('discount_price_1', row.discountPrice1, row.basePrice)}
+          ${pctCell('discount_pct_2', 'discount_price_2', row.discountPct2, row.discountPrice1, row.discountPrice2)}
+          ${priceCell('discount_price_2', row.discountPrice2, row.discountPrice1)}
+          ${pctCell('discount_pct_3', 'discount_price_3', row.discountPct3, row.discountPrice2, row.discountPrice3)}
+          ${priceCell('discount_price_3', row.discountPrice3, row.discountPrice2)}
           <td class="text-gray-400 text-xs">${date}</td>
         </tr>
       `;
@@ -864,7 +1081,7 @@ function showDraftBanner(draft) {
       <span class="text-orange-800">
         มี Draft ค้างอยู่: <span class="font-mono font-semibold">${draft.versionLabel || draft.id}</span>
         (${draft.draftCount.toLocaleString()} แถว · อัปโหลดเมื่อ ${date})
-        — ยังไม่ได้ Publish
+        — ยังไม่ได้ประกาศใช้
       </span>
     </div>
     <div class="flex gap-2 shrink-0">
@@ -885,7 +1102,16 @@ function showDraftBanner(draft) {
 }
 
 async function discardDraftById(logId) {
-  if (!confirm('ยืนยันการยกเลิก Draft นี้?')) return;
+  const confirmed = await showConfirmModal({
+    icon: 'trash',
+    iconColor: 'text-red-500',
+    iconBg: 'bg-red-50',
+    title: 'ยกเลิก Draft',
+    message: 'ข้อมูลที่ยังไม่ประกาศใช้จะถูกลบออกถาวร',
+    confirmText: 'ยกเลิก Draft',
+    confirmClass: 'bg-red-600 hover:bg-red-700 text-white',
+  });
+  if (!confirmed) return;
   try {
     const response = await fetch(`${API_BASE}/api/excel/draft/${logId}`, { method: 'DELETE' });
     if (response.ok) {
@@ -1070,7 +1296,16 @@ async function saveDraftPrice(el, rowId, field, oldValue, newValue) {
 
 async function publishDraft() {
   if (!currentDraftLogId) return;
-  if (!confirm('ยืนยันการ Publish ข้อมูลนี้?\nข้อมูลจะถูกนำไปแสดงในระบบทันที')) return;
+  const confirmed = await showConfirmModal({
+    icon: 'check-circle',
+    iconColor: 'text-green-600',
+    iconBg: 'bg-green-50',
+    title: 'ประกาศใช้ข้อมูล',
+    message: 'ข้อมูลจะถูกนำไปแสดงในระบบทันที ไม่สามารถย้อนกลับได้',
+    confirmText: 'ประกาศใช้',
+    confirmClass: 'bg-green-600 hover:bg-green-700 text-white',
+  });
+  if (!confirmed) return;
 
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50';
@@ -1079,7 +1314,7 @@ async function publishDraft() {
       <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
       <path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
     </svg>
-    <span class="font-medium text-gray-700">กำลัง Publish...</span>
+    <span class="font-medium text-gray-700">กำลังประกาศใช้...</span>
   </div>`;
   document.body.appendChild(overlay);
 
@@ -1087,12 +1322,12 @@ async function publishDraft() {
     const response = await fetch(`${API_BASE}/api/excel/draft/${currentDraftLogId}/publish`, { method: 'POST' });
     const result = await response.json();
     if (response.ok) {
-      showToast(`Publish สำเร็จ! ${result.published} แถว`, 'success');
+      showToast(`ประกาศใช้สำเร็จ! ${result.published} แถว`, 'success');
       closeDraftPanel();
       document.getElementById('draftBanner')?.remove();
       loadImportData();
     } else {
-      showToast(`Publish ไม่สำเร็จ: ${result.message}`, 'error');
+      showToast(`ประกาศใช้ไม่สำเร็จ: ${result.message}`, 'error');
     }
   } catch (err) {
     showToast('เกิดข้อผิดพลาด', 'error');
@@ -1103,7 +1338,16 @@ async function publishDraft() {
 
 async function discardDraft() {
   if (!currentDraftLogId) return;
-  if (!confirm('ยืนยันการยกเลิก Draft นี้?\nข้อมูลที่ยังไม่ Publish จะถูกลบออก')) return;
+  const confirmed = await showConfirmModal({
+    icon: 'trash',
+    iconColor: 'text-red-500',
+    iconBg: 'bg-red-50',
+    title: 'ยกเลิก Draft',
+    message: 'ข้อมูลที่ยังไม่ประกาศใช้จะถูกลบออกถาวร',
+    confirmText: 'ยกเลิก Draft',
+    confirmClass: 'bg-red-600 hover:bg-red-700 text-white',
+  });
+  if (!confirmed) return;
 
   try {
     const response = await fetch(`${API_BASE}/api/excel/draft/${currentDraftLogId}`, { method: 'DELETE' });
