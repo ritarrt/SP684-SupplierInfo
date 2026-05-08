@@ -94,6 +94,8 @@ export async function importExcelData(req, res) {
         detectedType = 'Aluminum';
       } else if (sheetLower === 'acc' || sheetLower.includes('accessories') || sheetLower.includes('อุปกรณ์')) {
         detectedType = 'Accessories';
+      } else if (sheetLower.includes('sealant') || sheetLower.includes('ซีลแลนท์') || sheetLower.includes('ซีลแล้นท์') || sheetLower === 'price list') {
+        detectedType = 'Sealant';
       }
     }
 
@@ -142,7 +144,7 @@ export async function importExcelData(req, res) {
 
       if (logCols.includes('product_type') && logCols.includes('imported_rows') && logCols.includes('status')) {
         // Generate version_label: ABBR-YYMMDD[-N]
-        const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL' };
+        const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL', Sealant: 'SL' };
         const abbr = TYPE_ABBR[detectedType] || (detectedType || 'XX').substring(0, 3).toUpperCase();
         const now = new Date();
         const yy = String(now.getFullYear()).slice(2);
@@ -205,6 +207,10 @@ export async function importExcelData(req, res) {
       } else if (detectedType === "Accessories") {
         if (bufferData) {
           imported = await importAccessoriesData(pool, bufferData, sheetName, logId);
+        }
+      } else if (detectedType === "Sealant") {
+        if (bufferData) {
+          imported = await importSealantData(pool, bufferData, sheetName, logId);
         }
       } else {
         imported = data ? data.length : 0;
@@ -338,6 +344,19 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
 
     // Zone → branchCodes mapping จาก BranchMaster (แทน hardcode)
     const { zoneToBranches: ZONE_TO_BRANCHES, suffixToBranchCode } = await loadBranchMapping();
+
+    // โหลด productName จาก StockStatusFact: sku → productName (ใช้ชื่อจาก DB แทน Excel)
+    console.log('[Gypsum Parser] Loading productName from StockStatusFact...');
+    const gypsumSkuNameResult = await pool.request().query(`
+      SELECT DISTINCT skuNumber, productName
+      FROM StockStatusFact
+      WHERE category = 'Gypsum' AND skuNumber LIKE 'Y%'
+    `);
+    const skuNameMap = {}; // sku → productName
+    gypsumSkuNameResult.recordset.forEach(r => {
+      if (r.skuNumber && r.productName) skuNameMap[r.skuNumber] = r.productName;
+    });
+    console.log(`[Gypsum Parser] Loaded ${Object.keys(skuNameMap).length} SKU names from StockStatusFact`);
 
     // Auto-detect branch header row และ startCol
     // รองรับ 2 format:
@@ -515,8 +534,19 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
         const skusInBlock = new Map(); // sku -> productName
 
         if (skuLookup[productName] && skuLookup[productName].length > 0) {
-          skuLookup[productName].forEach(sku => skusInBlock.set(sku, productName));
-          console.log(`[Gypsum Parser] "${productName}" → ${skusInBlock.size} SKUs from Sheet1`);
+          skuLookup[productName].forEach(sku => {
+            // เฉพาะ SKU ที่มีใน StockStatusFact เท่านั้น
+            if (skuNameMap[sku]) {
+              skusInBlock.set(sku, productName);
+            }
+          });
+          if (skusInBlock.size > 0) {
+            console.log(`[Gypsum Parser] "${productName}" → ${skusInBlock.size} SKUs from Sheet1 (filtered by StockStatusFact)`);
+          } else {
+            console.warn(`[Gypsum Parser] "${productName}" has SKUs in Sheet1 but none found in StockStatusFact, skipping`);
+            i++;
+            continue;
+          }
         } else {
           console.warn(`[Gypsum Parser] "${productName}" not in Sheet1 lookup yet, skipping`);
           i++;
@@ -581,6 +611,8 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
           for (const [sku, skuName] of skusInBlock) {
             const brandCode = sku.substring(1, 3);
             const brandName = brandMap[brandCode] || 'ไม่ระบุ';
+            // ใช้ชื่อจาก StockStatusFact ถ้ามี ไม่งั้น fallback ไป Sheet1
+            const productName = skuNameMap[sku] || skuName;
 
             for (const { colIdx, branchCode } of branchColumns) {
               const branch = branchCode;
@@ -697,7 +729,7 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
                   .input("branch",           sql.NVarChar(100), branch)
                   .input("productType",      sql.NVarChar(100), "Gypsum")
                   .input("sku",              sql.NVarChar(50),  sku)
-                  .input("productName",      sql.NVarChar(255), skuName)
+                  .input("productName",      sql.NVarChar(255), productName)
                   .input("brand",            sql.NVarChar(100), brandName)
                   .input("unit",             sql.NVarChar(50),  "")
                   .input("basePrice",        sql.Decimal(18,2), basePrice)
@@ -945,19 +977,8 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
         const dbRows = skuByPrefix.get(excelSku) || [];
 
         if (dbRows.length === 0) {
-          // ไม่มีใน StockStatusFact → เก็บ Excel SKU ตรงๆ + expand ตาม region
-          for (const { region, reCol, w1Col, w2Col, r1Col, r2Col } of REGION_COLS) {
-            const w1 = fv(row[w1Col]);
-            if (w1 === 0) continue;
-            for (const branchCode of REGION_BRANCHES[region]) {
-              insertRows.push({
-                branch: branchCode, sku: excelSku,
-                productName: fullName, brand: brandName,
-                basePrice: fv(row[reCol]),
-                w1, w2: fv(row[w2Col]), r1: fv(row[r1Col]), r2: fv(row[r2Col])
-              });
-            }
-          }
+          // ไม่มีใน StockStatusFact → skip
+          console.warn(`[Glass Parser] SKU "${excelSku}" not found in StockStatusFact, skipping`);
           continue;
         }
 
@@ -1104,13 +1125,17 @@ export async function getImportData(req, res) {
 
     const hasLogId = cols.includes('import_log_id');
 
+    const hasSdm = cols.includes('selling_price_sdm');
+
     const sellingCols = hasSellingPrices ? `
         [selling_price_w1] AS [sellingPriceW1],
         [selling_price_w2] AS [sellingPriceW2],
         [selling_price_r1] AS [sellingPriceR1],
-        [selling_price_r2] AS [sellingPriceR2],` : `
+        [selling_price_r2] AS [sellingPriceR2],
+        ${hasSdm ? '[selling_price_sdm] AS [sellingPriceSdm],' : 'NULL AS [sellingPriceSdm],'}` : `
         NULL AS [sellingPriceW1], NULL AS [sellingPriceW2],
-        NULL AS [sellingPriceR1], NULL AS [sellingPriceR2],`;
+        NULL AS [sellingPriceR1], NULL AS [sellingPriceR2],
+        NULL AS [sellingPriceSdm],`;
 
     const discPctCols = hasDiscPct ? `
         CASE WHEN [discount_pct_1] > 1 THEN [discount_pct_1] / 100.0 ELSE [discount_pct_1] END AS [discountPct1],
@@ -1437,6 +1462,8 @@ export async function previewExcelData(req, res) {
         detectedType = 'Glass';
       } else if (sheetLower === 'acc' || sheetLower.includes('accessories') || sheetLower.includes('อุปกรณ์')) {
         detectedType = 'Accessories';
+      } else if (sheetLower.includes('sealant') || sheetLower.includes('ซีลแลนท์') || sheetLower.includes('ซีลแล้นท์') || sheetLower === 'price list') {
+        detectedType = 'Sealant';
       }
     }
 
@@ -1454,6 +1481,9 @@ export async function previewExcelData(req, res) {
       } else if (detectedType === "Accessories") {
         const bufferData = Buffer.from(excelBuffer, 'base64');
         previewData = await previewAccessoriesData(bufferData, sheetName);
+      } else if (detectedType === "Sealant") {
+        const bufferData = Buffer.from(excelBuffer, 'base64');
+        previewData = await previewSealantData(bufferData, sheetName);
       }
     } catch (err) {
       console.error("Preview error:", err);
@@ -1472,7 +1502,7 @@ export async function previewExcelData(req, res) {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
 
     // 1. รอบที่เท่าไหร่ของวันนี้ และ version label ที่จะได้
-    const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL' };
+    const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL', Sealant: 'SL' };
     const abbr = TYPE_ABBR[detectedType] || (detectedType || 'XX').substring(0, 3).toUpperCase();
     const yy = String(now.getFullYear()).slice(2);
     const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -2228,14 +2258,12 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
     console.log(`[ACC Parser] Raw rows: ${data.length}`);
 
-    // Load brand mapping from Accessory_BRAND
-    let brandMap = {};
+    // Load brand name from Accessory_BRAND — ACC มีแบรนด์เดียว ดึงมาใช้ตรงๆ
+    let accBrandName = '';
     try {
-      const brandResult = await pool.request().query(`SELECT BRAND_NO, BRAND_NAME FROM Accessory_BRAND`);
-      brandResult.recordset.forEach(r => {
-        brandMap[String(r.BRAND_NO).padStart(2, '0')] = r.BRAND_NAME;
-      });
-      console.log(`[ACC Parser] Brand map loaded: ${Object.keys(brandMap).length} brands`);
+      const brandResult = await pool.request().query(`SELECT TOP 1 BRAND_NAME FROM Accessory_BRAND`);
+      accBrandName = brandResult.recordset[0]?.BRAND_NAME || '';
+      console.log(`[ACC Parser] Brand: ${accBrandName}`);
     } catch (e) {
       console.warn(`[ACC Parser] Could not load Accessory_BRAND: ${e.message}`);
     }
@@ -2256,15 +2284,41 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     const parsedRows = parseAccRows(data);
     console.log(`[ACC Parser] Parsed ${parsedRows.length} SKU rows → expanding to ${parsedRows.length * allBranchCodes.length} rows`);
 
+    // โหลด productName จาก StockStatusFact: sku → productName (ใช้ชื่อจาก DB แทน Excel)
+    console.log('[ACC Parser] Loading productName from StockStatusFact...');
+    const accSkuList = parsedRows.map(r => `'${r.sku.replace(/'/g, "''")}'`).join(',');
+    const accSkuNameMap = {}; // sku → productName
+    if (parsedRows.length > 0) {
+      try {
+        const accSkuNameResult = await pool.request().query(`
+          SELECT DISTINCT skuNumber, productName
+          FROM StockStatusFact
+          WHERE skuNumber IN (${accSkuList})
+        `);
+        accSkuNameResult.recordset.forEach(r => {
+          if (r.skuNumber && r.productName) accSkuNameMap[r.skuNumber] = r.productName;
+        });
+        console.log(`[ACC Parser] Loaded ${Object.keys(accSkuNameMap).length} SKU names from StockStatusFact`);
+      } catch (e) {
+        console.warn(`[ACC Parser] Could not load SKU names from StockStatusFact: ${e.message}`);
+      }
+    }
+
     // Build insert rows — expand 1 SKU → 1 row ต่อสาขา (ราคาเหมือนกันทุกสาขา)
     const insertRows = [];
     for (const pr of parsedRows) {
-      const brand = brandMap[pr.sku.substring(1, 3)] || '';
+      // เฉพาะ SKU ที่มีใน StockStatusFact เท่านั้น
+      if (!accSkuNameMap[pr.sku]) {
+        console.warn(`[ACC Parser] SKU "${pr.sku}" not found in StockStatusFact, skipping`);
+        continue;
+      }
+      const brand = accBrandName;
+      const productName = accSkuNameMap[pr.sku]; // ใช้ชื่อจาก DB เสมอ
       for (const branchCode of allBranchCodes) {
         insertRows.push({
           branch:       branchCode,
           sku:          pr.sku,
-          productName:  pr.productName,
+          productName,
           brand,
           unit:         pr.unit,
           basePrice:    pr.basePrice,
@@ -2704,6 +2758,408 @@ export async function discardDraft(req, res) {
   } catch (err) {
     console.error('discardDraft error:', err);
     res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * Helper: Parse Sealant rows from Price List sheet
+ *
+ * โครงสร้าง Price List:
+ *   row 0-8  : header / คำอธิบาย
+ *   row 9+   : ข้อมูลสินค้า
+ *     col[1] = Supplier name
+ *     col[2] = ชื่อสินค้า  ← ใช้ match กับ Ref sheet
+ *     col[4] = RE incl VAT (base_price)
+ *     col[5] = W1
+ *     col[6] = W2
+ *     col[7] = R1
+ *     col[8] = R2
+ *
+ * Ref sheet:
+ *   row 0    = ชื่อสินค้า (column headers)
+ *   row 1+   = SKU codes (หลายตัวต่อสินค้า 1 ชื่อ)
+ *
+ * ราคาเดียวทุกสาขา ยกเว้น Silicone ที่มีราคาแยก กรุงเทพฯ vs ต่างจังหวัด
+ * =====================================================
+ */
+function parseSealantSheet(workbook) {
+  const fv = v => {
+    if (v === undefined || v === null || v === '') return 0;
+    const n = parseFloat(String(v).replace(/,/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+
+  // ---- Build name → SKUs map from Ref sheet ----
+  const refSheet = workbook.Sheets['Ref.'];
+  const nameToSkus = {};
+  if (refSheet) {
+    const refData = XLSX.utils.sheet_to_json(refSheet, { header: 1, defval: '' });
+    const nameRow = refData[0] || [];
+    const skuRows = refData.slice(1);
+    nameRow.forEach((name, col) => {
+      if (!name) return;
+      const skus = skuRows
+        .map(r => String(r[col] ?? '').trim())
+        .filter(v => v.startsWith('S') && v.length > 5);
+      nameToSkus[String(name).trim()] = skus;
+    });
+  }
+
+  // ---- Parse Price List sheet ----
+  const priceSheet = workbook.Sheets['Price List'];
+  if (!priceSheet) return [];
+
+  const data = XLSX.utils.sheet_to_json(priceSheet, { header: 1, defval: '' });
+
+  // Keywords ที่บ่งบอกว่าเป็น header row ให้ข้าม
+  const HEADER_KEYWORDS = [
+    'supplier', 'ราคาขาย', 'ราคา re', 'ราคา', 'w1', 'w2', 'r1', 'r2',
+    'exclude', 'include', 'ร้านค้า', 'attn', 'cc :', 'หมายเหตุ', 'internal'
+  ];
+
+  const rows = [];
+  for (let i = 9; i < data.length; i++) {
+    const row = data[i];
+    const col2 = String(row[2] ?? '').trim();  // ชื่อสินค้า
+    const col1 = String(row[1] ?? '').trim();  // Supplier
+
+    if (!col2) continue;
+
+    // ข้าม header rows
+    if (HEADER_KEYWORDS.some(k => col2.toLowerCase().includes(k))) continue;
+
+    const w1 = fv(row[5]);
+    const w2 = fv(row[6]);
+    const r1 = fv(row[7]);
+    const r2 = fv(row[8]);
+
+    // ข้ามแถวที่ไม่มีราคาใดเลย (สินค้าหยุดจำหน่าย)
+    if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0) continue;
+
+    const skus = nameToSkus[col2] || [];
+    if (skus.length === 0) {
+      console.warn(`[Sealant Parser] No SKU found for product: "${col2}", skipping`);
+      continue;
+    }
+
+    // ตรวจว่าเป็น Silicone กรุงเทพฯ หรือ ต่างจังหวัด
+    const isBkk = col2.includes('กรุงเทพ') || col2.includes('กรุงเทพฯ');
+    const isUpcountry = col2.includes('ต่างจังหวัด');
+
+    rows.push({
+      productName: col2,
+      supplier:    col1,
+      basePrice:   fv(row[4]),
+      w1, w2, r1, r2,
+      skus,
+      isBkk,
+      isUpcountry,
+    });
+  }
+
+  return rows;
+}
+
+/**
+ * =====================================================
+ * Helper: Import Sealant Data from Excel Buffer
+ * =====================================================
+ * ราคาเดียวทุกสาขา ยกเว้น Silicone ที่แยก BKK vs ต่างจังหวัด
+ * expand: 1 ชื่อสินค้า × N SKU × N สาขา
+ */
+async function importSealantData(pool, excelBuffer, sheetName, logId = null) {
+  let imported = 0;
+
+  try {
+    console.log(`[Sealant Parser] Starting import for sheet: ${sheetName}`);
+
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+    const parsedRows = parseSealantSheet(workbook);
+    console.log(`[Sealant Parser] Parsed ${parsedRows.length} product rows`);
+
+    if (parsedRows.length === 0) return 0;
+
+    // Load brand mapping จาก BRAND_Sealant (BRAND_NO = sku.substring(1,3))
+    const brandMap = {};
+    try {
+      const brandResult = await pool.request().query(`
+        SELECT BRAND_NO, BRAND_NAME FROM BRAND_Sealant
+      `);
+      brandResult.recordset.forEach(r => {
+        brandMap[String(r.BRAND_NO).padStart(2, '0')] = r.BRAND_NAME;
+      });
+      console.log(`[Sealant Parser] Brand map loaded: ${Object.keys(brandMap).length} brands`);
+    } catch (e) {
+      console.warn(`[Sealant Parser] Could not load BRAND_Sealant: ${e.message}`);
+    }
+
+    // Load branch mapping
+    const { allBranchCodes, zoneToBranches } = await loadBranchMapping();
+    const bkkBranches = new Set(zoneToBranches.BKK || []);
+    console.log(`[Sealant Parser] Branches: ${allBranchCodes.length} total, ${bkkBranches.size} BKK`);
+
+    // Load productName from StockStatusFact (ใช้ชื่อจาก DB แทน Excel)
+    const allSkus = [...new Set(parsedRows.flatMap(r => r.skus))];
+    const skuNameMap = {};
+    if (allSkus.length > 0) {
+      try {
+        const skuInList = allSkus.map(s => `'${s.replace(/'/g, "''")}'`).join(',');
+        const nameResult = await pool.request().query(`
+          SELECT DISTINCT skuNumber, productName
+          FROM StockStatusFact
+          WHERE skuNumber IN (${skuInList})
+        `);
+        nameResult.recordset.forEach(r => {
+          if (r.skuNumber && r.productName) skuNameMap[r.skuNumber] = r.productName;
+        });
+        console.log(`[Sealant Parser] Loaded ${Object.keys(skuNameMap).length} SKU names from StockStatusFact`);
+      } catch (e) {
+        console.warn(`[Sealant Parser] Could not load SKU names: ${e.message}`);
+      }
+    }
+
+    // Check DB columns
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
+    `);
+    const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasSellingPrices    = dbCols.includes('selling_price_w1');
+    const hasSellingPriceSdm  = dbCols.includes('selling_price_sdm');
+
+    // Build insert rows
+    const insertRows = [];
+    for (const pr of parsedRows) {
+      // กำหนดสาขาที่จะ expand ตาม BKK/ต่างจังหวัด
+      let targetBranches;
+      if (pr.isBkk) {
+        targetBranches = allBranchCodes.filter(b => bkkBranches.has(b));
+      } else if (pr.isUpcountry) {
+        targetBranches = allBranchCodes.filter(b => !bkkBranches.has(b));
+      } else {
+        targetBranches = allBranchCodes; // ราคาเดียวทุกสาขา
+      }
+
+      for (const sku of pr.skus) {
+        // ข้าม SKU ที่ไม่มีใน StockStatusFact
+        if (!skuNameMap[sku]) {
+          console.warn(`[Sealant Parser] SKU "${sku}" not found in StockStatusFact, skipping`);
+          continue;
+        }
+        const productName = skuNameMap[sku];
+        // map brand จาก BRAND_Sealant โดยใช้ sku.substring(1,3) เป็น BRAND_NO
+        const brandNo   = sku.substring(1, 3);
+        const brandName = brandMap[brandNo] || '';
+
+        for (const branchCode of targetBranches) {
+          insertRows.push({
+            branch:      branchCode,
+            sku,
+            productName,
+            brand:       brandName,
+            basePrice:   pr.basePrice,
+            w1:          pr.w1,
+            w2:          pr.w2,
+            r1:          pr.r1,
+            r2:          pr.r2,
+          });
+        }
+      }
+    }
+
+    console.log(`[Sealant Parser] Prepared ${insertRows.length} rows, inserting in batches...`);
+
+    // Column definitions
+    const insertCols = hasSellingPrices && hasSellingPriceSdm
+      ? `branch, product_type, sku, product_name, brand, unit,
+         base_price, discount_price_1, discount_price_2, discount_price_3,
+         project_no, project_discount_1, project_discount_2, project_price,
+         carton_price, shipping_cost, free_item,
+         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+         import_log_id, selling_price_sdm`
+      : hasSellingPrices
+      ? `branch, product_type, sku, product_name, brand, unit,
+         base_price, discount_price_1, discount_price_2, discount_price_3,
+         project_no, project_discount_1, project_discount_2, project_price,
+         carton_price, shipping_cost, free_item,
+         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, import_log_id`
+      : `branch, product_type, sku, product_name, brand, unit,
+         base_price, discount_price_1, discount_price_2, discount_price_3,
+         project_no, project_discount_1, project_discount_2, project_price,
+         carton_price, shipping_cost, free_item, import_log_id`;
+
+    const BATCH_SIZE = 200;
+    for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
+      const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
+      const req = pool.request();
+      const valueParts = [];
+
+      batch.forEach((r, idx) => {
+        req.input(`branch${idx}`,      sql.NVarChar(100), r.branch);
+        req.input(`sku${idx}`,         sql.NVarChar(50),  r.sku);
+        req.input(`productName${idx}`, sql.NVarChar(255), r.productName);
+        req.input(`brand${idx}`,       sql.NVarChar(100), r.brand);
+        req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
+        req.input(`w1_${idx}`,         sql.Decimal(18,2), r.w1);
+        req.input(`w2_${idx}`,         sql.Decimal(18,2), r.w2);
+        req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1);
+        req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2);
+        req.input(`logId${idx}`,       sql.Int,           logId);
+
+        if (hasSellingPrices && hasSellingPriceSdm) {
+          valueParts.push(
+            `(@branch${idx},'Sealant',@sku${idx},@productName${idx},@brand${idx},'',` +
+            `@basePrice${idx},0,0,0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@logId${idx},0)`
+          );
+        } else if (hasSellingPrices) {
+          valueParts.push(
+            `(@branch${idx},'Sealant',@sku${idx},@productName${idx},@brand${idx},'',` +
+            `@basePrice${idx},0,0,0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@logId${idx})`
+          );
+        } else {
+          valueParts.push(
+            `(@branch${idx},'Sealant',@sku${idx},@productName${idx},@brand${idx},'',` +
+            `@basePrice${idx},0,0,0,'',0,0,0,0,0,'',@logId${idx})`
+          );
+        }
+      });
+
+      try {
+        await req.query(`INSERT INTO excel_import_data (${insertCols}) VALUES ${valueParts.join(',')}`);
+        imported += batch.length;
+        console.log(`[Sealant Parser] Inserted ${imported}/${insertRows.length}`);
+      } catch (err) {
+        console.error(`[Sealant Parser] Batch insert error at ${batchStart}:`, err.message);
+        // Fallback: insert row by row
+        for (const r of batch) {
+          try {
+            const singleReq = pool.request()
+              .input('branch',      sql.NVarChar(100), r.branch)
+              .input('sku',         sql.NVarChar(50),  r.sku)
+              .input('productName', sql.NVarChar(255), r.productName)
+              .input('brand',       sql.NVarChar(100), r.brand)
+              .input('basePrice',   sql.Decimal(18,2), r.basePrice)
+              .input('w1',          sql.Decimal(18,2), r.w1)
+              .input('w2',          sql.Decimal(18,2), r.w2)
+              .input('r1',          sql.Decimal(18,2), r.r1)
+              .input('r2',          sql.Decimal(18,2), r.r2)
+              .input('logId',       sql.Int,           logId);
+
+            if (hasSellingPrices && hasSellingPriceSdm) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Sealant',@sku,@productName,@brand,'',
+                        @basePrice,0,0,0,'',0,0,0,0,0,'',@w1,@w2,@r1,@r2,@logId,0)
+              `);
+            } else if (hasSellingPrices) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Sealant',@sku,@productName,@brand,'',
+                        @basePrice,0,0,0,'',0,0,0,0,0,'',@w1,@w2,@r1,@r2,@logId)
+              `);
+            } else {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Sealant',@sku,@productName,@brand,'',
+                        @basePrice,0,0,0,'',0,0,0,0,0,'',@logId)
+              `);
+            }
+            imported++;
+          } catch (e2) {
+            console.error(`[Sealant Parser] Row insert error (${r.branch}/${r.sku}):`, e2.message);
+          }
+        }
+      }
+    }
+
+    console.log(`[Sealant Parser] Done: ${imported} rows inserted`);
+    return imported;
+
+  } catch (err) {
+    console.error('[Sealant Parser] Fatal error:', err);
+    return 0;
+  }
+}
+
+/**
+ * =====================================================
+ * Helper: Preview Sealant Data
+ * =====================================================
+ */
+async function previewSealantData(excelBuffer, sheetName) {
+  try {
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+    const parsedRows = parseSealantSheet(workbook);
+
+    const pool = await getPool();
+
+    // Load brand mapping จาก BRAND_Sealant
+    const brandMap = {};
+    try {
+      const brandResult = await pool.request().query(`
+        SELECT BRAND_NO, BRAND_NAME FROM BRAND_Sealant
+      `);
+      brandResult.recordset.forEach(r => {
+        brandMap[String(r.BRAND_NO).padStart(2, '0')] = r.BRAND_NAME;
+      });
+    } catch (e) {
+      console.warn(`[Sealant Preview] Could not load BRAND_Sealant: ${e.message}`);
+    }
+
+    const { allBranchCodes, zoneToBranches } = await loadBranchMapping();
+    const bkkBranches = new Set(zoneToBranches.BKK || []);
+
+    const previewRows = [];
+    const allRows = [];
+    let totalSkus = 0;
+
+    for (const pr of parsedRows) {
+      let targetBranches;
+      if (pr.isBkk) {
+        targetBranches = allBranchCodes.filter(b => bkkBranches.has(b));
+      } else if (pr.isUpcountry) {
+        targetBranches = allBranchCodes.filter(b => !bkkBranches.has(b));
+      } else {
+        targetBranches = allBranchCodes;
+      }
+
+      for (const sku of pr.skus) {
+        totalSkus++;
+        const brandNo   = sku.substring(1, 3);
+        const brandName = brandMap[brandNo] || '';
+        const rowData = {
+          sku,
+          productName:      pr.productName,
+          brand:            brandName,
+          unit:             '',
+          branch:           pr.isBkk
+            ? `กรุงเทพฯ (${targetBranches.length})`
+            : pr.isUpcountry
+            ? `ต่างจังหวัด (${targetBranches.length})`
+            : `ทุกสาขา (${targetBranches.length})`,
+          totalBranches:    targetBranches.length,
+          base_price:       pr.basePrice,
+          discount_price_1: 0,
+          discount_price_2: 0,
+          discount_price_3: 0,
+          selling_price_w1: pr.w1,
+          selling_price_w2: pr.w2,
+          selling_price_r1: pr.r1,
+          selling_price_r2: pr.r2,
+        };
+        allRows.push(rowData);
+        if (previewRows.length < 20) previewRows.push(rowData);
+      }
+    }
+
+    const totalRows = allRows.reduce((sum, r) => sum + r.totalBranches, 0);
+    return { rows: previewRows, allRows, totalSkus, totalRows, branches: allBranchCodes };
+
+  } catch (err) {
+    console.error('[Sealant Preview] Fatal error:', err);
+    return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
   }
 }
 

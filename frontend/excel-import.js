@@ -236,7 +236,7 @@ function showDataPreview() {
   dataSection.classList.remove("hidden");
   
   // For Gypsum and Glass, show preview from backend
-  if (currentTab === "Gypsum" || currentTab === "Glass" || currentTab === "Accessories") {
+  if (currentTab === "Gypsum" || currentTab === "Glass" || currentTab === "Accessories" || currentTab === "Sealant") {
     loadGypsumPreview();
     return;
   }
@@ -397,6 +397,31 @@ importBtn.addEventListener("click", async () => {
   if (!currentWorkbook || !currentSheetName) {
     showStatus("ไม่มีไฟล์หรือไม่ได้เลือก sheet", "warning");
     return;
+  }
+
+  // ตรวจสอบว่ามี draft ค้างอยู่ไหม — ถ้ามีต้องเตือนก่อน
+  try {
+    const draftCheckRes = await fetch(`${API_BASE}/api/excel/pending-draft?productType=${encodeURIComponent(currentTab)}`);
+    if (draftCheckRes.ok) {
+      const drafts = await draftCheckRes.json();
+      const activeDraft = drafts.find(d => d.draftCount > 0);
+      if (activeDraft) {
+        const date = new Date(activeDraft.importedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+        const confirmed = await showConfirmModal({
+          icon: 'exclamation-triangle',
+          iconColor: 'text-amber-500',
+          iconBg: 'bg-amber-50',
+          title: 'มี Draft ค้างอยู่',
+          message: `ยังมี Draft <span class="font-semibold text-blue-700">${activeDraft.versionLabel || activeDraft.id}</span> (${activeDraft.draftCount.toLocaleString()} แถว · ${date}) ที่ยังไม่ได้ประกาศใช้<br><span class="text-red-500 font-medium">การนำเข้าใหม่จะลบ Draft นี้ทิ้ง</span>`,
+          confirmText: 'นำเข้าต่อ (ลบ Draft เก่า)',
+          confirmClass: 'bg-amber-500 hover:bg-amber-600 text-white',
+        });
+        if (!confirmed) return;
+      }
+    }
+  } catch (e) {
+    // ถ้าเช็คไม่ได้ก็ข้ามไป ไม่ block การ import
+    console.warn('Draft check failed:', e);
   }
 
   const overlay = document.createElement('div');
@@ -998,13 +1023,21 @@ async function loadImportData(page = 1) {
           <td>${row.productName || '-'}</td>
           <td class="text-gray-600">${row.brand || '-'}</td>
           <td><span class="font-medium">${row.branch || '-'}</span></td>
-          ${priceCell('base_price',       row.basePrice)}
-          ${pctCell('discount_pct_1', 'discount_price_1', row.discountPct1, row.basePrice,      row.discountPrice1)}
-          ${priceCell('discount_price_1', row.discountPrice1, row.basePrice)}
-          ${pctCell('discount_pct_2', 'discount_price_2', row.discountPct2, row.discountPrice1, row.discountPrice2)}
-          ${priceCell('discount_price_2', row.discountPrice2, row.discountPrice1)}
-          ${pctCell('discount_pct_3', 'discount_price_3', row.discountPct3, row.discountPrice2, row.discountPrice3)}
-          ${priceCell('discount_price_3', row.discountPrice3, row.discountPrice2)}
+          ${priceCell('base_price', row.basePrice)}
+          ${(row.productType === 'Sealant' || row.productType === 'Accessories') ? `
+            ${priceCell('selling_price_w1', row.sellingPriceW1)}
+            ${priceCell('selling_price_w2', row.sellingPriceW2)}
+            ${priceCell('selling_price_r1', row.sellingPriceR1)}
+            ${priceCell('selling_price_r2', row.sellingPriceR2)}
+            <td class="text-gray-300 text-center text-xs" colspan="6">-</td>
+          ` : `
+            ${pctCell('discount_pct_1', 'discount_price_1', row.discountPct1, row.basePrice,      row.discountPrice1)}
+            ${priceCell('discount_price_1', row.discountPrice1, row.basePrice)}
+            ${pctCell('discount_pct_2', 'discount_price_2', row.discountPct2, row.discountPrice1, row.discountPrice2)}
+            ${priceCell('discount_price_2', row.discountPrice2, row.discountPrice1)}
+            ${pctCell('discount_pct_3', 'discount_price_3', row.discountPct3, row.discountPrice2, row.discountPrice3)}
+            ${priceCell('discount_price_3', row.discountPrice3, row.discountPrice2)}
+          `}
           <td class="text-gray-400 text-xs">${date}</td>
         </tr>
       `;
@@ -1044,12 +1077,77 @@ async function loadImportData(page = 1) {
 initializeProductTypes();
 
 // ============================================
+// EXPORT SELLING PRICE EXCEL
+// ============================================
+
+async function exportSellingPriceExcel() {
+  const productType = document.getElementById("filterProductType")?.value || "";
+  const branch      = document.getElementById("filterBranch")?.value || "";
+  const searchText  = document.getElementById("filterSku")?.value || "";
+
+  const btn = document.querySelector('button[onclick="exportSellingPriceExcel()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> กำลังนำออก...'; }
+
+  try {
+    // ดึงข้อมูลทั้งหมด (limit สูงๆ)
+    const params = new URLSearchParams({ page: 1, limit: 99999 });
+    if (productType) params.append("productType", productType);
+    if (branch)      params.append("branch", branch);
+    if (searchText)  params.append("search", searchText);
+
+    const response = await fetch(`${API_BASE}/api/excel/data?${params}`);
+    if (!response.ok) { showToast("โหลดข้อมูลไม่สำเร็จ", "error"); return; }
+
+    const { data } = await response.json();
+    if (!data || data.length === 0) { showToast("ไม่มีข้อมูลที่จะนำออก", "info"); return; }
+
+    const fmt = v => (v != null && parseFloat(v) !== 0) ? parseFloat(v) : "";
+
+    // สร้าง rows
+    const headers = [
+      "SKU", "Branch",
+      "SDM", "W1", "W2", "R1", "R2"
+    ];
+
+    const rows = data.map(r => [
+      r.sku || "", r.branch || "",
+      fmt(r.sellingPriceSdm), fmt(r.sellingPriceW1), fmt(r.sellingPriceW2), fmt(r.sellingPriceR1), fmt(r.sellingPriceR2)
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+    // กำหนดความกว้างคอลัมน์
+    ws['!cols'] = [
+      {wch:22},{wch:8},
+      {wch:14},{wch:14},{wch:14},{wch:14},{wch:14}
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ราคาขาย");
+
+    const typeSuffix = productType || "ทุกประเภท";
+    const branchSuffix = branch || "ทุกสาขา";
+    const today = new Date().toLocaleDateString('th-TH', { dateStyle: 'short' }).replace(/\//g, '-');
+    XLSX.writeFile(wb, `ราคาขาย_${typeSuffix}_${branchSuffix}_${today}.xlsx`);
+
+    showToast(`นำออกสำเร็จ ${data.length.toLocaleString()} รายการ`, "success");
+
+  } catch (err) {
+    console.error("exportSellingPriceExcel error:", err);
+    showToast("เกิดข้อผิดพลาด: " + err.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-file-earmark-arrow-down"></i> นำออกราคาขาย'; }
+  }
+}
+
+// ============================================
 // CHECK PENDING DRAFT ON TAB CHANGE
 // ============================================
 
 async function checkPendingDraft(productType) {
-  // ซ่อน draft panel ก่อน (อาจเป็น tab อื่น)
+  // ซ่อน draft panel และลบ banner เก่าออกก่อนเสมอ (อาจเป็น tab อื่น)
   closeDraftPanel();
+  document.getElementById('draftBanner')?.remove();
 
   try {
     const response = await fetch(`${API_BASE}/api/excel/pending-draft?productType=${encodeURIComponent(productType)}`);
