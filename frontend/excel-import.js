@@ -1024,20 +1024,12 @@ async function loadImportData(page = 1) {
           <td class="text-gray-600">${row.brand || '-'}</td>
           <td><span class="font-medium">${row.branch || '-'}</span></td>
           ${priceCell('base_price', row.basePrice)}
-          ${(row.productType === 'Sealant' || row.productType === 'Accessories') ? `
-            ${priceCell('selling_price_w1', row.sellingPriceW1)}
-            ${priceCell('selling_price_w2', row.sellingPriceW2)}
-            ${priceCell('selling_price_r1', row.sellingPriceR1)}
-            ${priceCell('selling_price_r2', row.sellingPriceR2)}
-            <td class="text-gray-300 text-center text-xs" colspan="6">-</td>
-          ` : `
-            ${pctCell('discount_pct_1', 'discount_price_1', row.discountPct1, row.basePrice,      row.discountPrice1)}
-            ${priceCell('discount_price_1', row.discountPrice1, row.basePrice)}
-            ${pctCell('discount_pct_2', 'discount_price_2', row.discountPct2, row.discountPrice1, row.discountPrice2)}
-            ${priceCell('discount_price_2', row.discountPrice2, row.discountPrice1)}
-            ${pctCell('discount_pct_3', 'discount_price_3', row.discountPct3, row.discountPrice2, row.discountPrice3)}
-            ${priceCell('discount_price_3', row.discountPrice3, row.discountPrice2)}
-          `}
+          ${pctCell('discount_pct_1', 'discount_price_1', row.discountPct1, row.basePrice,      row.discountPrice1)}
+          ${priceCell('discount_price_1', row.discountPrice1, row.basePrice)}
+          ${pctCell('discount_pct_2', 'discount_price_2', row.discountPct2, row.discountPrice1, row.discountPrice2)}
+          ${priceCell('discount_price_2', row.discountPrice2, row.discountPrice1)}
+          ${pctCell('discount_pct_3', 'discount_price_3', row.discountPct3, row.discountPrice2, row.discountPrice3)}
+          ${priceCell('discount_price_3', row.discountPrice3, row.discountPrice2)}
           <td class="text-gray-400 text-xs">${date}</td>
         </tr>
       `;

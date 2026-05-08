@@ -1526,13 +1526,16 @@ export async function previewExcelData(req, res) {
 
     if (detectedType && previewData.rows && previewData.rows.length > 0) {
       // ดึงราคาล่าสุดของแต่ละ SKU|branch สำหรับ product_type นี้
-      // ใช้ ROW_NUMBER เพื่อเอาเฉพาะ row ล่าสุดต่อ SKU|branch (อาจมาจาก log คนละรอบ)
       const dbData = await pool.request()
         .input('pt', sql.NVarChar(100), detectedType)
         .query(`
-          SELECT sku, branch, base_price, discount_price_1, discount_price_2, discount_price_3
+          SELECT sku, branch, base_price,
+                 discount_price_1, discount_price_2, discount_price_3,
+                 selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2
           FROM (
-            SELECT d.sku, d.branch, d.base_price, d.discount_price_1, d.discount_price_2, d.discount_price_3,
+            SELECT d.sku, d.branch, d.base_price,
+                   d.discount_price_1, d.discount_price_2, d.discount_price_3,
+                   d.selling_price_w1, d.selling_price_w2, d.selling_price_r1, d.selling_price_r2,
                    ROW_NUMBER() OVER (PARTITION BY d.sku, d.branch ORDER BY l.imported_at DESC) AS rn
             FROM excel_import_data d
             JOIN excel_import_logs l ON l.id = d.import_log_id
@@ -1543,36 +1546,64 @@ export async function previewExcelData(req, res) {
           WHERE rn = 1
         `);
 
+      // product type ที่ใช้ selling_price แทน discount_price
+      const usesSellingPrice = ['Sealant', 'Accessories', 'Glass'].includes(detectedType);
+
       if (dbData.recordset.length > 0) {
-        // สร้าง map จาก DB: "sku|branch" → row
         const dbMap = new Map();
         for (const r of dbData.recordset) {
           dbMap.set(`${r.sku}|${r.branch}`, r);
         }
 
-        // สร้าง map จาก Excel ใหม่: "sku|branch" → row
+        // allRows ของ Sealant/ACC คืน branch เป็น label เช่น "ทุกสาขา (45)"
+        // ต้องใช้ข้อมูลจาก parsedRows จริงๆ แทน — ดึง unique sku จาก allRows แล้วเช็คกับ DB
         const newMap = new Map();
         for (const r of (previewData.allRows || previewData.rows)) {
-          const key = `${r.sku}|${r.branch}`;
-          newMap.set(key, r);
+          // ถ้า branch เป็น label (มีวงเล็บ) ให้ใช้แค่ sku เป็น key สำหรับ Sealant/ACC
+          const branchKey = (typeof r.branch === 'string' && r.branch.includes('('))
+            ? '__any__'
+            : r.branch;
+          const key = `${r.sku}|${branchKey}`;
+          if (!newMap.has(key)) newMap.set(key, r);
         }
 
-        // หา SKU ใหม่ที่ไม่มีใน DB
+        // หา SKU ใหม่ที่ไม่มีใน DB เลย (ไม่มีแม้แต่ branch เดียว)
+        const dbSkus = new Set([...dbMap.keys()].map(k => k.split('|')[0]));
         for (const [key, row] of newMap) {
-          if (!dbMap.has(key)) {
-            newSkus.push({ sku: row.sku, productName: row.productName, branch: row.branch });
+          const sku = row.sku;
+          if (!dbSkus.has(sku)) {
+            newSkus.push({ sku, productName: row.productName, branch: row.branch });
           }
         }
 
-        // หาราคาที่เปลี่ยนแปลง — นับ 1 ต่อ SKU|branch ที่มีราคาเปลี่ยน
+        // หาราคาที่เปลี่ยนแปลง
         for (const [key, newRow] of newMap) {
-          const dbRow = dbMap.get(key);
+          // สำหรับ Sealant/ACC ที่ branch เป็น label → เปรียบเทียบกับ DB row ใดก็ได้ของ SKU นั้น
+          let dbRow;
+          if (key.endsWith('|__any__')) {
+            const sku = newRow.sku;
+            dbRow = [...dbMap.entries()].find(([k]) => k.startsWith(`${sku}|`))?.[1];
+          } else {
+            dbRow = dbMap.get(key);
+          }
           if (!dbRow) continue;
-          const fields = [
-            { name: 'ราคาตั้งต้น',   newVal: newRow.base_price,       oldVal: dbRow.base_price },
-            { name: 'ราคาหลังลด 1',  newVal: newRow.discount_price_1, oldVal: dbRow.discount_price_1 },
-            { name: 'ราคาหลังลด 2',  newVal: newRow.discount_price_2, oldVal: dbRow.discount_price_2 },
-          ];
+
+          let fields;
+          if (usesSellingPrice) {
+            fields = [
+              { name: 'W1', newVal: newRow.selling_price_w1, oldVal: dbRow.selling_price_w1 },
+              { name: 'W2', newVal: newRow.selling_price_w2, oldVal: dbRow.selling_price_w2 },
+              { name: 'R1', newVal: newRow.selling_price_r1, oldVal: dbRow.selling_price_r1 },
+              { name: 'R2', newVal: newRow.selling_price_r2, oldVal: dbRow.selling_price_r2 },
+            ];
+          } else {
+            fields = [
+              { name: 'ราคาตั้งต้น',  newVal: newRow.base_price,       oldVal: dbRow.base_price },
+              { name: 'ราคาหลังลด 1', newVal: newRow.discount_price_1, oldVal: dbRow.discount_price_1 },
+              { name: 'ราคาหลังลด 2', newVal: newRow.discount_price_2, oldVal: dbRow.discount_price_2 },
+            ];
+          }
+
           const changedFields = fields.filter(f => {
             const nv = parseFloat(f.newVal) || 0;
             const ov = parseFloat(f.oldVal) || 0;
@@ -2770,7 +2801,8 @@ export async function discardDraft(req, res) {
  *   row 9+   : ข้อมูลสินค้า
  *     col[1] = Supplier name
  *     col[2] = ชื่อสินค้า  ← ใช้ match กับ Ref sheet
- *     col[4] = RE incl VAT (base_price)
+ *     col[3] = RE Exclude VAT (base_price = ราคาตั้ง)
+ *     col[4] = RE Include VAT (ไม่ใช้)
  *     col[5] = W1
  *     col[6] = W2
  *     col[7] = R1
@@ -2850,7 +2882,7 @@ function parseSealantSheet(workbook) {
     rows.push({
       productName: col2,
       supplier:    col1,
-      basePrice:   fv(row[4]),
+      basePrice:   fv(row[3]),  // col[3] = RE Exclude VAT = ราคาตั้ง
       w1, w2, r1, r2,
       skus,
       isBkk,
@@ -3140,7 +3172,7 @@ async function previewSealantData(excelBuffer, sheetName) {
             ? `ต่างจังหวัด (${targetBranches.length})`
             : `ทุกสาขา (${targetBranches.length})`,
           totalBranches:    targetBranches.length,
-          base_price:       pr.basePrice,
+          base_price:       pr.basePrice,  // RE Exclude VAT col[3]
           discount_price_1: 0,
           discount_price_2: 0,
           discount_price_3: 0,
