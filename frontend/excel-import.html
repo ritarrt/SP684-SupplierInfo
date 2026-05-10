@@ -55,8 +55,29 @@
 <body class="bg-gray-100">
 
   <!-- HEADER -->
-  <header class="w-full h-16 bg-stone-900 flex items-center px-4">
-    <div class="text-white font-bold text-lg">Import ดีลราคา</div>
+  <header class="w-full h-16 bg-stone-900 flex items-center px-4 shrink-0">
+    <div class="flex items-center gap-6">
+      <img src="img/TangnamLogo.png" alt="Logo" class="h-11" />
+      <nav class="flex items-center gap-8 text-xs text-white">
+        <a href="http://localhost:3004/filter-stockstatus.html" class="hover:underline">Stock Demand - AP Item</a>
+        <a href="http://localhost:3003/supplier-list.html" class="hover:underline">Supplier Info</a>
+        <a href="http://localhost:3003/excel-import.html" class="hover:underline font-bold underline">Price Import</a>
+        <a href="http://localhost:3004/index.html" class="hover:underline">Purchase Planning</a>
+        <a href="http://localhost:3004/dc-config.html" class="hover:underline">DC Items</a>
+        <a href="http://localhost:3004/move-config.html" class="hover:underline">Item Transfer</a>
+        <a href="http://localhost:3004/config.html" class="hover:underline">Config</a>
+      </nav>
+    </div>
+    <div class="ml-auto flex items-center gap-4">
+      <div id="userProfile" class="flex items-center gap-3 px-4 py-2 rounded-full">
+        <div id="userAvatar" class="w-10 h-10 flex items-center justify-center bg-red-500 text-white rounded-full font-bold">U</div>
+        <div class="text-sm leading-tight">
+          <div id="userName" class="font-semibold text-white">-</div>
+          <div id="userCode" class="text-white text-xs">-</div>
+        </div>
+      </div>
+      <button id="btnLogout" class="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 text-sm">ออกจากระบบ</button>
+    </div>
   </header>
 
   <!-- CONTENT -->

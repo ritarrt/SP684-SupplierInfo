@@ -96,6 +96,8 @@ export async function importExcelData(req, res) {
         detectedType = 'Accessories';
       } else if (sheetLower.includes('sealant') || sheetLower.includes('ซีลแลนท์') || sheetLower.includes('ซีลแล้นท์') || sheetLower === 'price list') {
         detectedType = 'Sealant';
+      } else if (sheetLower.includes('c-line') || sheetLower.includes('cline') || sheetLower.includes('ซีลาย') || sheetLower === 'c line') {
+        detectedType = 'C-Line';
       }
     }
 
@@ -144,7 +146,7 @@ export async function importExcelData(req, res) {
 
       if (logCols.includes('product_type') && logCols.includes('imported_rows') && logCols.includes('status')) {
         // Generate version_label: ABBR-YYMMDD[-N]
-        const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL', Sealant: 'SL' };
+        const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL', Sealant: 'SL', 'C-Line': 'CL' };
         const abbr = TYPE_ABBR[detectedType] || (detectedType || 'XX').substring(0, 3).toUpperCase();
         const now = new Date();
         const yy = String(now.getFullYear()).slice(2);
@@ -211,6 +213,10 @@ export async function importExcelData(req, res) {
       } else if (detectedType === "Sealant") {
         if (bufferData) {
           imported = await importSealantData(pool, bufferData, sheetName, logId);
+        }
+      } else if (detectedType === "C-Line") {
+        if (bufferData) {
+          imported = await importCLineData(pool, bufferData, sheetName, logId);
         }
       } else {
         imported = data ? data.length : 0;
@@ -1464,6 +1470,8 @@ export async function previewExcelData(req, res) {
         detectedType = 'Accessories';
       } else if (sheetLower.includes('sealant') || sheetLower.includes('ซีลแลนท์') || sheetLower.includes('ซีลแล้นท์') || sheetLower === 'price list') {
         detectedType = 'Sealant';
+      } else if (sheetLower.includes('c-line') || sheetLower.includes('cline') || sheetLower.includes('ซีลาย') || sheetLower === 'c line') {
+        detectedType = 'C-Line';
       }
     }
 
@@ -1484,6 +1492,9 @@ export async function previewExcelData(req, res) {
       } else if (detectedType === "Sealant") {
         const bufferData = Buffer.from(excelBuffer, 'base64');
         previewData = await previewSealantData(bufferData, sheetName);
+      } else if (detectedType === "C-Line") {
+        const bufferData = Buffer.from(excelBuffer, 'base64');
+        previewData = await previewCLineData(bufferData, sheetName);
       }
     } catch (err) {
       console.error("Preview error:", err);
@@ -1502,7 +1513,7 @@ export async function previewExcelData(req, res) {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
 
     // 1. รอบที่เท่าไหร่ของวันนี้ และ version label ที่จะได้
-    const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL', Sealant: 'SL' };
+    const TYPE_ABBR = { Gypsum: 'GY', Glass: 'GL', Accessories: 'ACC', Aluminum: 'AL', Sealant: 'SL', 'C-Line': 'CL' };
     const abbr = TYPE_ABBR[detectedType] || (detectedType || 'XX').substring(0, 3).toUpperCase();
     const yy = String(now.getFullYear()).slice(2);
     const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -3191,6 +3202,522 @@ async function previewSealantData(excelBuffer, sheetName) {
 
   } catch (err) {
     console.error('[Sealant Preview] Fatal error:', err);
+    return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
+  }
+}
+
+
+/**
+ * =====================================================
+ * Helper: Parse C-Line price sheet
+ * =====================================================
+ * Column mapping (0-indexed):
+ *   [0]  A = น้ำหนัก kg  (ใช้ detect data row — ต้องเป็นตัวเลข > 0)
+ *   [1]  B = ชื่อสินค้า  → lookup ใน Ref. sheet เพื่อหา SKU
+ *   [2]  C = RE (ราคาทุนก่อน VAT) = base_price
+ *   [3]  D = RE inv. (รวม VAT)
+ *   [5]  F = SDM price
+ *   [6]  G = SDM margin %  (ข้าม)
+ *   [7]  H = W1 price
+ *   [8]  I = W1 margin %  (ข้าม)
+ *   [9]  J = W2 price
+ *   [10] K = W2 margin %  (ข้าม)
+ *   [11] L = R2 price
+ *   [12] M = R2 margin %  (ข้าม)
+ *   [13] N = R1 price
+ *   [14] O = R1 margin %  (ข้าม)
+ *
+ * Row 6 (index 5): label row — F="SDM", H="W1", J="W2", L="R2", N="R1"
+ * Row 7 (index 6): sub-header — B="ชื่อสินค้า", C="RE", D="RE inv."
+ * Row 8+ (index 7+): section headers (col A ว่าง, col B มีข้อความ, ไม่มีราคา)
+ *                    และ data rows (col A = น้ำหนัก เป็นตัวเลข)
+ *
+ * Ref. sheet: row 0 = ชื่อสินค้า (columns), row 1 = SKU เต็ม 18 หลัก
+ *             (เหมือน Gypsum Sheet1 lookup)
+ *
+ * มี 2 sheet ราคา แยกตามภาค:
+ *   BKK-C-E → BKK + ภาคกลาง + ภาคตะวันออก
+ *   N-NE-S  → ภาคเหนือ + ภาคตะวันออกเฉียงเหนือ + ภาคใต้ + ภาคตะวันตก
+ */
+function parseCLineSheet(workbook, sheetName) {
+  const fv = v => {
+    if (v === undefined || v === null || v === '') return 0;
+    const n = parseFloat(String(v).replace(/,/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+
+  const ws = workbook.Sheets[sheetName];
+  if (!ws) return [];
+
+  const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+  const rows = [];
+
+  // เริ่ม parse จาก row index 7 (row 8 ใน Excel — ข้าม header 6 แถว)
+  for (let i = 7; i < data.length; i++) {
+    const row = data[i];
+    if (!row) continue;
+
+    const colA = row[0]; // น้ำหนัก kg
+    const colB = row[1] !== undefined ? String(row[1]).trim() : '';
+
+    // Data row: col A ต้องเป็นตัวเลข > 0
+    const weight = parseFloat(colA);
+    if (!colA || isNaN(weight) || weight <= 0) continue;
+    if (!colB) continue;
+
+    const sdm = fv(row[5]);
+    const w1  = fv(row[7]);
+    const w2  = fv(row[9]);
+    const r2  = fv(row[11]); // col L = R2
+    const r1  = fv(row[13]); // col N = R1
+
+    // ข้ามแถวที่ไม่มีราคาใดเลย
+    if (sdm === 0 && w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0) continue;
+
+    rows.push({
+      productName: colB,
+      re:          fv(row[2]),  // C = RE ก่อน VAT
+      reInv:       fv(row[3]),  // D = RE inv.
+      sdm,
+      w1,
+      w2,
+      r1,
+      r2,
+    });
+  }
+
+  return rows;
+}
+
+/**
+ * Build name→SKU map from Ref. sheet
+ * Ref. sheet: row 0 = ชื่อสินค้า (columns), row 1 = SKU เต็ม 18 หลัก
+ * Returns: Map<productName, string>  (1 ชื่อ → 1 SKU)
+ */
+function buildCLineRefMap(workbook) {
+  const nameToSku = new Map();
+  const refSheet = workbook.Sheets['Ref.'];
+  if (!refSheet) return nameToSku;
+
+  const refData = XLSX.utils.sheet_to_json(refSheet, { header: 1, defval: '' });
+  const nameRow = refData[0] || [];
+  const skuRow  = refData[1] || [];
+
+  nameRow.forEach((name, col) => {
+    if (!name) return;
+    const sku = String(skuRow[col] ?? '').trim();
+    if (!sku || !sku.startsWith('C')) return;
+    nameToSku.set(String(name).trim(), sku);
+  });
+
+  return nameToSku;
+}
+
+/**
+ * Parse ชื่อชีท C-Line เพื่อดึง zones และวันที่
+ *
+ * รูปแบบ: "C-Line_<zone1>-<zone2>-..._<วันที่>"
+ * เช่น:
+ *   "C-Line_BKK-C-E_1 May"  → zones: ['BKK','C','E'], date: 1 May
+ *   "C-Line_N-NE-S_1 Jun"   → zones: ['N','NE','S'],  date: 1 Jun
+ *
+ * คืนค่า: { zones: string[], date: Date|null } หรือ null ถ้าไม่ใช่ชีท C-Line_
+ */
+function parseCLineSheetName(name) {
+  if (!name.toLowerCase().startsWith('c-line_')) return null;
+
+  const THAI_MONTHS = {
+    'ม.ค.': 0, 'ก.พ.': 1, 'มี.ค.': 2, 'เม.ย.': 3, 'พ.ค.': 4, 'มิ.ย.': 5,
+    'ก.ค.': 6, 'ส.ค.': 7, 'ก.ย.': 8, 'ต.ค.': 9, 'พ.ย.': 10, 'ธ.ค.': 11,
+  };
+  const EN_MONTHS = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  };
+
+  // ตัด prefix "C-Line_" ออก → "BKK-C-E_1 May"
+  const rest = name.slice('C-Line_'.length);
+
+  // แยก zone part กับ date part ด้วย "_" ตัวแรก
+  const underscoreIdx = rest.indexOf('_');
+  const zonePart = underscoreIdx >= 0 ? rest.slice(0, underscoreIdx) : rest;
+  const datePart = underscoreIdx >= 0 ? rest.slice(underscoreIdx + 1) : '';
+
+  // zones = token uppercase ที่คั่นด้วย "-" เช่น "BKK-C-E" → ['BKK','C','E']
+  const zones = zonePart.match(/[A-Z]+/g) || [];
+
+  // parse วันที่
+  let date = null;
+  const enMatch = datePart.match(/(\d{1,2})\s+([A-Za-z]{3})/);
+  if (enMatch) {
+    const mon = EN_MONTHS[enMatch[2].toLowerCase()];
+    if (mon !== undefined) date = new Date(2000, mon, parseInt(enMatch[1]));
+  }
+  if (!date) {
+    for (const [thMon, idx] of Object.entries(THAI_MONTHS)) {
+      const thMatch = datePart.match(new RegExp('(\\d{1,2})\\s*' + thMon.replace('.', '\\.')));
+      if (thMatch) { date = new Date(2000, idx, parseInt(thMatch[1])); break; }
+    }
+  }
+
+  return { zones, date };
+}
+
+/**
+ * ดึง sheet groups จาก workbook
+ * คืนค่า Map<zoneKey, { sheetName, zones, date }>
+ * zoneKey = zones.sort().join('-') เช่น "BKK-C-E", "N-NE-S"
+ * เลือกเฉพาะ sheet ล่าสุดของแต่ละ zone group (เรียงตามวันที่จริง)
+ */
+function getCLineSheetGroups(workbook) {
+  const groups = new Map();
+
+  workbook.SheetNames.forEach((name, originalIdx) => {
+    const parsed = parseCLineSheetName(name);
+    if (!parsed || parsed.zones.length === 0) return;
+
+    const zoneKey = [...parsed.zones].sort().join('-');
+    const existing = groups.get(zoneKey);
+
+    const isNewer = !existing ||
+      (parsed.date && existing.date && parsed.date > existing.date) ||
+      (parsed.date && !existing.date) ||
+      (!parsed.date && !existing.date && originalIdx > existing.originalIdx);
+
+    if (isNewer) {
+      groups.set(zoneKey, { sheetName: name, zones: parsed.zones, date: parsed.date, originalIdx });
+    }
+  });
+
+  return groups;
+}
+
+/**
+ * =====================================================
+ * Helper: Import C-Line Data from Excel Buffer
+ * =====================================================
+ */
+async function importCLineData(pool, excelBuffer, sheetName, logId = null) {
+  let imported = 0;
+
+  try {
+    console.log(`[C-Line Parser] Starting import for sheet: ${sheetName}`);
+
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+    console.log(`[C-Line Parser] Available sheets: ${workbook.SheetNames.join(', ')}`);
+
+    // Build name→SKU map จาก Ref. sheet
+    const nameToSku = buildCLineRefMap(workbook);
+    console.log(`[C-Line Parser] Ref. map loaded: ${nameToSku.size} products`);
+
+    if (nameToSku.size === 0) {
+      console.error('[C-Line Parser] No SKU mapping found in Ref. sheet');
+      return 0;
+    }
+
+    // Load branch mapping
+    const { allBranchCodes, zoneToBranches } = await loadBranchMapping();
+
+    // สร้าง zone → Set<branchCode> map สำหรับ lookup
+    const zoneBranchSets = {};
+    for (const [zone, codes] of Object.entries(zoneToBranches)) {
+      zoneBranchSets[zone] = new Set(codes);
+    }
+
+    // Load brand mapping จาก BRAND_CLine
+    const brandMap = {};
+    try {
+      const brandResult = await pool.request().query(`SELECT BRAND_NO, BRAND_NAME FROM BRAND_CLine`);
+      brandResult.recordset.forEach(r => {
+        brandMap[String(r.BRAND_NO).padStart(2, '0')] = r.BRAND_NAME;
+      });
+      console.log(`[C-Line Parser] Brand map loaded: ${Object.keys(brandMap).length} brands`);
+    } catch (e) {
+      console.warn(`[C-Line Parser] Could not load BRAND_CLine: ${e.message}`);
+    }
+
+    // Load productName from StockStatusFact
+    const allSkus = [...nameToSku.values()];
+    const skuNameMap = {};
+    if (allSkus.length > 0) {
+      try {
+        const skuInList = allSkus.map(s => `'${s.replace(/'/g, "''")}'`).join(',');
+        const nameResult = await pool.request().query(`
+          SELECT DISTINCT skuNumber, productName
+          FROM StockStatusFact
+          WHERE skuNumber IN (${skuInList})
+        `);
+        nameResult.recordset.forEach(r => {
+          if (r.skuNumber && r.productName) skuNameMap[r.skuNumber] = r.productName;
+        });
+        console.log(`[C-Line Parser] Loaded ${Object.keys(skuNameMap).length} SKU names from StockStatusFact`);
+      } catch (e) {
+        console.warn(`[C-Line Parser] Could not load SKU names: ${e.message}`);
+      }
+    }
+
+    // Check DB columns
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
+    `);
+    const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasSellingPrices   = dbCols.includes('selling_price_w1');
+    const hasSellingPriceSdm = dbCols.includes('selling_price_sdm');
+
+    // Parse zones จากชีทที่ user เลือก
+    const parsed = parseCLineSheetName(sheetName);
+    if (!parsed || parsed.zones.length === 0) {
+      console.error(`[C-Line Parser] Cannot parse zones from sheet: "${sheetName}"`);
+      return 0;
+    }
+
+    // หา targetBranches จาก zones ของชีทที่เลือก
+    const targetBranches = allBranchCodes.filter(b =>
+      parsed.zones.some(zone => zoneBranchSets[zone]?.has(b))
+    );
+
+    console.log(`[C-Line Parser] Sheet "${sheetName}" → zones: [${parsed.zones.join(',')}] → ${targetBranches.length} branches`);
+
+    const parsedRows = parseCLineSheet(workbook, sheetName);
+    console.log(`[C-Line Parser] Parsed ${parsedRows.length} rows from "${sheetName}"`);
+
+    // Build insert rows
+    const insertRows = [];
+
+    for (const pr of parsedRows) {
+      const sku = nameToSku.get(pr.productName);
+      if (!sku) {
+        console.warn(`[C-Line Parser] No SKU for "${pr.productName}", skipping`);
+        continue;
+      }
+      const productName = skuNameMap[sku] || pr.productName;
+      const brandNo   = sku.substring(1, 3);
+      const brandName = brandMap[brandNo] || '';
+
+      for (const branchCode of targetBranches) {
+        insertRows.push({
+          branch: branchCode, sku, productName, brand: brandName,
+          basePrice: pr.re, sdm: pr.sdm, w1: pr.w1, w2: pr.w2, r1: pr.r1, r2: pr.r2,
+        });
+      }
+    }
+
+    console.log(`[C-Line Parser] Prepared ${insertRows.length} rows, inserting in batches...`);
+
+    if (insertRows.length === 0) {
+      console.warn('[C-Line Parser] No rows to insert — check Ref. sheet and product name matching');
+      return 0;
+    }
+
+    // Column definitions
+    const insertCols = hasSellingPrices && hasSellingPriceSdm
+      ? `branch, product_type, sku, product_name, brand, unit,
+         base_price, discount_price_1, discount_price_2, discount_price_3,
+         project_no, project_discount_1, project_discount_2, project_price,
+         carton_price, shipping_cost, free_item,
+         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+         import_log_id, selling_price_sdm`
+      : hasSellingPrices
+      ? `branch, product_type, sku, product_name, brand, unit,
+         base_price, discount_price_1, discount_price_2, discount_price_3,
+         project_no, project_discount_1, project_discount_2, project_price,
+         carton_price, shipping_cost, free_item,
+         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, import_log_id`
+      : `branch, product_type, sku, product_name, brand, unit,
+         base_price, discount_price_1, discount_price_2, discount_price_3,
+         project_no, project_discount_1, project_discount_2, project_price,
+         carton_price, shipping_cost, free_item, import_log_id`;
+
+    const BATCH_SIZE = 200;
+    for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
+      const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
+      const req = pool.request();
+      const valueParts = [];
+
+      batch.forEach((r, idx) => {
+        req.input(`branch${idx}`,      sql.NVarChar(100), r.branch);
+        req.input(`sku${idx}`,         sql.NVarChar(50),  r.sku);
+        req.input(`productName${idx}`, sql.NVarChar(255), r.productName);
+        req.input(`brand${idx}`,       sql.NVarChar(100), r.brand);
+        req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
+        req.input(`w1_${idx}`,         sql.Decimal(18,2), r.w1);
+        req.input(`w2_${idx}`,         sql.Decimal(18,2), r.w2);
+        req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1);
+        req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2);
+        req.input(`sdm_${idx}`,        sql.Decimal(18,2), r.sdm);
+        req.input(`logId${idx}`,       sql.Int,           logId);
+
+        if (hasSellingPrices && hasSellingPriceSdm) {
+          valueParts.push(
+            `(@branch${idx},'C-Line',@sku${idx},@productName${idx},@brand${idx},'',` +
+            `@basePrice${idx},0,0,0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@logId${idx},@sdm_${idx})`
+          );
+        } else if (hasSellingPrices) {
+          valueParts.push(
+            `(@branch${idx},'C-Line',@sku${idx},@productName${idx},@brand${idx},'',` +
+            `@basePrice${idx},0,0,0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@logId${idx})`
+          );
+        } else {
+          valueParts.push(
+            `(@branch${idx},'C-Line',@sku${idx},@productName${idx},@brand${idx},'',` +
+            `@basePrice${idx},0,0,0,'',0,0,0,0,0,'',@logId${idx})`
+          );
+        }
+      });
+
+      try {
+        await req.query(`INSERT INTO excel_import_data (${insertCols}) VALUES ${valueParts.join(',')}`);
+        imported += batch.length;
+        console.log(`[C-Line Parser] Inserted ${imported}/${insertRows.length}`);
+      } catch (err) {
+        console.error(`[C-Line Parser] Batch insert error at ${batchStart}:`, err.message);
+        // Fallback: insert row by row
+        for (const r of batch) {
+          try {
+            const singleReq = pool.request()
+              .input('branch',      sql.NVarChar(100), r.branch)
+              .input('sku',         sql.NVarChar(50),  r.sku)
+              .input('productName', sql.NVarChar(255), r.productName)
+              .input('brand',       sql.NVarChar(100), r.brand)
+              .input('basePrice',   sql.Decimal(18,2), r.basePrice)
+              .input('w1',          sql.Decimal(18,2), r.w1)
+              .input('w2',          sql.Decimal(18,2), r.w2)
+              .input('r1',          sql.Decimal(18,2), r.r1)
+              .input('r2',          sql.Decimal(18,2), r.r2)
+              .input('sdm',         sql.Decimal(18,2), r.sdm)
+              .input('logId',       sql.Int,           logId);
+
+            if (hasSellingPrices && hasSellingPriceSdm) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'C-Line',@sku,@productName,@brand,'',
+                        @basePrice,0,0,0,'',0,0,0,0,0,'',@w1,@w2,@r1,@r2,@logId,@sdm)
+              `);
+            } else if (hasSellingPrices) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'C-Line',@sku,@productName,@brand,'',
+                        @basePrice,0,0,0,'',0,0,0,0,0,'',@w1,@w2,@r1,@r2,@logId)
+              `);
+            } else {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'C-Line',@sku,@productName,@brand,'',
+                        @basePrice,0,0,0,'',0,0,0,0,0,'',@logId)
+              `);
+            }
+            imported++;
+          } catch (e2) {
+            console.error(`[C-Line Parser] Row insert error (${r.branch}/${r.sku}):`, e2.message);
+          }
+        }
+      }
+    }
+
+    console.log(`[C-Line Parser] Done: ${imported} rows inserted`);
+    return imported;
+
+  } catch (err) {
+    console.error('[C-Line Parser] Fatal error:', err);
+    return 0;
+  }
+}
+
+/**
+ * =====================================================
+ * Helper: Preview C-Line Data
+ * =====================================================
+ * ใช้ sheetName ที่ user เลือก — parse zones จากชื่อชีทนั้น
+ * เพื่อหา targetBranches ของชีทนั้นโดยเฉพาะ
+ */
+async function previewCLineData(excelBuffer, sheetName) {
+  try {
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+
+    // Parse zones จากชื่อชีทที่เลือก
+    const parsed = parseCLineSheetName(sheetName);
+    if (!parsed || parsed.zones.length === 0) {
+      console.warn(`[C-Line Preview] Cannot parse zones from sheet: "${sheetName}"`);
+      return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
+    }
+
+    const nameToSku = buildCLineRefMap(workbook);
+
+    const pool = await getPool();
+
+    const brandMap = {};
+    try {
+      const brandResult = await pool.request().query(`SELECT BRAND_NO, BRAND_NAME FROM BRAND_CLine`);
+      brandResult.recordset.forEach(r => {
+        brandMap[String(r.BRAND_NO).padStart(2, '0')] = r.BRAND_NAME;
+      });
+    } catch (e) {
+      console.warn(`[C-Line Preview] Could not load BRAND_CLine: ${e.message}`);
+    }
+
+    const { allBranchCodes, zoneToBranches } = await loadBranchMapping();
+
+    const zoneBranchSets = {};
+    for (const [zone, codes] of Object.entries(zoneToBranches)) {
+      zoneBranchSets[zone] = new Set(codes);
+    }
+
+    // หา targetBranches จาก zones ของชีทที่เลือก
+    const targetBranches = allBranchCodes.filter(b =>
+      parsed.zones.some(zone => zoneBranchSets[zone]?.has(b))
+    );
+    const zoneKey = [...parsed.zones].sort().join('-');
+
+    console.log(`[C-Line Preview] Sheet "${sheetName}" → zones: [${parsed.zones.join(',')}] → ${targetBranches.length} branches`);
+
+    const parsedRows = parseCLineSheet(workbook, sheetName);
+    console.log(`[C-Line Preview] Parsed ${parsedRows.length} rows`);
+
+    const previewRows = [];
+    const allRows = [];
+    let totalSkus = 0;
+
+    for (const pr of parsedRows) {
+      const sku = nameToSku.get(pr.productName);
+      if (!sku) continue;
+      totalSkus++;
+      const brandNo   = sku.substring(1, 3);
+      const brandName = brandMap[brandNo] || '';
+      const rowData = {
+        sku,
+        productName:      pr.productName,
+        brand:            brandName,
+        unit:             '',
+        branch:           `${zoneKey} (${targetBranches.length})`,
+        totalBranches:    targetBranches.length,
+        base_price:       pr.re,
+        discount_price_1: 0,
+        discount_price_2: 0,
+        discount_price_3: 0,
+        selling_price_w1: pr.w1,
+        selling_price_w2: pr.w2,
+        selling_price_r1: pr.r1,
+        selling_price_r2: pr.r2,
+      };
+      allRows.push(rowData);
+      if (previewRows.length < 20) previewRows.push(rowData);
+    }
+
+    const totalRows = totalSkus * targetBranches.length;
+
+    return {
+      rows: previewRows,
+      allRows,
+      totalSkus,
+      totalRows,
+      branches: targetBranches,
+    };
+
+  } catch (err) {
+    console.error('[C-Line Preview] Fatal error:', err);
     return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
   }
 }

@@ -168,11 +168,26 @@ function handleFile(file) {
 
 function showSheetSelection() {
   if (!currentWorkbook) return;
-  
+
+  // C-Line: แสดงเฉพาะชีทที่ขึ้นต้นด้วย "C-Line_" (ชีทราคา) ไม่แสดงชีทอื่น
+  const sheetsToShow = currentTab === "C-Line"
+    ? currentWorkbook.SheetNames.filter(n => n.toLowerCase().startsWith('c-line_'))
+    : currentWorkbook.SheetNames;
+
   sheetButtons.innerHTML = "";
   selectedSheets.clear();
 
-  currentWorkbook.SheetNames.forEach((name) => {
+  if (currentTab === "C-Line" && sheetsToShow.length === 0) {
+    sheetButtons.innerHTML = `
+      <span class="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-1.5">
+        ไม่พบชีทราคา (ต้องขึ้นต้นด้วย "C-Line_")
+      </span>
+    `;
+    sheetSection.classList.remove("hidden");
+    return;
+  }
+
+  sheetsToShow.forEach((name) => {
     const btn = document.createElement("button");
     btn.className = "px-3 py-1.5 border rounded hover:bg-gray-100 text-sm";
     btn.textContent = name;
@@ -183,9 +198,9 @@ function showSheetSelection() {
   
   sheetSection.classList.remove("hidden");
   
-  // Auto-select first sheet
+  // Auto-select first sheet ของ sheetsToShow
   const firstBtn = sheetButtons.querySelector('[data-sheet]');
-  if (firstBtn) selectSheet(currentWorkbook.SheetNames[0], firstBtn);
+  if (firstBtn) selectSheet(sheetsToShow[0], firstBtn);
 }
 
 function selectSheet(name, btn) {
@@ -236,7 +251,7 @@ function showDataPreview() {
   dataSection.classList.remove("hidden");
   
   // For Gypsum and Glass, show preview from backend
-  if (currentTab === "Gypsum" || currentTab === "Glass" || currentTab === "Accessories" || currentTab === "Sealant") {
+  if (currentTab === "Gypsum" || currentTab === "Glass" || currentTab === "Accessories" || currentTab === "Sealant" || currentTab === "C-Line") {
     loadGypsumPreview();
     return;
   }
@@ -296,10 +311,23 @@ function renderImportSummary(result) {
     uploadRoundToday, previewVersionLabel,
     priceChangesTotal,
     newSkusTotal,
+    groupSummaries,
   } = result;
 
   dataTable.querySelector("thead").innerHTML = "";
   dataTable.querySelector("tbody").innerHTML = "";
+
+  // แสดงสาขา: ถ้ามี groupSummaries (C-Line) แสดงแยกตาม zone group
+  const branchDisplay = groupSummaries && groupSummaries.length > 0
+    ? groupSummaries.join(' + ')   // เช่น "BKK-C-E(13) + N-NE-S(13)"
+    : branches.length.toLocaleString();
+
+  const branchDetail = groupSummaries && groupSummaries.length > 0
+    ? `<div class="text-xs font-medium text-gray-500 mb-1">สาขาแยกตามภาค</div>
+       <div class="text-xs text-gray-600 leading-relaxed">${groupSummaries.join(' | ')}</div>
+       <div class="text-xs text-gray-400 mt-1">${branches.join(', ')}</div>`
+    : `<div class="text-xs font-medium text-gray-500 mb-1">สาขา (${branches.length})</div>
+       <div class="text-xs text-gray-600 leading-relaxed">${branches.join(', ')}</div>`;
 
   rowCount.innerHTML = `
     <div class="space-y-4 text-sm">
@@ -319,7 +347,7 @@ function renderImportSummary(result) {
           <div class="text-xs text-blue-500 mt-0.5">SKU</div>
         </div>
         <div class="bg-purple-50 rounded-lg p-3 text-center">
-          <div class="text-2xl font-bold text-purple-700">${branches.length.toLocaleString()}</div>
+          <div class="text-lg font-bold text-purple-700">${branchDisplay}</div>
           <div class="text-xs text-purple-500 mt-0.5">สาขา</div>
         </div>
         <div class="bg-gray-50 rounded-lg p-3 text-center">
@@ -330,8 +358,7 @@ function renderImportSummary(result) {
 
       <!-- Branches -->
       <div class="bg-gray-50 rounded-lg p-3">
-        <div class="text-xs font-medium text-gray-500 mb-1">สาขา (${branches.length})</div>
-        <div class="text-xs text-gray-600 leading-relaxed">${branches.join(', ')}</div>
+        ${branchDetail}
       </div>
 
       <!-- Change summary -->
