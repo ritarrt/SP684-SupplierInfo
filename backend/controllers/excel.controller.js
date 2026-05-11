@@ -1542,11 +1542,13 @@ export async function previewExcelData(req, res) {
         .query(`
           SELECT sku, branch, base_price,
                  discount_price_1, discount_price_2, discount_price_3,
-                 selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2
+                 selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+                 selling_price_sdm
           FROM (
             SELECT d.sku, d.branch, d.base_price,
                    d.discount_price_1, d.discount_price_2, d.discount_price_3,
                    d.selling_price_w1, d.selling_price_w2, d.selling_price_r1, d.selling_price_r2,
+                   d.selling_price_sdm,
                    ROW_NUMBER() OVER (PARTITION BY d.sku, d.branch ORDER BY l.imported_at DESC) AS rn
             FROM excel_import_data d
             JOIN excel_import_logs l ON l.id = d.import_log_id
@@ -2002,11 +2004,12 @@ async function previewGlassData(excelBuffer, sheetName) {
       WHERE category = 'Glass' AND skuNumber LIKE 'G%'
         AND branchCode IN (${branchInListP})
     `);
+    // prefix12 → [{skuNumber, branchCode}]
     const skuByPrefix = new Map();
     for (const r of stockResult.recordset) {
       const prefix = r.skuNumber.substring(0, 12);
-      if (!skuByPrefix.has(prefix)) skuByPrefix.set(prefix, new Set());
-      skuByPrefix.get(prefix).add(r.branchCode);
+      if (!skuByPrefix.has(prefix)) skuByPrefix.set(prefix, []);
+      skuByPrefix.get(prefix).push({ skuNumber: r.skuNumber, branchCode: r.branchCode });
     }
 
     const fv = v => parseFloat(v) || 0;
@@ -2045,15 +2048,8 @@ async function previewGlassData(excelBuffer, sheetName) {
         const brandName = brandMap[brandCode] || currentBrand || 'ไม่ระบุ';
 
         // นับ branches จาก StockStatusFact หรือ fallback 26
-        const dbBranches = skuByPrefix.get(excelSku);
-        const branchCount = dbBranches ? dbBranches.size : allBranches.length;
-
-        // นับ full SKUs
-        const fullSkuCount = dbBranches
-          ? new Set([...skuByPrefix.entries()]
-              .filter(([k]) => k === excelSku)
-              .flatMap(([,v]) => [...v])).size
-          : 1;
+        const dbEntries = skuByPrefix.get(excelSku) || [];
+        const branchCount = dbEntries.length > 0 ? new Set(dbEntries.map(e => e.branchCode)).size : allBranches.length;
 
         // ราคาตัวอย่าง BKK (col 21-24)
         const re_bkk = fv(row[5]);
@@ -2066,6 +2062,30 @@ async function previewGlassData(excelBuffer, sheetName) {
 
         totalSkus++;
         totalRows += branchCount;
+
+        // allRows — expand เป็น full SKU|branch เพื่อเปรียบเทียบกับ DB ได้ถูกต้อง
+        if (dbEntries.length > 0) {
+          for (const { skuNumber: fullSku, branchCode } of dbEntries) {
+            allRows.push({
+              sku: fullSku,
+              branch: branchCode,
+              productName: fullName,
+              brand: brandName,
+              selling_price_w1: w1_bkk,
+              selling_price_w2: w2_bkk,
+              selling_price_r1: r1_bkk,
+              selling_price_r2: r2_bkk,
+            });
+          }
+        } else {
+          // ไม่มีใน DB → ใช้ excelSku + branch ตัวอย่าง
+          allRows.push({
+            sku: excelSku, branch: '00TR',
+            productName: fullName, brand: brandName,
+            selling_price_w1: w1_bkk, selling_price_w2: w2_bkk,
+            selling_price_r1: r1_bkk, selling_price_r2: r2_bkk,
+          });
+        }
 
         const rowData = {
           sku: excelSku,
@@ -2083,7 +2103,6 @@ async function previewGlassData(excelBuffer, sheetName) {
           discount_price_1: 0,
           discount_price_2: 0,
         };
-        allRows.push(rowData);
         if (previewRows.length < 15) {
           previewRows.push(rowData);
         }
