@@ -967,8 +967,8 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
       if (!col0 && (row[21] === null || row[21] === undefined)) continue;
       if (!col0 || !/^G\d/.test(col0)) continue;
 
-      // col0 อาจมีหลาย SKU คั่นด้วย "/"
-      const skuList = col0.split('/').map(s => s.trim()).filter(s => /^G\d/.test(s));
+      // col0 อาจมีหลาย SKU คั่นด้วย "/" หรือ ","
+      const skuList = col0.split(/[\/,]/).map(s => s.trim()).filter(s => /^G\d/.test(s));
 
       const productName = col1 || currentProductName || currentBrand || 'Glass';
       if (col1) currentProductName = col1;
@@ -2036,7 +2036,7 @@ async function previewGlassData(excelBuffer, sheetName) {
       if (!col0 && (row[21] === null || row[21] === undefined)) continue;
       if (!col0 || !/^G\d/.test(col0)) continue;
 
-      const skuList = col0.split('/').map(s => s.trim()).filter(s => /^G\d/.test(s));
+      const skuList = col0.split(/[\/,]/).map(s => s.trim()).filter(s => /^G\d/.test(s));
       const productName = col1 || currentProductName || currentBrand || 'Glass';
       if (col1) currentProductName = col1;
       const thickness = col2 !== undefined ? String(col2).trim() : '';
