@@ -18,6 +18,7 @@ import XLSX from 'xlsx';
  * =====================================================
  */
 let _branchCache = null;
+export function clearBranchCache() { _branchCache = null; }
 async function loadBranchMapping() {
   if (_branchCache) return _branchCache;
 
@@ -41,8 +42,11 @@ async function loadBranchMapping() {
       zoneToBranches.NE.push(branchCode);
     } else if (region === 'ภาคตะวันออก') {
       zoneToBranches.E.push(branchCode);
-    } else if (region === 'ภาคใต้' || region === 'ภาคตะวันตก') {
+    } else if (region === 'ภาคใต้') {
       zoneToBranches.S.push(branchCode);
+    } else if (region === 'ภาคตะวันตก') {
+      // ภาคตะวันตก (เช่น 07RB ราชบุรี) จัดอยู่ใน zone C (ภาคกลาง) ตาม Excel C-Line
+      zoneToBranches.C.push(branchCode);
     } else {
       // ภาคกลาง (ยกเว้น กทม.)
       zoneToBranches.C.push(branchCode);
