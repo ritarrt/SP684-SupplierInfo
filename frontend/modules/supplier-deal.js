@@ -515,13 +515,15 @@ async function populateDealBranchFilter() {
   if (categorySelect) categorySelect.innerHTML = '<option value="">กำลังโหลด...</option>';
 
   try {
-    // Load branches from StockStatusFact + BranchMaster combined
+    // Load branches from BranchMaster (returns [{branchCode, branchName}])
     const branchRes = await fetch(window.API_BASE + "/api/master/branches-for-filter");
     const branches = await branchRes.json();
-    
+
     branchSelect.innerHTML = '<option value="">ทุกสาขา</option>';
     branches.forEach(b => {
-      branchSelect.add(new Option(b, b));
+      const code  = b.branchCode ?? b;
+      const label = b.branchName ? `${b.branchCode} - ${b.branchName}` : b.branchCode ?? b;
+      branchSelect.add(new Option(label, code));
     });
     
     // Load SKU data for categories

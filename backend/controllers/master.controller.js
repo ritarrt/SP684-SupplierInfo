@@ -165,22 +165,33 @@ export const getSkuByBranch = async (req, res) => {
 export const getBranchesForFilter = async (req, res) => {
   try {
     const pool = await getPool();
-    
+
+    // ดึงรายชื่อสาขาทั้งหมดจาก BranchMaster พร้อมชื่อ
+    const bmResult = await pool.request().query(`
+      SELECT branchCode, branchName
+      FROM BranchMaster
+      WHERE branchCode IS NOT NULL AND branchCode != ''
+      ORDER BY branchCode
+    `);
+
+    // ดึง branchCode ที่มีข้อมูลใน StockStatusFact
     const ssResult = await pool.request().query(`
       SELECT DISTINCT branchCode
       FROM StockStatusFact
       WHERE branchCode IS NOT NULL AND branchCode != ''
     `);
-    
-    const bmResult = await pool.request().query(`
-      SELECT branchCode FROM BranchMaster
-    `);
-    
-    const ssBranches = ssResult.recordset.map(r => r.branchCode);
-    const bmBranches = bmResult.recordset.map(r => r.branchCode);
-    const combined = [...new Set([...ssBranches, ...bmBranches])].filter(b => b);
-    combined.sort();
-    
+    const ssCodes = new Set(ssResult.recordset.map(r => r.branchCode));
+
+    // รวม: ใช้ BranchMaster เป็นหลัก เพิ่ม code ที่ไม่มีใน BranchMaster จาก SS
+    const bmMap = new Map(bmResult.recordset.map(r => [r.branchCode, r.branchName]));
+    ssCodes.forEach(code => {
+      if (!bmMap.has(code)) bmMap.set(code, code);
+    });
+
+    const combined = [...bmMap.entries()]
+      .map(([branchCode, branchName]) => ({ branchCode, branchName }))
+      .sort((a, b) => a.branchCode.localeCompare(b.branchCode));
+
     res.json(combined);
   } catch (err) {
     console.error("getBranchesForFilter error:", err);

@@ -1091,8 +1091,37 @@ async function loadImportData(page = 1) {
 // INITIALIZE ON PAGE LOAD
 // ============================================
 
+async function initializeBranchFilter() {
+  try {
+    const res = await fetch(`${API_BASE}/api/master/branches-for-filter`);
+    if (!res.ok) return;
+    const branches = await res.json();
+
+    const selects = [
+      document.getElementById("filterBranch"),
+      document.getElementById("draftFilterBranch")
+    ];
+
+    selects.forEach(sel => {
+      if (!sel) return;
+      sel.innerHTML = '<option value="">ทุกสาขา</option>';
+      branches.forEach(b => {
+        const code  = b.branchCode ?? b;
+        const label = b.branchName ? `${b.branchCode} - ${b.branchName}` : code;
+        const opt = document.createElement("option");
+        opt.value = code;
+        opt.textContent = label;
+        sel.appendChild(opt);
+      });
+    });
+  } catch (err) {
+    console.error("initializeBranchFilter error:", err);
+  }
+}
+
 // initializeProductTypes จะเรียก loadImportData เองผ่าน selectTab
 // ไม่ต้องเรียก loadImportData() แยกเพื่อป้องกัน race condition
+initializeBranchFilter();
 initializeProductTypes();
 
 // ============================================
