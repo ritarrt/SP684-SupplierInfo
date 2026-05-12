@@ -254,6 +254,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!targetName) return showToast("กรุณากรอกชื่อเป้าหมาย", true, "tgName");
       if (!category) return showToast("กรุณาเลือกประเภทสินค้า", true, "tgCat");
       if (brandCodes.length === 0) return showToast("กรุณาเลือกแบรนด์อย่างน้อย 1 รายการ", true);
+      if (groupCodes.length === 0) return showToast("กรุณาเลือกกลุ่มสินค้าอย่างน้อย 1 รายการ", true);
       if (!benefitPeriod) return showToast("กรุณาเลือกระยะเวลาได้รับผลประโยชน์", true, "tgBenefit");
       if (!targetType) return showToast("กรุณาเลือกประเภทเป้า", true, "tgType");
       if (!targetQty) return showToast("กรุณากรอกเป้าหมาย/หน่วย", true, "tgQty");
