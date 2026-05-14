@@ -177,25 +177,6 @@ export const getSupplierDeals = async (req, res) => {
             limited_type: deal.limited_type
           });
 
-          // Get brand_no for SKU matching
-          const brandNoResult = await pool.request()
-            .input("category", sql.NVarChar, deal.category)
-            .input("brand", sql.NVarChar, deal.brand)
-            .query(`
-              SELECT 
-                CASE @category
-                  WHEN 'Gypsum' THEN (SELECT BRAND_NO FROM BRAND_Gypsum WHERE BRAND_ID = @brand)
-                  WHEN 'Glass' THEN (SELECT BRAND_NO FROM BRAND_Glass WHERE BRAND_ID = @brand)
-                  WHEN 'Aluminum' THEN (SELECT BRAND_NO FROM BRAND_Aluminium WHERE BRAND_ID = @brand)
-                  WHEN 'C-Line' THEN (SELECT BRAND_NO FROM BRAND_CLine WHERE BRAND_ID = @brand)
-                  WHEN 'Sealant' THEN (SELECT BRAND_NO FROM BRAND_Sealant WHERE BRAND_ID = @brand)
-                  WHEN 'Accessories' THEN (SELECT BRAND_NO FROM Accessory_BRAND WHERE BRAND_ID = @brand)
-                END AS brand_no
-            `);
-          
-          const brandNo = brandNoResult.recordset[0]?.brand_no;
-          console.log(`🔍 brandNo for deal ${deal.deal_id}:`, brandNo);
-
           // Calculate actual received quantities
           // Skip calculation if start_date or end_date is null
           if (!deal.start_date || !deal.end_date) {
@@ -209,7 +190,7 @@ export const getSupplierDeals = async (req, res) => {
             continue;
           }
 
-          // Convert dd/MM/yyyy to Date objects for parameterized query
+          // Convert dd/MM/yyyy to Date objects
           const startDateParts = deal.start_date.split('/');
           const endDateParts = deal.end_date.split('/');
           const startDateObj = new Date(
@@ -226,9 +207,9 @@ export const getSupplierDeals = async (req, res) => {
           console.log(`🔍 Query parameters for deal ${deal.deal_id}:`, {
             sku: deal.sku,
             category: deal.category,
-            brand_no: brandNo,
-            product_group_code: deal.product_group,
-            sub_group_code: deal.sub_group,
+            brand: deal.brand,
+            product_group: deal.product_group,
+            sub_group: deal.sub_group,
             branch: deal.branch,
             project_no: deal.project_no,
             start_date: startDateObj,
@@ -236,79 +217,158 @@ export const getSupplierDeals = async (req, res) => {
             limited_unit: deal.limited_unit
           });
 
+          // ใช้ STRING_SPLIT + CROSS JOIN รองรับหลาย brand/group/sub
+          // brand field เก็บเป็น brand_id (comma-separated) → lookup brand_no ใน SQL
           const actualResult = await pool.request()
-            .input("deal_id", sql.Int, deal.deal_id)
-            .input("supplier_no", sql.NVarChar, supplierNo)
-            .input("sku", sql.NVarChar, deal.sku)
-            .input("category", sql.NVarChar, deal.category)
-            .input("brand_no", sql.NVarChar, brandNo)
-            .input("product_group_code", sql.NVarChar, deal.product_group || null)
-            .input("sub_group_code", sql.NVarChar, deal.sub_group || null)
-            .input("branch", sql.NVarChar, deal.branch)
-            .input("start_date", sql.Date, startDateObj)
-            .input("end_date", sql.Date, endDateObj)
-            .input("project_no", sql.NVarChar, deal.project_no || null)
+            .input("sku",               sql.NVarChar, deal.sku        || null)
+            .input("category",          sql.NVarChar, deal.category)
+            .input("brand_ids",         sql.NVarChar, deal.brand       || null)
+            .input("product_group_ids", sql.NVarChar, deal.product_group || null)
+            .input("sub_group_ids",     sql.NVarChar, deal.sub_group   || null)
+            .input("branch",            sql.NVarChar, deal.branch      || null)
+            .input("start_date",        sql.Date,     startDateObj)
+            .input("end_date",          sql.Date,     endDateObj)
+            .input("project_no",        sql.NVarChar, deal.project_no  || null)
             .query(`
-              SELECT 
-                SUM(r.Quantity) AS actual_qty,
-                SUM(r.Total_Cost) AS actual_amount,
-                SUM(ISNULL(r.Gross_Weight, 0)) AS actual_weight,
-                SUM(ISNULL(r.Area_SQFT, 0)) AS actual_area
+              SELECT
+                SUM(r.Quantity)                  AS actual_qty,
+                SUM(r.Total_Cost)                AS actual_amount,
+                SUM(ISNULL(r.Gross_Weight, 0))   AS actual_weight,
+                SUM(ISNULL(r.Area_SQFT, 0))      AS actual_area
               FROM RE_Detail_WithCost r
               WHERE r.Posting_Date >= @start_date
                 AND r.Posting_Date < DATEADD(DAY, 1, @end_date)
+
+                -- ===== SKU filter =====
                 AND (
+                  -- กรณีระบุ SKU ตรงๆ (comma-separated) → match exact
                   (
-                    (@category = 'Accessories'
-                      AND r.SKU LIKE CONCAT(
-                        'E',
-                        @brand_no,
-                        RIGHT('00' + @product_group_code, 2),
-                        RIGHT('000' + @sub_group_code, 3),
-                        '%'
-                      )
-                    )
-                    OR
-                    (@category <> 'Accessories'
-                      AND r.SKU LIKE CONCAT(
-                        CASE @category
-                          WHEN 'Glass' THEN 'G'
-                          WHEN 'Aluminum' THEN 'A'
-                          WHEN 'Sealant' THEN 'S'
-                          WHEN 'Gypsum' THEN 'Y'
-                          WHEN 'C-Line' THEN 'C'
-                        END,
-                        RIGHT('00' + @brand_no, 2),
-                        RIGHT('00' + @product_group_code, 2),
-                        RIGHT('000' + @sub_group_code, 3),
-                        '%'
-                      )
-                    )
-                  )
-                  OR
-                  (
-                    @sku IS NOT NULL 
-                    AND @sku <> ''
+                    @sku IS NOT NULL AND @sku <> ''
                     AND EXISTS (
-                      SELECT 1
-                      FROM STRING_SPLIT(@sku, ',') s
+                      SELECT 1 FROM STRING_SPLIT(@sku, ',') s
                       WHERE LTRIM(RTRIM(s.value)) <> ''
                         AND r.SKU = LTRIM(RTRIM(s.value))
                     )
                   )
+                  OR
+                  -- กรณีไม่ระบุ SKU → match ด้วย pattern จาก brand/group/sub
+                  (
+                    (@sku IS NULL OR @sku = '')
+                    AND (
+                      -- Accessories: E + brand(3) + group(2) + sub(2)
+                      (@category = 'Accessories'
+                        AND EXISTS (
+                          SELECT 1
+                          FROM STRING_SPLIT(REPLACE(ISNULL(@brand_ids,''),' ',''), ',') bid_s
+                          CROSS APPLY (
+                            SELECT TOP 1 BRAND_NO
+                            FROM Accessory_BRAND
+                            WHERE BRAND_ID = LTRIM(RTRIM(bid_s.value))
+                          ) bn
+                          CROSS JOIN (
+                            SELECT CAST(NULL AS NVARCHAR(10)) AS gc_val
+                            WHERE NULLIF(@product_group_ids,'') IS NULL
+                            UNION ALL
+                            SELECT LTRIM(RTRIM(gc_s.value))
+                            FROM STRING_SPLIT(REPLACE(ISNULL(@product_group_ids,''),' ',''), ',') gc_s
+                            WHERE LTRIM(RTRIM(gc_s.value)) <> ''
+                              AND NULLIF(@product_group_ids,'') IS NOT NULL
+                          ) grp_s
+                          CROSS JOIN (
+                            SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
+                            WHERE NULLIF(@sub_group_ids,'') IS NULL
+                            UNION ALL
+                            SELECT LTRIM(RTRIM(sc_s.value))
+                            FROM STRING_SPLIT(REPLACE(ISNULL(@sub_group_ids,''),' ',''), ',') sc_s
+                            WHERE LTRIM(RTRIM(sc_s.value)) <> ''
+                              AND NULLIF(@sub_group_ids,'') IS NOT NULL
+                          ) sub_s
+                          WHERE LTRIM(RTRIM(bid_s.value)) <> ''
+                            AND r.SKU LIKE CONCAT(
+                              'E',
+                              RIGHT('000' + LTRIM(RTRIM(bn.BRAND_NO)), 3),
+                              CASE WHEN grp_s.gc_val IS NULL THEN ''
+                                   ELSE RIGHT('00' + grp_s.gc_val, 2)
+                              END,
+                              CASE WHEN sub_s.sub_val IS NULL THEN '%'
+                                   ELSE RIGHT('00' + sub_s.sub_val, 2) + '%'
+                              END
+                            )
+                        )
+                      )
+                      OR
+                      -- Non-Accessories: prefix(1) + brand(2) + group(2) + sub(3)
+                      (@category <> 'Accessories'
+                        AND EXISTS (
+                          SELECT 1
+                          FROM STRING_SPLIT(REPLACE(ISNULL(@brand_ids,''),' ',''), ',') bid_s
+                          CROSS APPLY (
+                            SELECT TOP 1 brand_no FROM (
+                              SELECT BRAND_NO AS brand_no FROM BRAND_Glass     WHERE BRAND_ID = LTRIM(RTRIM(bid_s.value)) AND @category = 'Glass'
+                              UNION ALL
+                              SELECT BRAND_NO FROM BRAND_Aluminium WHERE BRAND_ID = LTRIM(RTRIM(bid_s.value)) AND @category = 'Aluminum'
+                              UNION ALL
+                              SELECT BRAND_NO FROM BRAND_Gypsum    WHERE BRAND_ID = LTRIM(RTRIM(bid_s.value)) AND @category = 'Gypsum'
+                              UNION ALL
+                              SELECT BRAND_NO FROM BRAND_CLine     WHERE BRAND_ID = LTRIM(RTRIM(bid_s.value)) AND @category = 'C-Line'
+                              UNION ALL
+                              SELECT BRAND_NO FROM BRAND_Sealant   WHERE BRAND_ID = LTRIM(RTRIM(bid_s.value)) AND @category = 'Sealant'
+                            ) bx
+                          ) bn
+                          CROSS JOIN (
+                            SELECT CAST(NULL AS NVARCHAR(10)) AS gc_val
+                            WHERE NULLIF(@product_group_ids,'') IS NULL
+                            UNION ALL
+                            SELECT LTRIM(RTRIM(gc_s.value))
+                            FROM STRING_SPLIT(REPLACE(ISNULL(@product_group_ids,''),' ',''), ',') gc_s
+                            WHERE LTRIM(RTRIM(gc_s.value)) <> ''
+                              AND NULLIF(@product_group_ids,'') IS NOT NULL
+                          ) grp_s
+                          CROSS JOIN (
+                            SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
+                            WHERE NULLIF(@sub_group_ids,'') IS NULL
+                            UNION ALL
+                            SELECT LTRIM(RTRIM(sc_s.value))
+                            FROM STRING_SPLIT(REPLACE(ISNULL(@sub_group_ids,''),' ',''), ',') sc_s
+                            WHERE LTRIM(RTRIM(sc_s.value)) <> ''
+                              AND NULLIF(@sub_group_ids,'') IS NOT NULL
+                          ) sub_s
+                          WHERE LTRIM(RTRIM(bid_s.value)) <> ''
+                            AND r.SKU LIKE CONCAT(
+                              CASE @category
+                                WHEN 'Glass'    THEN 'G'
+                                WHEN 'Aluminum' THEN 'A'
+                                WHEN 'Sealant'  THEN 'S'
+                                WHEN 'Gypsum'   THEN 'Y'
+                                WHEN 'C-Line'   THEN 'C'
+                              END,
+                              RIGHT('00' + LTRIM(RTRIM(bn.brand_no)), 2),
+                              CASE WHEN grp_s.gc_val IS NULL THEN ''
+                                   ELSE RIGHT('00' + grp_s.gc_val, 2)
+                              END,
+                              CASE WHEN sub_s.sub_val IS NULL THEN '%'
+                                   ELSE RIGHT('000' + sub_s.sub_val, 3) + '%'
+                              END
+                            )
+                        )
+                      )
+                    )
+                  )
                 )
+
+                -- ===== Branch filter =====
                 AND (
-                  @branch IS NULL 
-                  OR @branch = ''
+                  @branch IS NULL OR @branch = ''
                   OR UPPER(LTRIM(RTRIM(r.Branch))) IN (
                     SELECT UPPER(LTRIM(RTRIM(value)))
                     FROM STRING_SPLIT(@branch, ',')
                     WHERE LTRIM(RTRIM(value)) <> ''
                   )
                 )
+
+                -- ===== Project filter =====
                 AND (
-                  @project_no IS NULL 
-                  OR @project_no = ''
+                  @project_no IS NULL OR @project_no = ''
                   OR r.Project_No = @project_no
                 )
             `);

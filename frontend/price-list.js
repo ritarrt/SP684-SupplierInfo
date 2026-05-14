@@ -134,20 +134,42 @@ fileInput.addEventListener("change", (e) => {
 });
 
 function handleFile(file) {
-  // Store original file for sending to backend
   currentFile = file;
   
   const reader = new FileReader();
   
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = new Uint8Array(e.target.result);
       currentWorkbook = XLSX.read(data, { type: "array" });
       
       fileName.textContent = file.name;
       fileInfo.classList.remove("hidden");
-      
-      showSheetSelection();
+
+      // Gypsum/Glass/Accessories: ตรวจสอบ sheet ที่อ่านได้ก่อนแสดง
+      if (currentTab === "Gypsum" || currentTab === "Glass" || currentTab === "Accessories") {
+        sheetButtons.innerHTML = `<span class="text-xs text-gray-400 animate-pulse">กำลังตรวจสอบ sheets...</span>`;
+        sheetSection.classList.remove("hidden");
+
+        try {
+          let binary = '';
+          for (let i = 0; i < data.byteLength; i++) binary += String.fromCharCode(data[i]);
+          const excelBuffer = btoa(binary);
+
+          const resp = await fetch(`${API_BASE}/api/excel/check-sheets`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ excelBuffer, productType: currentTab })
+          });
+          const { sheets } = await resp.json();
+          showSheetSelection(sheets);
+        } catch (err) {
+          console.error('check-sheets error:', err);
+          showSheetSelection(null);
+        }
+      } else {
+        showSheetSelection(null);
+      }
       
     } catch (err) {
       showStatus("เกิดข้อผิดพลาดในการอ่านไฟล์", "error");
@@ -166,25 +188,34 @@ function handleFile(file) {
 // SHEET SELECTION (single select)
 // ============================================
 
-function showSheetSelection() {
+function showSheetSelection(checkResult) {
   if (!currentWorkbook) return;
-
-  // C-Line: แสดงเฉพาะชีทที่ขึ้นต้นด้วย "C-Line_" (ชีทราคา) ไม่แสดงชีทอื่น
-  const sheetsToShow = currentTab === "C-Line"
-    ? currentWorkbook.SheetNames.filter(n => n.toLowerCase().startsWith('c-line_'))
-    : currentWorkbook.SheetNames;
 
   sheetButtons.innerHTML = "";
   selectedSheets.clear();
 
-  if (currentTab === "C-Line" && sheetsToShow.length === 0) {
-    sheetButtons.innerHTML = `
-      <span class="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-1.5">
-        ไม่พบชีทราคา (ต้องขึ้นต้นด้วย "C-Line_")
-      </span>
-    `;
-    sheetSection.classList.remove("hidden");
-    return;
+  // กำหนด sheets ที่จะแสดง
+  let sheetsToShow;
+
+  if (currentTab === "C-Line") {
+    // C-Line: แสดงเฉพาะชีทที่ขึ้นต้นด้วย "C-Line_"
+    sheetsToShow = currentWorkbook.SheetNames.filter(n => n.toLowerCase().startsWith('c-line_'));
+    if (sheetsToShow.length === 0) {
+      sheetButtons.innerHTML = `<span class="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-1.5">ไม่พบชีทราคา (ต้องขึ้นต้นด้วย "C-Line_")</span>`;
+      sheetSection.classList.remove("hidden");
+      return;
+    }
+  } else if (checkResult) {
+    // ใช้ผลจาก check-sheets — แสดงเฉพาะที่อ่านได้
+    const readableSet = new Set(checkResult.filter(s => s.readable).map(s => s.sheetName));
+    sheetsToShow = currentWorkbook.SheetNames.filter(n => readableSet.has(n));
+    if (sheetsToShow.length === 0) {
+      sheetButtons.innerHTML = `<span class="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-1.5">ไม่พบชีทที่อ่านได้ในไฟล์นี้</span>`;
+      sheetSection.classList.remove("hidden");
+      return;
+    }
+  } else {
+    sheetsToShow = currentWorkbook.SheetNames;
   }
 
   sheetsToShow.forEach((name) => {
@@ -198,7 +229,6 @@ function showSheetSelection() {
   
   sheetSection.classList.remove("hidden");
   
-  // Auto-select first sheet ของ sheetsToShow
   const firstBtn = sheetButtons.querySelector('[data-sheet]');
   if (firstBtn) selectSheet(sheetsToShow[0], firstBtn);
 }
@@ -571,271 +601,6 @@ function showStatus(message, type = "info") {
   }
 }
 
-// ============================================
-// INLINE PRICE EDIT
-// ============================================
-
-function startEditPrice(el) {
-  if (el.querySelector('input')) return;
-
-  const currentValue = parseFloat(el.dataset.value) || 0;
-  const field = el.dataset.field;
-  const id = el.dataset.id;
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.step = '0.01';
-  input.value = currentValue;
-  input.className = 'w-24 text-right border border-blue-400 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500';
-  input._confirmed = false; // flag ป้องกัน blur ยิง cancel
-
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      const newValue = parseFloat(input.value) || 0;
-      input._confirmed = true;
-      el.innerHTML = ''; // เคลียร์ input ออกก่อน
-      const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-      el.innerHTML = fmt(currentValue); // คืนค่าเดิม
-      if (newValue === currentValue) return;
-      showConfirmDialog(currentValue, newValue, id, field);
-    }
-    if (event.key === 'Escape') {
-      input._confirmed = true;
-      cancelEditPrice(el, currentValue);
-    }
-  });
-
-  input.addEventListener('blur', () => {
-    if (!input._confirmed) {
-      cancelEditPrice(el, currentValue);
-    }
-  });
-
-  el.innerHTML = '';
-  el.appendChild(input);
-  input.select();
-}
-
-function cancelEditPrice(el, originalValue) {
-  if (!el) return;
-  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-  el.dataset.value = originalValue;
-  el.innerHTML = originalValue > 0 ? fmt(originalValue) : '<span class="text-gray-300">-</span>';
-}
-
-// ============================================
-// EDIT DISCOUNT PCT
-// ============================================
-
-function startEditPct(el) {
-  if (el.querySelector('input')) return;
-
-  const currentPct   = parseFloat(el.dataset.value) || 0;
-  const priceBefore  = parseFloat(el.dataset.priceBefore) || 0;
-  const field        = el.dataset.field;       // discount_pct_1 / 2 / 3
-  const priceField   = el.dataset.priceField;  // discount_price_1 / 2 / 3
-  const id           = el.dataset.id;
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.step = '0.1';
-  input.min  = '0';
-  input.max  = '100';
-  input.value = currentPct;
-  input.className = 'w-16 text-right border border-orange-400 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500';
-  input._confirmed = false;
-
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      const newPct = parseFloat(input.value);
-      if (isNaN(newPct) || newPct < 0 || newPct > 100) {
-        input.classList.add('border-red-500');
-        return;
-      }
-      input._confirmed = true;
-      el.innerHTML = currentPct > 0 ? `${currentPct.toFixed(1)}%` : '<span class="text-gray-300">-</span>';
-      if (newPct === currentPct) return;
-      // คำนวณ discount_price ใหม่จาก %
-      const newDiscountPrice = priceBefore > 0 ? priceBefore * (1 - newPct / 100) : 0;
-      showConfirmPctDialog(currentPct, newPct, newDiscountPrice, id, field, priceField, priceBefore);
-    }
-    if (event.key === 'Escape') {
-      input._confirmed = true;
-      cancelEditPct(el, currentPct);
-    }
-  });
-
-  input.addEventListener('blur', () => {
-    if (!input._confirmed) cancelEditPct(el, currentPct);
-  });
-
-  el.innerHTML = '';
-  el.appendChild(input);
-  input.select();
-}
-
-function cancelEditPct(el, originalPct) {
-  if (!el) return;
-  el.dataset.value = originalPct;
-  el.innerHTML = originalPct > 0 ? `${originalPct.toFixed(1)}%` : '<span class="text-gray-300">-</span>';
-}
-
-function showConfirmPctDialog(oldPct, newPct, newDiscountPrice, id, field, priceField, priceBefore) {
-  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-
-  const overlay = document.createElement('div');
-  overlay.id = 'confirmOverlay';
-  overlay.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50';
-  overlay.innerHTML = `
-    <div class="bg-white rounded-xl shadow-2xl p-6 w-96 text-center">
-      <div class="text-gray-500 text-sm mb-2">ยืนยันการเปลี่ยนแปลงส่วนลด</div>
-      <div class="flex items-center justify-center gap-3 my-3">
-        <span class="text-xl font-bold text-gray-400">${oldPct.toFixed(1)}%</span>
-        <i class="bi bi-arrow-right text-gray-400 text-lg"></i>
-        <span class="text-xl font-bold text-orange-600">${newPct.toFixed(1)}%</span>
-      </div>
-      <div class="text-sm text-gray-500 mb-4">
-        ราคาหลังลด: <span class="font-semibold text-blue-600">${fmt(newDiscountPrice)}</span>
-        <span class="text-xs text-gray-400 ml-1">(จาก ${fmt(priceBefore)})</span>
-      </div>
-      <div class="flex gap-3 justify-center">
-        <button class="px-5 py-2 border rounded-lg hover:bg-gray-100 text-sm" onclick="closeConfirmDialog()">ยกเลิก</button>
-        <button id="confirmOkBtn" class="px-5 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
-          onclick="confirmSavePct(${oldPct}, ${newPct}, ${newDiscountPrice}, '${id}', '${field}', '${priceField}')">ยืนยัน</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-
-  setTimeout(() => {
-    overlay._keyHandler = (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); confirmSavePct(oldPct, newPct, newDiscountPrice, id, field, priceField); }
-      if (e.key === 'Escape') closeConfirmDialog();
-    };
-    document.addEventListener('keydown', overlay._keyHandler);
-  }, 200);
-}
-
-async function confirmSavePct(oldPct, newPct, newDiscountPrice, id, field, priceField) {
-  closeConfirmDialog();
-  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-  const pctEl   = document.querySelector(`.editable-pct[data-id="${id}"][data-field="${field}"]`);
-  const priceEl = document.querySelector(`.editable-price[data-id="${id}"][data-field="${priceField}"]`);
-
-  try {
-    const response = await fetch(`${API_BASE}/api/excel/data/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        [field]:      newPct / 100,        // เก็บเป็น 0-1 ใน DB
-        [priceField]: newDiscountPrice      // อัปเดตราคาหลังลดด้วย
-      })
-    });
-
-    if (response.ok) {
-      // อัปเดต pct cell
-      if (pctEl) {
-        pctEl.dataset.value = newPct;
-        pctEl.innerHTML = newPct > 0 ? `${newPct.toFixed(1)}%` : '<span class="text-gray-300">-</span>';
-      }
-      // อัปเดต price cell
-      if (priceEl) {
-        const priceBefore = parseFloat(pctEl?.dataset.priceBefore) || 0;
-        const hasDiscount = newDiscountPrice > 0 && newDiscountPrice < priceBefore;
-        priceEl.dataset.value = newDiscountPrice;
-        priceEl.innerHTML = hasDiscount
-          ? fmt(newDiscountPrice)
-          : '<span class="text-gray-300">-</span>';
-      }
-      showToast(`ส่วนลด ${oldPct.toFixed(1)}% → ${newPct.toFixed(1)}%`, 'success');
-    } else {
-      const err = await response.json();
-      showToast(`บันทึกไม่สำเร็จ: ${err.message}`, 'error');
-    }
-  } catch (err) {
-    showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ", 'error');
-  }
-}
-
-// ============================================
-// CONFIRM DIALOG
-// ============================================
-
-function showConfirmDialog(oldValue, newValue, id, field) {
-  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-
-  const overlay = document.createElement('div');
-  overlay.id = 'confirmOverlay';
-  overlay.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50';
-  overlay.innerHTML = `
-    <div class="bg-white rounded-xl shadow-2xl p-6 w-80 text-center">
-      <div class="text-gray-500 text-sm mb-2">ยืนยันการเปลี่ยนแปลงราคา</div>
-      <div class="flex items-center justify-center gap-3 my-4">
-        <span class="text-xl font-bold text-gray-400">${fmt(oldValue)}</span>
-        <i class="bi bi-arrow-right text-gray-400 text-lg"></i>
-        <span class="text-xl font-bold text-blue-600">${fmt(newValue)}</span>
-      </div>
-      <div class="text-xs text-gray-400 mb-5">กด Enter เพื่อยืนยัน หรือ Escape เพื่อยกเลิก</div>
-      <div class="flex gap-3 justify-center">
-        <button 
-          class="px-5 py-2 border rounded-lg hover:bg-gray-100 text-sm"
-          onclick="closeConfirmDialog()"
-        >ยกเลิก</button>
-        <button 
-          id="confirmOkBtn"
-          class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-          onclick="confirmSavePrice(${oldValue}, ${newValue}, '${id}', '${field}')"
-        >ยืนยัน</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  // รอ 200ms ก่อน bind keyboard เพื่อป้องกัน Enter จาก input ก่อนหน้ายิงทันที
-  setTimeout(() => {
-    overlay._keyHandler = (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); confirmSavePrice(oldValue, newValue, id, field); }
-      if (e.key === 'Escape') closeConfirmDialog();
-    };
-    document.addEventListener('keydown', overlay._keyHandler);
-  }, 200);
-}
-
-function closeConfirmDialog() {
-  const overlay = document.getElementById('confirmOverlay');
-  if (overlay) {
-    document.removeEventListener('keydown', overlay._keyHandler);
-    overlay.remove();
-  }
-}
-
-async function confirmSavePrice(oldValue, newValue, id, field) {
-  closeConfirmDialog();
-  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-  const el = document.querySelector(`.editable-price[data-id="${id}"][data-field="${field}"]`);
-
-  try {
-    const response = await fetch(`${API_BASE}/api/excel/data/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [field]: newValue })
-    });
-
-    if (response.ok) {
-      if (el) { el.dataset.value = newValue; el.innerHTML = fmt(newValue); }
-      showToast(`เปลี่ยนจาก ${fmt(oldValue)} → ${fmt(newValue)}`, 'success');
-    } else {
-      const err = await response.json();
-      showToast(`บันทึกไม่สำเร็จ: ${err.message}`, 'error');
-    }
-  } catch (err) {
-    showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ", 'error');
-  }
-}
-
 // Toast notification
 function showToast(message, type = 'success') {
   const container = document.getElementById('toastContainer');
@@ -939,6 +704,9 @@ async function loadImportData(page = 1) {
   const summary = document.getElementById("dataSummary");
   const pagination = document.getElementById("dataPagination");
 
+  // scroll ไปที่ตารางข้อมูล ไม่ใช่ด้านล่างสุด
+  document.querySelector("main:last-of-type")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   tbody.innerHTML = `
     <tr><td colspan="13" class="text-center py-6 text-gray-400">
       <i class="bi bi-hourglass-split"></i> กำลังโหลด...
@@ -978,85 +746,55 @@ async function loadImportData(page = 1) {
         : '-';
       const fmt = v => v != null ? parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-';
 
-      // Editable price cell — แสดง "-" ถ้าค่าเป็น 0 แต่ยังคลิกแก้ไขได้เสมอ
-      // priceBefore: ราคาก่อนหน้า — ถ้า value >= priceBefore หรือ value = 0 แสดงเป็น - แต่ยังคลิกแก้ไขได้เสมอ
-      const priceCell = (field, value, priceBefore = null) => {
+      // Read-only price cell
+      const priceCell = (value, priceBefore = null) => {
         const numVal = value != null ? parseFloat(value) : 0;
         const hasDiscount = numVal > 0 && (priceBefore == null || numVal < parseFloat(priceBefore));
         const display = hasDiscount ? fmt(value) : '<span class="text-gray-300">-</span>';
-        return `
-          <td class="text-right">
-            <span 
-              class="editable-price cursor-pointer hover:bg-yellow-50 hover:text-blue-600 px-1 rounded"
-              data-id="${row.id}"
-              data-field="${field}"
-              data-value="${numVal}"
-              onclick="startEditPrice(this)"
-              title="คลิกเพื่อแก้ไข"
-            >${display}</span>
-          </td>
-        `;
+        return `<td class="text-right px-1">${display}</td>`;
       };
 
-      // คำนวณ % ส่วนลดย้อนกลับจากราคา เมื่อ discountPct ไม่มีใน DB
-      // สูตร: pct = (ราคาก่อน - ราคาหลัง) / ราคาก่อน × 100
-      // ถ้าราคาหลัง >= ราคาก่อน หรือ ราคาหลัง = 0 → ไม่มีส่วนลดจริง → แสดง -
+      // คำนวณ % ส่วนลดย้อนกลับจากราคา
       const calcPct = (priceBefore, priceAfter) => {
         const before = parseFloat(priceBefore);
         const after  = parseFloat(priceAfter);
         if (!before || !after || after <= 0 || after >= before) return null;
         const pct = ((before - after) / before) * 100;
-        if (pct < 0.01) return null; // ต่ำกว่า 0.01% ถือว่าไม่มีส่วนลด
+        if (pct < 0.01) return null;
         return pct;
       };
 
-      // pctCell — คลิกแก้ไข % ได้ คำนวณ discount_price ใหม่อัตโนมัติ
-      // field: 'discount_pct_1' | 'discount_pct_2' | 'discount_pct_3'
-      // priceField: 'discount_price_1' | 'discount_price_2' | 'discount_price_3'
-      // storedPct: ค่า % จาก DB (0-1), priceBefore: ราคาก่อนลด, priceAfter: ราคาหลังลด
-      const pctCell = (field, priceField, storedPct, priceBefore, priceAfter) => {
-        // คำนวณ % ที่จะแสดง
+      // Read-only pct cell
+      const pctCell = (storedPct, priceBefore, priceAfter) => {
         let displayPct = null;
         if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0) {
-          displayPct = storedPct * 100; // DB เก็บเป็น 0-1
+          displayPct = storedPct * 100;
         } else {
           displayPct = calcPct(priceBefore, priceAfter);
         }
         const display = displayPct != null
-          ? `${displayPct.toFixed(1)}%`
+          ? `<span class="text-orange-600 font-medium">${displayPct.toFixed(1)}%</span>`
           : '<span class="text-gray-300">-</span>';
-        const currentPct = displayPct != null ? displayPct : 0;
-
-        return `
-          <td class="text-right text-orange-600 font-medium">
-            <span
-              class="editable-pct cursor-pointer hover:bg-yellow-50 hover:text-orange-700 px-1 rounded"
-              data-id="${row.id}"
-              data-field="${field}"
-              data-price-field="${priceField}"
-              data-price-before="${parseFloat(priceBefore) || 0}"
-              data-value="${currentPct}"
-              onclick="startEditPct(this)"
-              title="คลิกเพื่อแก้ไข %"
-            >${display}</span>
-          </td>
-        `;
+        return `<td class="text-right">${display}</td>`;
       };
 
       return `
         <tr>
           <td><span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${row.productType || '-'}</span></td>
-          <td class="font-mono text-xs">${row.sku || '-'}</td>
+          <td class="font-mono text-xs">
+            ${row.sku || '-'}
+            ${row.isNew ? '<span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">New</span>' : ''}
+          </td>
           <td>${row.productName || '-'}</td>
           <td class="text-gray-600">${row.brand || '-'}</td>
           <td><span class="font-medium">${row.branch || '-'}</span></td>
-          ${priceCell('base_price', row.basePrice)}
-          ${pctCell('discount_pct_1', 'discount_price_1', row.discountPct1, row.basePrice,      row.discountPrice1)}
-          ${priceCell('discount_price_1', row.discountPrice1, row.basePrice)}
-          ${pctCell('discount_pct_2', 'discount_price_2', row.discountPct2, row.discountPrice1, row.discountPrice2)}
-          ${priceCell('discount_price_2', row.discountPrice2, row.discountPrice1)}
-          ${pctCell('discount_pct_3', 'discount_price_3', row.discountPct3, row.discountPrice2, row.discountPrice3)}
-          ${priceCell('discount_price_3', row.discountPrice3, row.discountPrice2)}
+          ${priceCell(row.basePrice)}
+          ${pctCell(row.discountPct1, row.basePrice,      row.discountPrice1)}
+          ${priceCell(row.discountPrice1, row.basePrice)}
+          ${pctCell(row.discountPct2, row.discountPrice1, row.discountPrice2)}
+          ${priceCell(row.discountPrice2, row.discountPrice1)}
+          ${pctCell(row.discountPct3, row.discountPrice2, row.discountPrice3)}
+          ${priceCell(row.discountPrice3, row.discountPrice2)}
           <td class="text-gray-400 text-xs">${date}</td>
         </tr>
       `;
@@ -1300,6 +1038,9 @@ async function loadDraftData(page = 1) {
   if (!currentDraftLogId) return;
   currentDraftPage = page;
 
+  // scroll ไปที่ draft panel ไม่ใช่ด้านล่างสุด
+  document.getElementById('draftPanel')?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   const tbody = document.getElementById('draftBody');
   const summary = document.getElementById('draftSummary');
   const pagination = document.getElementById('draftPagination');
@@ -1336,14 +1077,10 @@ async function loadDraftData(page = 1) {
       return c != null ? `<span class="text-orange-400 italic">${c.toFixed(1)}%</span>` : '<span class="text-gray-300">-</span>';
     };
 
-    const draftPriceCell = (field, value, rowId) => {
+    const draftPriceCell = (value) => {
       const numVal = value != null ? parseFloat(value) : 0;
       const display = numVal !== 0 ? parseFloat(value).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '<span class="text-gray-300">-</span>';
-      return `<td class="text-right">
-        <span class="editable-draft cursor-pointer hover:bg-yellow-50 hover:text-blue-600 px-1 rounded"
-          data-id="${rowId}" data-field="${field}" data-value="${numVal}"
-          onclick="startEditDraftPrice(this)">${display}</span>
-      </td>`;
+      return `<td class="text-right px-1">${display}</td>`;
     };
 
     tbody.innerHTML = data.map(row => `
@@ -1352,13 +1089,13 @@ async function loadDraftData(page = 1) {
         <td>${row.productName || '-'}</td>
         <td class="text-gray-500">${row.brand || '-'}</td>
         <td><span class="font-medium">${row.branch || '-'}</span></td>
-        ${draftPriceCell('base_price', row.basePrice, row.id)}
+        ${draftPriceCell(row.basePrice)}
         <td class="text-right">${fmtPct(row.discountPct1, row.basePrice, row.discountPrice1)}</td>
-        ${draftPriceCell('discount_price_1', row.discountPrice1, row.id)}
+        ${draftPriceCell(row.discountPrice1)}
         <td class="text-right">${fmtPct(row.discountPct2, row.discountPrice1, row.discountPrice2)}</td>
-        ${draftPriceCell('discount_price_2', row.discountPrice2, row.id)}
+        ${draftPriceCell(row.discountPrice2)}
         <td class="text-right">${fmtPct(row.discountPct3, row.discountPrice2, row.discountPrice3)}</td>
-        ${draftPriceCell('discount_price_3', row.discountPrice3, row.id)}
+        ${draftPriceCell(row.discountPrice3)}
       </tr>
     `).join('');
 
@@ -1379,64 +1116,6 @@ async function loadDraftData(page = 1) {
     }
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-red-400 text-sm">${err.message}</td></tr>`;
-  }
-}
-
-function startEditDraftPrice(el) {
-  if (el.querySelector('input')) return;
-  const currentValue = parseFloat(el.dataset.value) || 0;
-  const field = el.dataset.field;
-  const id = el.dataset.id;
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.step = '0.01';
-  input.value = currentValue;
-  input.className = 'w-24 text-right border border-blue-400 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500';
-  input._confirmed = false;
-
-  input.addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const newValue = parseFloat(input.value) || 0;
-      input._confirmed = true;
-      if (newValue === currentValue) { cancelEditDraftPrice(el, currentValue); return; }
-      await saveDraftPrice(el, id, field, currentValue, newValue);
-    }
-    if (e.key === 'Escape') { input._confirmed = true; cancelEditDraftPrice(el, currentValue); }
-  });
-  input.addEventListener('blur', () => { if (!input._confirmed) cancelEditDraftPrice(el, currentValue); });
-
-  el.innerHTML = '';
-  el.appendChild(input);
-  input.select();
-}
-
-function cancelEditDraftPrice(el, originalValue) {
-  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-  el.dataset.value = originalValue;
-  el.innerHTML = originalValue !== 0 ? fmt(originalValue) : '<span class="text-gray-300">-</span>';
-}
-
-async function saveDraftPrice(el, rowId, field, oldValue, newValue) {
-  const fmt = v => parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-  try {
-    const response = await fetch(`${API_BASE}/api/excel/draft/${currentDraftLogId}/rows/${rowId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [field]: newValue })
-    });
-    if (response.ok) {
-      el.dataset.value = newValue;
-      el.innerHTML = newValue !== 0 ? fmt(newValue) : '<span class="text-gray-300">-</span>';
-      showToast(`แก้ไข ${fmt(oldValue)} → ${fmt(newValue)}`, 'success');
-    } else {
-      cancelEditDraftPrice(el, oldValue);
-      showToast('บันทึกไม่สำเร็จ', 'error');
-    }
-  } catch (err) {
-    cancelEditDraftPrice(el, oldValue);
-    showToast('เกิดข้อผิดพลาด', 'error');
   }
 }
 

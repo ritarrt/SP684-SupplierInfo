@@ -1218,7 +1218,16 @@ export async function getImportData(req, res) {
         d.[discount_price_3] AS [discountPrice3],
         ${discPctCols}
         ${sellingCols}
-        d.[created_at] AS [createdAt]
+        d.[created_at] AS [createdAt],
+        -- is_new: SKU นี้ไม่มีใน log ที่ published ก่อนหน้า (ของ product_type เดียวกัน)
+        CASE WHEN NOT EXISTS (
+          SELECT 1 FROM excel_import_data prev
+          JOIN excel_import_logs pl ON pl.id = prev.import_log_id
+          WHERE prev.sku = d.sku
+            AND prev.product_type = d.product_type
+            AND pl.status = 'published'
+            AND pl.id < d.import_log_id
+        ) THEN 1 ELSE 0 END AS [isNew]
       ${fromClause}
       ${whereStr}
       ORDER BY d.[product_type], d.[sku], d.[branch]
@@ -3776,6 +3785,89 @@ export async function getPendingDraft(req, res) {
     res.json(result.recordset);
   } catch (err) {
     console.error('getPendingDraft error:', err);
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * POST /api/excel/check-sheets
+ * ตรวจสอบว่า sheet ไหนอ่านได้บ้าง
+ * Body: { excelBuffer: base64, productType: string }
+ * =====================================================
+ */
+export async function checkReadableSheets(req, res) {
+  try {
+    const { excelBuffer, productType } = req.body;
+    if (!excelBuffer) return res.status(400).json({ message: 'excelBuffer required' });
+
+    const buf = Buffer.from(excelBuffer, 'base64');
+    const workbook = XLSX.read(buf, { type: 'buffer' });
+
+    const { zoneToBranches, suffixToBranchCode } = await loadBranchMapping();
+    const ALL_ZONE_KEYS = new Set(Object.keys(zoneToBranches));
+    const BRANCH_CODE_RE = /^\d{2}[A-Z]{2}$/;
+
+    // อ่าน Sheet1 SKU lookup
+    const skuLookup = {};
+    const sheet1 = workbook.Sheets['Sheet1'];
+    if (sheet1) {
+      const s1Data = XLSX.utils.sheet_to_json(sheet1, { header: 1 });
+      (s1Data[0] || []).forEach((h, ci) => {
+        if (!h) return;
+        const name = String(h).trim();
+        const skus = [];
+        for (let r = 1; r < s1Data.length; r++) {
+          const v = s1Data[r]?.[ci];
+          if (v && String(v).trim()) skus.push(String(v).trim());
+        }
+        if (skus.length > 0) skuLookup[name] = skus;
+      });
+    }
+
+    const results = workbook.SheetNames.map(sheetName => {
+      // ข้าม Sheet1 เสมอ (เป็น reference ไม่ใช่ data)
+      if (sheetName === 'Sheet1') return { sheetName, readable: false, reason: 'reference sheet' };
+
+      const ws = workbook.Sheets[sheetName];
+      if (!ws) return { sheetName, readable: false, reason: 'empty' };
+
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (!data || data.length < 2) return { sheetName, readable: false, reason: 'too few rows' };
+
+      // ตรวจสอบ branch headers ใน 6 rows แรก
+      let hasBranchHeaders = false;
+      for (let ri = 0; ri <= Math.min(5, data.length - 1); ri++) {
+        const row = data[ri]; if (!row) continue;
+        let matchCount = 0;
+        for (let col = 2; col < row.length; col++) {
+          const v = row[col];
+          if (!v || typeof v !== 'string') continue;
+          const h = v.trim();
+          if (ALL_ZONE_KEYS.has(h) || BRANCH_CODE_RE.test(h) || suffixToBranchCode[h]) matchCount++;
+        }
+        if (matchCount >= 2) { hasBranchHeaders = true; break; }
+      }
+      if (!hasBranchHeaders) return { sheetName, readable: false, reason: 'no branch headers' };
+
+      // ตรวจสอบว่ามี product ที่อ่านได้ (มีใน Sheet1 หรือมี Y-SKU ใน col0)
+      const hasYSku = data.some(row => row && /^Y\d/.test(String(row[0] ?? '').trim()));
+      const hasSheet1Products = data.some(row => {
+        if (!row) return false;
+        const col1 = String(row[1] ?? '').trim();
+        return col1 && skuLookup[col1];
+      });
+
+      if (!hasYSku && !hasSheet1Products) {
+        return { sheetName, readable: false, reason: 'no matching products in Sheet1' };
+      }
+
+      return { sheetName, readable: true };
+    });
+
+    res.json({ sheets: results });
+  } catch (err) {
+    console.error('checkReadableSheets error:', err);
     res.status(500).json({ message: err.message });
   }
 }

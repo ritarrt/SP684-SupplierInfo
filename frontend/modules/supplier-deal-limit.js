@@ -568,7 +568,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const saveBtn = document.getElementById("submitDealLimitBtn");
   if (saveBtn) {
-    saveBtn.addEventListener("click", async () => {
+    saveBtn.addEventListener("click", () => {
       const dealName = document.getElementById("dealLimitName")?.value;
       const region = getSelectedValues("dealLimitRegionDropdown").join(",");
       const province = getSelectedValues("dealLimitProvinceDropdown").join(",");
@@ -587,12 +587,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const requirePallet = document.getElementById("dealLimitRequirePallet")?.checked ?? true;
       const note = document.getElementById("dealLimitNote")?.value;
 
-      // dealType = ประเภทดีล (Discount/New Price), limitedType = ประเภทจำกัดจำนวน (amount/percent)
-
+      // --- Validation ---
       if (!dealName) { window.showSaveMessage("กรุณากรอกชื่อดีลจำกัดราคา", true); return; }
-      if (!region) { window.showSaveMessage("กรุณาเลือกภาค", true); console.log("region value:", region); return; }
-      if (!province) { window.showSaveMessage("กรุณาเลือกจังหวัด", true); console.log("province value:", province); return; }
-      if (!branch) { window.showSaveMessage("กรุณาเลือกสาขา", true); console.log("branch value:", branch); return; }
+      if (!region) { window.showSaveMessage("กรุณาเลือกภาค", true); return; }
+      if (!province) { window.showSaveMessage("กรุณาเลือกจังหวัด", true); return; }
+      if (!branch) { window.showSaveMessage("กรุณาเลือกสาขา", true); return; }
       if (!category) { window.showSaveMessage("กรุณาเลือกประเภทสินค้า", true); return; }
       if (!brand) { window.showSaveMessage("กรุณาเลือกแบรนด์", true); return; }
       if (!productGroup || productGroup === "-") { window.showSaveMessage("กรุณาเลือกกลุ่มสินค้า", true); return; }
@@ -630,37 +629,39 @@ document.addEventListener("DOMContentLoaded", async () => {
         require_pallet: requirePallet
       };
 
-      try {
-        console.log("Saving deal limit with payload:", payload);
-        let res;
-        if (editingDealLimitId) {
-          res = await fetch(
-            `${window.API_BASE}/api/suppliers/${supplierNo}/deals/${editingDealLimitId}`,
-            { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
-          );
-        } else {
-          res = await fetch(
-            `${window.API_BASE}/api/suppliers/${supplierNo}/deals`,
-            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
-          );
+      // --- แสดง Confirm Modal ---
+      showDealLimitConfirmModal({
+        payload,
+        supplierNo,
+        isEditing: !!editingDealLimitId,
+        editingId: editingDealLimitId,
+        displayData: {
+          dealName,
+          contactPerson: document.getElementById("dealLimitProvider")?.value || "-",
+          projectNo: document.getElementById("dealLimitProjectNo")?.value || "-",
+          region: region || "ทั้งหมด",
+          province: province || "ทั้งหมด",
+          branch: branch || "ทั้งหมด",
+          category,
+          brand,
+          productGroup,
+          subGroup: document.getElementById("dealLimitSub")?.value || "-",
+          color: document.getElementById("dealLimitColor")?.value || "-",
+          thickness: document.getElementById("dealLimitThick")?.value || "-",
+          mold: document.getElementById("dealLimitMold")?.value || "-",
+          sku: document.getElementById("dealLimitSku")?.value || "-",
+          dealType,
+          limitedType,
+          limitedQty,
+          limitedUnit,
+          limitedDiscountValue,
+          limitedDiscountUnit,
+          dealStart,
+          dealEnd,
+          requirePallet,
+          note: note || "-"
         }
-
-        console.log("Response status:", res.status);
-        
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(errorText);
-        }
-
-        window.showSaveMessage(editingDealLimitId ? "✅ แก้ไขดีลจำกัดสำเร็จ" : "✅ บันทึกดีลจำกัดสำเร็จ");
-
-        cancelDealLimitEdit();
-        await loadDealLimitList(supplierNo);
-
-      } catch (err) {
-        console.error("❌ Save deal limit error:", err);
-        window.showSaveMessage("❌ บันทึดดีลจำกัดไม่สำเร็จ: " + err.message, true);
-      }
+      });
     });
   }
 
@@ -736,3 +737,145 @@ window.openDealModal = function(dealId, currentStatus, hasBeenUsed) {
 };
 
 window.renderDealLimitTable = renderDealLimitTable;
+
+// ============================================================
+// DEAL LIMIT CONFIRM MODAL
+// ============================================================
+function showDealLimitConfirmModal({ payload, supplierNo, isEditing, editingId, displayData: d }) {
+
+  document.getElementById("dealLimitConfirmModal")?.remove();
+
+  function row(label, value) {
+    const display = value && value !== "-" ? value : `<span style="color:#9ca3af;">-</span>`;
+    return `<tr>
+      <td style="padding:6px 10px;color:#6b7280;font-size:13px;white-space:nowrap;width:180px;">${label}</td>
+      <td style="padding:6px 10px;font-weight:500;font-size:13px;">${display}</td>
+    </tr>`;
+  }
+
+  function section(title, icon, rows) {
+    return `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;">
+          ${icon} ${title}
+        </div>
+        <table style="width:100%;border-collapse:collapse;">${rows}</table>
+      </div>`;
+  }
+
+  const discountDisplay = d.limitedType === "percent"
+    ? `ลด ${d.limitedDiscountValue}%`
+    : `ราคา ${Number(d.limitedDiscountValue).toLocaleString()} ${d.limitedDiscountUnit}`;
+
+  const html = `
+    <div id="dealLimitConfirmModal"
+         style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);">
+      <div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);width:100%;max-width:620px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+
+        <!-- Header -->
+        <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;background:#7c3aed;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+              <i class="bi bi-clipboard-check" style="color:#fff;font-size:16px;"></i>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:15px;">ตรวจสอบข้อมูลก่อนบันทึก</div>
+              <div style="font-size:12px;color:#6b7280;">จำกัดดีลราคา ${isEditing ? "(แก้ไข)" : "(ใหม่)"}</div>
+            </div>
+          </div>
+          <button onclick="document.getElementById('dealLimitConfirmModal').remove()"
+                  style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:20px;line-height:1;">✕</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding:20px;overflow-y:auto;flex:1;">
+
+          ${section("1. ข้อมูลดีล", "📋", [
+            row("ชื่อดีล", `<span style="color:#111827;font-size:14px;">${d.dealName}</span>`),
+            row("ผู้ติดต่อ", d.contactPerson),
+            row("Project No.", d.projectNo),
+            row("ประเภทดีล", d.dealType),
+            row("ต้องการลัง", d.requirePallet ? "ใช่" : "ไม่ต้องการ"),
+            row("หมายเหตุ", d.note)
+          ].join(""))}
+
+          ${section("2. ขอบเขต (Scope)", "🎯", [
+            row("ภาค", d.region),
+            row("จังหวัด", d.province),
+            row("สาขา", d.branch),
+            row("ประเภทสินค้า", d.category),
+            row("แบรนด์", d.brand),
+            row("กลุ่มสินค้า", d.productGroup),
+            row("กลุ่มย่อย", d.subGroup),
+            row("สีสินค้า", d.color),
+            row("ความหนา", d.thickness),
+            row("รหัสแม่พิมพ์", d.mold),
+            row("SKU", d.sku)
+          ].join(""))}
+
+          ${section("3. เงื่อนไขจำกัด", "🔒", [
+            row("จำนวนจำกัด", `<span style="color:#7c3aed;font-weight:700;font-size:15px;">${Number(d.limitedQty).toLocaleString()} ${d.limitedUnit}</span>`),
+            row("ส่วนลด / ราคาพิเศษ", `<span style="color:#059669;font-weight:600;">${discountDisplay}</span>`),
+            row("วันที่เริ่ม", d.dealStart),
+            row("วันที่สิ้นสุด", d.dealEnd)
+          ].join(""))}
+
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:14px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;">
+          <button onclick="document.getElementById('dealLimitConfirmModal').remove()"
+                  style="padding:8px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:14px;cursor:pointer;font-family:inherit;">
+            ยกเลิก
+          </button>
+          <button id="dealLimitConfirmSaveBtn"
+                  style="padding:8px 24px;border:none;border-radius:6px;background:#7c3aed;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+            <i class="bi bi-save"></i> ยืนยันบันทึก
+          </button>
+        </div>
+
+      </div>
+    </div>`;
+
+  document.body.insertAdjacentHTML("beforeend", html);
+
+  document.getElementById("dealLimitConfirmModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.remove();
+  });
+
+  document.getElementById("dealLimitConfirmSaveBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("dealLimitConfirmSaveBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin" style="width:16px;height:16px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> กำลังบันทึก...`;
+
+    try {
+      let res;
+      if (isEditing && editingId) {
+        res = await fetch(
+          `${window.API_BASE}/api/suppliers/${supplierNo}/deals/${editingId}`,
+          { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+        );
+      } else {
+        res = await fetch(
+          `${window.API_BASE}/api/suppliers/${supplierNo}/deals`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+        );
+      }
+
+      document.getElementById("dealLimitConfirmModal")?.remove();
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText);
+      }
+
+      window.showSaveMessage(isEditing ? "✅ แก้ไขดีลจำกัดสำเร็จ" : "✅ บันทึกดีลจำกัดสำเร็จ");
+      cancelDealLimitEdit();
+      await loadDealLimitList(supplierNo);
+
+    } catch (err) {
+      console.error("❌ Save deal limit error:", err);
+      window.showSaveMessage("❌ บันทึกดีลจำกัดไม่สำเร็จ: " + err.message, true);
+    }
+  });
+}

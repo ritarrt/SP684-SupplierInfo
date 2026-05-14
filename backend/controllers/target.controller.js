@@ -231,6 +231,15 @@ OUTER APPLY (
               SELECT 1
               FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''), ',') bc_s
               CROSS JOIN (
+                SELECT CAST(NULL AS NVARCHAR(10)) AS gc_val
+                WHERE NULLIF(t.product_group_code,'') IS NULL
+                UNION ALL
+                SELECT LTRIM(RTRIM(gc_s.value))
+                FROM STRING_SPLIT(REPLACE(ISNULL(t.product_group_code,''),' ',''), ',') gc_s
+                WHERE LTRIM(RTRIM(gc_s.value)) <> ''
+                  AND NULLIF(t.product_group_code,'') IS NOT NULL
+              ) grp_s
+              CROSS JOIN (
                 SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
                 WHERE NULLIF(t.sub_group_code,'') IS NULL
                 UNION ALL
@@ -243,12 +252,8 @@ OUTER APPLY (
                 AND r.SKU LIKE CONCAT(
                   'E',
                   RIGHT('000' + LTRIM(RTRIM(bc_s.value)), 3),   -- brand 3 หลัก
-                  CASE WHEN NULLIF(t.product_group_code,'') IS NULL THEN ''
-                       ELSE RIGHT('00' + LTRIM(RTRIM(
-                              (SELECT TOP 1 LTRIM(RTRIM(gc_s.value))
-                               FROM STRING_SPLIT(REPLACE(t.product_group_code,' ',''),',') gc_s
-                               WHERE LTRIM(RTRIM(gc_s.value))<>'')
-                            )), 2)
+                  CASE WHEN grp_s.gc_val IS NULL THEN ''
+                       ELSE RIGHT('00' + grp_s.gc_val, 2)       -- group 2 หลัก
                   END,
                   CASE WHEN sub_s.sub_val IS NULL THEN '%'
                        ELSE RIGHT('00' + sub_s.sub_val, 2) + '%'  -- sub 2 หลัก
@@ -261,6 +266,15 @@ OUTER APPLY (
             AND EXISTS (
               SELECT 1
               FROM STRING_SPLIT(REPLACE(ISNULL(t.brand_code,''),' ',''), ',') bc_s
+              CROSS JOIN (
+                SELECT CAST(NULL AS NVARCHAR(10)) AS gc_val
+                WHERE NULLIF(t.product_group_code,'') IS NULL
+                UNION ALL
+                SELECT LTRIM(RTRIM(gc_s.value))
+                FROM STRING_SPLIT(REPLACE(ISNULL(t.product_group_code,''),' ',''), ',') gc_s
+                WHERE LTRIM(RTRIM(gc_s.value)) <> ''
+                  AND NULLIF(t.product_group_code,'') IS NOT NULL
+              ) grp_s
               CROSS JOIN (
                 SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
                 WHERE NULLIF(t.sub_group_code,'') IS NULL
@@ -280,12 +294,8 @@ OUTER APPLY (
                     WHEN 'C-Line'   THEN 'C'
                   END,
                   RIGHT('00' + LTRIM(RTRIM(bc_s.value)), 2),    -- brand 2 หลัก
-                  CASE WHEN NULLIF(t.product_group_code,'') IS NULL THEN ''
-                       ELSE RIGHT('00' + LTRIM(RTRIM(
-                              (SELECT TOP 1 LTRIM(RTRIM(gc_s.value))
-                               FROM STRING_SPLIT(REPLACE(t.product_group_code,' ',''),',') gc_s
-                               WHERE LTRIM(RTRIM(gc_s.value))<>'')
-                            )), 2)
+                  CASE WHEN grp_s.gc_val IS NULL THEN ''
+                       ELSE RIGHT('00' + grp_s.gc_val, 2)       -- group 2 หลัก
                   END,
                   CASE WHEN sub_s.sub_val IS NULL THEN '%'
                        ELSE RIGHT('000' + sub_s.sub_val, 3) + '%'  -- sub 3 หลัก
@@ -406,6 +416,15 @@ OUTER APPLY (
               SELECT 1
               FROM STRING_SPLIT(REPLACE(ISNULL(sub.brand_code,''),' ',''), ',') bc_s
               CROSS JOIN (
+                SELECT CAST(NULL AS NVARCHAR(10)) AS gc_val
+                WHERE NULLIF(sub.product_group_code,'') IS NULL
+                UNION ALL
+                SELECT LTRIM(RTRIM(gc_s.value))
+                FROM STRING_SPLIT(REPLACE(ISNULL(sub.product_group_code,''),' ',''), ',') gc_s
+                WHERE LTRIM(RTRIM(gc_s.value)) <> ''
+                  AND NULLIF(sub.product_group_code,'') IS NOT NULL
+              ) grp_s
+              CROSS JOIN (
                 SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
                 WHERE NULLIF(sub.sub_group_code,'') IS NULL
                 UNION ALL
@@ -418,12 +437,8 @@ OUTER APPLY (
                 AND r.SKU LIKE CONCAT(
                   'E',
                   RIGHT('000' + LTRIM(RTRIM(bc_s.value)), 3),   -- brand 3 หลัก
-                  CASE WHEN NULLIF(sub.product_group_code,'') IS NULL THEN ''
-                       ELSE RIGHT('00' + LTRIM(RTRIM(
-                              (SELECT TOP 1 LTRIM(RTRIM(gc_s.value))
-                               FROM STRING_SPLIT(REPLACE(sub.product_group_code,' ',''),',') gc_s
-                               WHERE LTRIM(RTRIM(gc_s.value))<>'')
-                            )), 2)
+                  CASE WHEN grp_s.gc_val IS NULL THEN ''
+                       ELSE RIGHT('00' + grp_s.gc_val, 2)       -- group 2 หลัก
                   END,
                   CASE WHEN sub_s.sub_val IS NULL THEN '%'
                        ELSE RIGHT('00' + sub_s.sub_val, 2) + '%'  -- sub 2 หลัก
@@ -436,6 +451,15 @@ OUTER APPLY (
             AND EXISTS (
               SELECT 1
               FROM STRING_SPLIT(REPLACE(ISNULL(sub.brand_code,''),' ',''), ',') bc_s
+              CROSS JOIN (
+                SELECT CAST(NULL AS NVARCHAR(10)) AS gc_val
+                WHERE NULLIF(sub.product_group_code,'') IS NULL
+                UNION ALL
+                SELECT LTRIM(RTRIM(gc_s.value))
+                FROM STRING_SPLIT(REPLACE(ISNULL(sub.product_group_code,''),' ',''), ',') gc_s
+                WHERE LTRIM(RTRIM(gc_s.value)) <> ''
+                  AND NULLIF(sub.product_group_code,'') IS NOT NULL
+              ) grp_s
               CROSS JOIN (
                 SELECT CAST(NULL AS NVARCHAR(10)) AS sub_val
                 WHERE NULLIF(sub.sub_group_code,'') IS NULL
@@ -455,12 +479,8 @@ OUTER APPLY (
                     WHEN 'C-Line'   THEN 'C'
                   END,
                   RIGHT('00' + LTRIM(RTRIM(bc_s.value)), 2),    -- brand 2 หลัก
-                  CASE WHEN NULLIF(sub.product_group_code,'') IS NULL THEN ''
-                       ELSE RIGHT('00' + LTRIM(RTRIM(
-                              (SELECT TOP 1 LTRIM(RTRIM(gc_s.value))
-                               FROM STRING_SPLIT(REPLACE(sub.product_group_code,' ',''),',') gc_s
-                               WHERE LTRIM(RTRIM(gc_s.value))<>'')
-                            )), 2)
+                  CASE WHEN grp_s.gc_val IS NULL THEN ''
+                       ELSE RIGHT('00' + grp_s.gc_val, 2)       -- group 2 หลัก
                   END,
                   CASE WHEN sub_s.sub_val IS NULL THEN '%'
                        ELSE RIGHT('000' + sub_s.sub_val, 3) + '%'  -- sub 3 หลัก

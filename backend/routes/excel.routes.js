@@ -12,17 +12,18 @@ import {
   publishDraft,
   discardDraft,
   getPendingDraft,
+  checkReadableSheets,
 } from "../controllers/excel.controller.js";
 
 const router = express.Router();
 
 router.post("/import",                    importExcelData);
 router.post("/preview",                   previewExcelData);
+router.post("/check-sheets",              checkReadableSheets);
 router.post("/debug-acc",                 debugAccExcel);
 router.get("/import-logs",                getImportLogs);
 router.get("/data",                       getImportData);
 router.get("/history/:logId",             getImportDataByLog);
-router.put("/data/:id",                   updateImportData);
 
 // Draft workflow
 router.get("/draft/:logId",               getDraftData);

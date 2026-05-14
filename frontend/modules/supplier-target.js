@@ -220,12 +220,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
   // ============================================================
-  // 4️⃣ Save Button
+  // 4️⃣ Save Button — เปิด Confirm Modal ก่อนบันทึก
   // ============================================================
   const submitBtn = document.getElementById("submitTgBtn");
 
   if (submitBtn) {
-    submitBtn.addEventListener("click", async () => {
+    submitBtn.addEventListener("click", () => {
 
       if (!window.supplierNo) return;
 
@@ -243,6 +243,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const brandLabels = [...document.querySelectorAll("#brandDropdown .item-checkbox:checked")].map(cb => cb.dataset.label || cb.value);
       const groupLabels = [...document.querySelectorAll("#groupDropdown .item-checkbox:checked")].map(cb => cb.dataset.label || cb.value);
       const subLabels   = [...document.querySelectorAll("#subDropdown .item-checkbox:checked")].map(cb => cb.dataset.label || cb.value);
+      const colorLabels = [...document.querySelectorAll("#colorDropdown .item-checkbox:checked")].map(cb => cb.dataset.label || cb.value);
+      const thickLabels = [...document.querySelectorAll("#thickDropdown .item-checkbox:checked")].map(cb => cb.dataset.label || cb.value);
 
       const benefitPeriod = document.getElementById("tgBenefit")?.value?.trim();
       const targetType = document.getElementById("tgType")?.value?.trim();
@@ -251,6 +253,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const startDate = document.getElementById("tgStart")?.value?.trim();
       const endDate = document.getElementById("tgEnd")?.value?.trim();
 
+      // --- Validation ---
       if (!targetName) return showToast("กรุณากรอกชื่อเป้าหมาย", true, "tgName");
       if (!category) return showToast("กรุณาเลือกประเภทสินค้า", true, "tgCat");
       if (brandCodes.length === 0) return showToast("กรุณาเลือกแบรนด์อย่างน้อย 1 รายการ", true);
@@ -263,20 +266,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!endDate) return showToast("กรุณาเลือกวันที่สิ้นสุดเป้า", true, "tgEnd");
       const startD = new Date(startDate);
       const endD = new Date(endDate);
-      const diffDays = (endD - startD) / (1000 * 60 * 60 * 24);
-      if (diffDays < 0) return showToast("วันที่สิ้นสุดต้องเป็นวันที่เดียวกับหรือหลังวันที่เริ่ม", true, "tgEnd");
+      if ((endD - startD) / (1000 * 60 * 60 * 24) < 0) return showToast("วันที่สิ้นสุดต้องเป็นวันที่เดียวกับหรือหลังวันที่เริ่ม", true, "tgEnd");
+
+      // --- Build payload ---
+      const regionValues  = getSelectedValues("regionDropdown").map(v => v.trim()).filter(v => v);
+      const provinceValues = getSelectedValues("provinceDropdown").map(v => v.trim()).filter(v => v);
+      const branchValues  = getSelectedValues("branchDropdown").map(v => v.trim()).filter(v => v);
+
+      const providerSelect = document.getElementById("tgProvider");
+      const providerText = providerSelect?.selectedOptions[0]?.textContent?.trim() || "-";
+      const parentSelect = document.getElementById("tgParent");
+      const parentText = parentSelect?.selectedOptions[0]?.textContent?.trim() || "-";
 
       const payload = {
         supplier_code: window.supplierNo,
-        provider_contact_id: document.getElementById("tgProvider")?.value || null,
+        provider_contact_id: providerSelect?.value || null,
         target_name: targetName,
-        parent_target_ref: document.getElementById("tgParent")?.value || null,
-        region: getSelectedValues("regionDropdown").map(v => v.trim()).filter(v => v).join(", ") || null,
-        province: getSelectedValues("provinceDropdown").map(v => v.trim()).filter(v => v).join(", ") || null,
-        branch: getSelectedValues("branchDropdown").map(v => v.trim()).filter(v => v).join(", ") || null,
+        parent_target_ref: parentSelect?.value || null,
+        region: regionValues.join(", ") || null,
+        province: provinceValues.join(", ") || null,
+        branch: branchValues.join(", ") || null,
         category: category,
-
-        // multi-value fields — comma-separated codes (null ถ้าไม่เลือก)
         brand_code: brandCodes.length ? brandCodes.join(",") : null,
         brand_name: brandLabels.length ? brandLabels.join(",") : null,
         group_code: groupCodes.length ? groupCodes.join(",") : null,
@@ -285,43 +295,188 @@ document.addEventListener("DOMContentLoaded", async () => {
         sub_group_name: subLabels.length ? subLabels.join(",") : null,
         color: colorCodes.length ? colorCodes.join(",") : null,
         thickness: thickCodes.length ? thickCodes.join(",") : null,
-
         mold: document.getElementById("tgMold")?.value || "",
         sku: document.getElementById("tgSku")?.value || "",
-
         benefit_period: benefitPeriod,
         target_type: targetType,
         target_qty: targetQty,
         target_unit: targetUnit,
-
         start_date: convertToCE(startDate),
         end_date: convertToCE(endDate)
       };
 
-      try {
-        const res = await fetch(`${API_BASE}/api/targets`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        const result = await res.json();
-
-        if (result.success) {
-          showToast("บันทึกเป้าสินค้าสำเร็จ", false);
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
-        } else {
-          showToast(result.message || "บันทึกไม่สำเร็จ", true);
+      // --- แสดง Confirm Modal ---
+      showTargetConfirmModal({
+        payload,
+        displayData: {
+          targetName,
+          providerText,
+          parentText,
+          category,
+          region: regionValues.join(", ") || "ทั้งหมด",
+          province: provinceValues.join(", ") || "ทั้งหมด",
+          branch: branchValues.join(", ") || "ทั้งหมด",
+          brandLabels,
+          groupLabels,
+          subLabels,
+          colorLabels,
+          thickLabels,
+          mold: document.getElementById("tgMold")?.value || "-",
+          sku: document.getElementById("tgSku")?.value || "-",
+          benefitPeriod,
+          targetType,
+          targetQty,
+          targetUnit,
+          startDate,
+          endDate
         }
-
-      } catch (err) {
-        console.error("Save Target Error:", err);
-        showToast("เกิดข้อผิดพลาด กรุณาลองใหม่", true);
-      }
+      });
     });
   }
+
+// ============================================================
+// CONFIRM MODAL — แสดงสรุปข้อมูลก่อนบันทึก
+// ============================================================
+function showTargetConfirmModal({ payload, displayData: d }) {
+
+  // ลบ modal เก่าถ้ามี
+  document.getElementById("tgConfirmModal")?.remove();
+
+  function row(label, value) {
+    if (!value || value === "-" || value === "ทั้งหมด" && label !== "ภาค" && label !== "จังหวัด" && label !== "สาขา") {
+      return `<tr>
+        <td style="padding:6px 10px;color:#6b7280;font-size:13px;white-space:nowrap;width:160px;">${label}</td>
+        <td style="padding:6px 10px;color:#9ca3af;font-size:13px;">-</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td style="padding:6px 10px;color:#6b7280;font-size:13px;white-space:nowrap;width:160px;">${label}</td>
+      <td style="padding:6px 10px;font-weight:500;font-size:13px;">${value}</td>
+    </tr>`;
+  }
+
+  function section(title, icon, rows) {
+    return `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;">
+          ${icon} ${title}
+        </div>
+        <table style="width:100%;border-collapse:collapse;">${rows}</table>
+      </div>`;
+  }
+
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return "-";
+    const [y, m, dd] = dateStr.split("-");
+    return `${dd}/${m}/${parseInt(y) + 543}`;
+  };
+
+  const html = `
+    <div id="tgConfirmModal"
+         style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);">
+      <div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);width:100%;max-width:620px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+
+        <!-- Header -->
+        <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;background:#2563eb;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+              <i class="bi bi-clipboard-check" style="color:#fff;font-size:16px;"></i>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:15px;">ตรวจสอบข้อมูลก่อนบันทึก</div>
+              <div style="font-size:12px;color:#6b7280;">กรุณาตรวจสอบความถูกต้องก่อนยืนยัน</div>
+            </div>
+          </div>
+          <button onclick="document.getElementById('tgConfirmModal').remove()"
+                  style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:20px;line-height:1;">✕</button>
+        </div>
+
+        <!-- Body (scrollable) -->
+        <div style="padding:20px;overflow-y:auto;flex:1;">
+
+          ${section("1. ข้อมูลพื้นฐาน", "📋", [
+            row("ชื่อเป้าหมาย", `<span style="color:#111827;font-size:14px;">${d.targetName}</span>`),
+            row("ผู้ให้เป้า", d.providerText),
+            row("เป้าหลัก (Parent)", d.parentText)
+          ].join(""))}
+
+          ${section("2. ขอบเขต (Scope)", "🎯", [
+            row("ภาค", d.region),
+            row("จังหวัด", d.province),
+            row("สาขา", d.branch),
+            row("ประเภทสินค้า", d.category),
+            row("แบรนด์", d.brandLabels.join(", ") || "-"),
+            row("กลุ่มสินค้า", d.groupLabels.join(", ") || "-"),
+            row("กลุ่มย่อย", d.subLabels.join(", ") || "-"),
+            row("สีสินค้า", d.colorLabels.join(", ") || "-"),
+            row("ความหนา", d.thickLabels.join(", ") || "-"),
+            row("รหัสแม่พิมพ์", d.mold),
+            row("SKU", d.sku)
+          ].join(""))}
+
+          ${section("3. เงื่อนไขเป้าหมาย", "📊", [
+            row("ระยะเวลาได้รับผลประโยชน์", d.benefitPeriod),
+            row("ประเภทเป้า", d.targetType),
+            row("เป้าหมาย", `<span style="color:#059669;font-weight:700;font-size:15px;">${Number(d.targetQty).toLocaleString()} ${d.targetUnit}</span>`),
+            row("วันที่เริ่ม", formatDateDisplay(d.startDate)),
+            row("วันที่สิ้นสุด", formatDateDisplay(d.endDate))
+          ].join(""))}
+
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:14px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;">
+          <button onclick="document.getElementById('tgConfirmModal').remove()"
+                  style="padding:8px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:14px;cursor:pointer;font-family:inherit;">
+            ยกเลิก
+          </button>
+          <button id="tgConfirmSaveBtn"
+                  style="padding:8px 24px;border:none;border-radius:6px;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+            <i class="bi bi-save"></i> ยืนยันบันทึก
+          </button>
+        </div>
+
+      </div>
+    </div>`;
+
+  document.body.insertAdjacentHTML("beforeend", html);
+
+  // ปิด modal เมื่อคลิก backdrop
+  document.getElementById("tgConfirmModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.remove();
+  });
+
+  // ปุ่มยืนยัน → ส่ง API
+  document.getElementById("tgConfirmSaveBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("tgConfirmSaveBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin" style="width:16px;height:16px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> กำลังบันทึก...`;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/targets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+
+      document.getElementById("tgConfirmModal")?.remove();
+
+      if (result.success) {
+        showToast("บันทึกเป้าสินค้าสำเร็จ", false);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        showToast(result.message || "บันทึกไม่สำเร็จ", true);
+      }
+
+    } catch (err) {
+      console.error("Save Target Error:", err);
+      document.getElementById("tgConfirmModal")?.remove();
+      showToast("เกิดข้อผิดพลาด กรุณาลองใหม่", true);
+    }
+  });
+}
 
   // ============================================================
 // 🔥 REGION → PROVINCE (MULTI)

@@ -325,85 +325,60 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btn = document.getElementById("submitMoqBtn");
   if (!btn) return;
 
-  btn.addEventListener("click", async () => {
+  btn.addEventListener("click", () => {
 
     const moqNameInput = document.getElementById("moqName");
-const moqNameError = document.getElementById("moqNameError");
+    const moqNameError = document.getElementById("moqNameError");
+    const moqName = moqNameInput.value.trim();
 
-const moqName = moqNameInput.value.trim();
+    if (!moqName) {
+      moqNameInput.classList.add("border-red-500");
+      moqNameError.classList.remove("hidden");
+      moqNameInput.focus();
+      return;
+    } else {
+      moqNameInput.classList.remove("border-red-500");
+      moqNameError.classList.add("hidden");
+    }
 
-if (!moqName) {
-  moqNameInput.classList.add("border-red-500");
-  moqNameError.classList.remove("hidden");
-  moqNameInput.focus();
-  return;
-} else {
-  moqNameInput.classList.remove("border-red-500");
-  moqNameError.classList.add("hidden");
-}
+    const regionValues  = getCheckedValues("moqRegionDropdown");
+    const branchValues  = getCheckedValues("moqBranchDropdown");
+    const brandValues   = getCheckboxValues("moqBrandDropdown");
+    const groupValues   = getCheckboxValues("moqGroupDropdown");
+    const subValues     = getCheckboxValues("moqSubDropdown");
+    const colorValues   = getCheckboxValues("moqColorDropdown");
+    const thickValues   = getCheckboxValues("moqThickDropdown");
+    const deliveryBranchValues = getCheckboxValues("moqDeliveryBranchDropdown");
+
+    const hasMin = document.getElementById("moqHasMin")?.value === "yes";
 
     const payload = {
       moq_name: moqName,
-
-      // 🔥 FIX multi-select
-      region: getCheckedValues("moqRegionDropdown").join(","),
-branch: getCheckedValues("moqBranchDropdown").join(","),
-
+      region: regionValues.join(","),
+      branch: branchValues.join(","),
       category: document.getElementById("moqCat")?.value,
-
-      // 🔥 FIX normalize
-      brand: getCheckboxValues("moqBrandDropdown").join(",") || null,
-      brand_code: getCheckboxValues("moqBrandDropdown").join(",") || null,
-
-      product_group: getCheckboxValues("moqGroupDropdown").join(",") || null,
-      product_group_code: getCheckboxValues("moqGroupDropdown").join(",") || null,
-
-      sub_group: getCheckboxValues("moqSubDropdown").join(",") || null,
-      sub_group_code: getCheckboxValues("moqSubDropdown").join(",") || null,
-
-      color: getCheckboxValues("moqColorDropdown").join(",") || null,
+      brand: brandValues.join(",") || null,
+      brand_code: brandValues.join(",") || null,
+      product_group: groupValues.join(",") || null,
+      product_group_code: groupValues.join(",") || null,
+      sub_group: subValues.join(",") || null,
+      sub_group_code: subValues.join(",") || null,
+      color: colorValues.join(",") || null,
       mold: document.getElementById("moqMold")?.value,
-      thickness: getCheckboxValues("moqThickDropdown").join(",") || null,
-
+      thickness: thickValues.join(",") || null,
       sku: document.getElementById("moqSku")?.value,
-
       moq_type: document.getElementById("moqType")?.value,
       vehicle_type: document.getElementById("moqVehicle")?.value,
-      delivery_branch: getCheckboxValues("moqDeliveryBranchDropdown").join(",") || null,
+      delivery_branch: deliveryBranchValues.join(",") || null,
       measure_type: document.getElementById("moqMeasure")?.value,
-
-      has_min: document.getElementById("moqHasMin")?.value === "yes",
-      moq_qty_operator: document.getElementById("moqHasMin")?.value === "yes"
-        ? document.getElementById("moqQtyOperator")?.value
-        : null,
-      moq_qty: document.getElementById("moqHasMin")?.value === "yes"
-        ? Number(document.getElementById("moqQty")?.value || 0)
-        : null,
-      moq_unit: document.getElementById("moqHasMin")?.value === "yes"
-        ? document.getElementById("moqUnit")?.value
-        : null,
+      has_min: hasMin,
+      moq_qty_operator: hasMin ? document.getElementById("moqQtyOperator")?.value : null,
+      moq_qty: hasMin ? Number(document.getElementById("moqQty")?.value || 0) : null,
+      moq_unit: hasMin ? document.getElementById("moqUnit")?.value : null,
     };
 
-    try {
-      const res = await fetch(
-        `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/moq`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      if (!res.ok) throw new Error(await res.text());
-
-      showSaveMessage("บันทึก MOQ สำเร็จ");
-
-      setTimeout(() => window.location.reload(), 800);
-
-    } catch (err) {
-      console.error("❌ MOQ save error", err);
-      showSaveMessage("บันทึก MOQ ไม่สำเร็จ", true);
-    }
+    // --- แสดง Confirm Modal ---
+    showMoqConfirmModal({ payload, supplierNo });
   });
 
   setupModalEvents();
@@ -699,3 +674,128 @@ window.onMoqRegionChange = onMoqRegionChange;
 window.toggleMoqStatus = toggleMoqStatus;
 window.setMoqFilter = setMoqFilter;
 window.renderMoqTable = renderMoqTable;
+
+// ============================================================
+// MOQ CONFIRM MODAL
+// ============================================================
+function showMoqConfirmModal({ payload, supplierNo }) {
+
+  document.getElementById("moqConfirmModal")?.remove();
+
+  function row(label, value) {
+    const display = value && value !== "-" ? value : `<span style="color:#9ca3af;">-</span>`;
+    return `<tr>
+      <td style="padding:6px 10px;color:#6b7280;font-size:13px;white-space:nowrap;width:180px;">${label}</td>
+      <td style="padding:6px 10px;font-weight:500;font-size:13px;">${display}</td>
+    </tr>`;
+  }
+
+  function section(title, icon, rows) {
+    return `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;">
+          ${icon} ${title}
+        </div>
+        <table style="width:100%;border-collapse:collapse;">${rows}</table>
+      </div>`;
+  }
+
+  const html = `
+    <div id="moqConfirmModal"
+         style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);">
+      <div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);width:100%;max-width:600px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+
+        <!-- Header -->
+        <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;background:#2563eb;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+              <i class="bi bi-clipboard-check" style="color:#fff;font-size:16px;"></i>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:15px;">ตรวจสอบข้อมูลก่อนบันทึก</div>
+              <div style="font-size:12px;color:#6b7280;">เงื่อนไขการสั่ง/ส่งสินค้า (MOQ)</div>
+            </div>
+          </div>
+          <button onclick="document.getElementById('moqConfirmModal').remove()"
+                  style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:20px;line-height:1;">✕</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding:20px;overflow-y:auto;flex:1;">
+
+          ${section("1. ข้อมูลพื้นฐาน", "📋", [
+            row("ชื่อเงื่อนไข", `<span style="color:#111827;font-size:14px;">${payload.moq_name}</span>`),
+            row("ประเภท MOQ", payload.moq_type || "-"),
+            row("ประเภทรถ", payload.vehicle_type || "-"),
+            row("วิธีวัด", payload.measure_type || "-")
+          ].join(""))}
+
+          ${section("2. ขอบเขต (Scope)", "🎯", [
+            row("ภาค", payload.region || "ทั้งหมด"),
+            row("สาขา", payload.branch || "ทั้งหมด"),
+            row("สาขาที่ส่ง", payload.delivery_branch || "ทั้งหมด"),
+            row("ประเภทสินค้า", payload.category || "-"),
+            row("แบรนด์", payload.brand || "-"),
+            row("กลุ่มสินค้า", payload.product_group || "-"),
+            row("กลุ่มย่อย", payload.sub_group || "-"),
+            row("สีสินค้า", payload.color || "-"),
+            row("ความหนา", payload.thickness || "-"),
+            row("รหัสแม่พิมพ์", payload.mold || "-"),
+            row("SKU", payload.sku || "-")
+          ].join(""))}
+
+          ${section("3. เงื่อนไข MOQ", "📦", [
+            row("มีจำนวนขั้นต่ำ", payload.has_min ? "ใช่" : "ไม่มี"),
+            ...(payload.has_min ? [
+              row("เงื่อนไขจำนวน", payload.moq_qty_operator || "-"),
+              row("จำนวนขั้นต่ำ", `<span style="color:#059669;font-weight:700;font-size:15px;">${Number(payload.moq_qty || 0).toLocaleString()} ${payload.moq_unit || ""}</span>`)
+            ] : [])
+          ].join(""))}
+
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:14px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;">
+          <button onclick="document.getElementById('moqConfirmModal').remove()"
+                  style="padding:8px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:14px;cursor:pointer;font-family:inherit;">
+            ยกเลิก
+          </button>
+          <button id="moqConfirmSaveBtn"
+                  style="padding:8px 24px;border:none;border-radius:6px;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+            <i class="bi bi-save"></i> ยืนยันบันทึก
+          </button>
+        </div>
+
+      </div>
+    </div>`;
+
+  document.body.insertAdjacentHTML("beforeend", html);
+
+  document.getElementById("moqConfirmModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.remove();
+  });
+
+  document.getElementById("moqConfirmSaveBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("moqConfirmSaveBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin" style="width:16px;height:16px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> กำลังบันทึก...`;
+
+    try {
+      const res = await fetch(
+        `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/moq`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+      );
+
+      document.getElementById("moqConfirmModal")?.remove();
+
+      if (!res.ok) throw new Error(await res.text());
+
+      showSaveMessage("บันทึก MOQ สำเร็จ");
+      setTimeout(() => window.location.reload(), 800);
+
+    } catch (err) {
+      console.error("❌ MOQ save error", err);
+      showSaveMessage("บันทึก MOQ ไม่สำเร็จ", true);
+    }
+  });
+}
