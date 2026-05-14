@@ -550,9 +550,9 @@ function collectProductCoverage() {
         row.querySelector(".group-display span")?.textContent || null,
 
       subGroup: row.dataset.subGroup || null,
-      SUBGROUP_NAME:
+      subGroup_name:
         row.querySelector(".subgroup-display span")?.textContent || null,
-      sku: skuList.length > 0 ? skuList.join(", ") : null, // รวมกลับด้วย ", "
+      sku: skuList.length > 0 ? skuList.join(", ") : null,
       packageSize: row.querySelector(".package-size-input")?.value || null
     };
   });
@@ -651,16 +651,13 @@ async function applyCoverageToRow(row, item) {
 if (item.subGroup) {
   row.dataset.subGroup = item.subGroup;
 
-  await loadSubGroupsForRow(row);
-
   const dd = row.querySelector(".subgroup-dropdown");
-  const input = dd.querySelector(`input[value="${item.subGroup}"]`);
+  const input = dd?.querySelector(`input[value="${item.subGroup}"]`);
 
   if (input) {
     row.querySelector(".subgroup-display span").textContent =
       input.parentElement.textContent.trim();
   } else if (item.subGroup_name) {
-    // ⭐ fallback
     row.querySelector(".subgroup-display span").textContent =
       item.subGroup_name;
   }

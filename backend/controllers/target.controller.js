@@ -162,9 +162,10 @@ SELECT
         WHEN t.category = 'Sealant' THEN bs.BRAND_NAME
         WHEN t.category = 'Accessories' THEN accb.BRAND_NAME
     END AS brand_name,
-    -- group_name: ใช้ t.product_group ที่เก็บ name ไว้แล้ว
+    -- group_name: ใช้ t.product_group ที่เก็บ name ไว้แล้ว fallback ไป code ถ้า name ว่าง
     CASE
         WHEN t.product_group IS NOT NULL AND t.product_group <> '' THEN t.product_group
+        WHEN t.product_group_code IS NOT NULL AND t.product_group_code <> '' THEN t.product_group_code
         ELSE accg.GroupName
     END AS group_name,
     ISNULL(a.actual_qty,0) AS actual_qty,

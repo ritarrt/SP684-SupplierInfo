@@ -1016,6 +1016,7 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
     console.log(`[Glass Parser] Prepared ${insertRows.length} rows, inserting in batches...`);
 
     // Batch insert 200 rows ต่อครั้ง
+    // Batch insert — 10 params/row → 200×10=2,000 < 2,100 limit (ปลอดภัย)
     const BATCH_SIZE = 200;
     const insertCols = hasSellingPrices
       ? `branch, product_type, sku, product_name, brand, unit,
@@ -1092,6 +1093,356 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
   } catch (err) {
     console.error('[Glass Parser] Fatal error:', err);
     return 0;
+  }
+}
+
+/**
+ * =====================================================
+ * Helper: Import Accessories (ACC) Data from Excel Buffer
+ * =====================================================
+ *
+ * โครงสร้างไฟล์ ACC1.xlsx:
+ *   Row 0 (index 0) = header row
+ *   Row 1+          = ข้อมูลสินค้า
+ *
+ * Column mapping (0-based index):
+ *   col 0  (A) = SKU
+ *   col 1  (B) = Brand
+ *   col 2  (C) = Description       → product_name
+ *   col 4  (E) = Package Size ชิ้น → unit
+ *   col 7  (H) = ราคาตั้งไม่รวมVAT → base_price
+ *   col 9  (J) = REก่อนVAT         → discount_price_1
+ *   col 10 (K) = SDM               → selling_price_sdm
+ *   col 11 (L) = W1                → selling_price_w1
+ *   col 12 (M) = W2                → selling_price_w2
+ *   col 13 (N) = R1                → selling_price_r1
+ *   col 14 (O) = R2                → selling_price_r2
+ *
+ * ราคาเดียวใช้ทุกสาขา → expand 1 SKU × N สาขา (จาก BranchMaster)
+ * ข้ามแถวที่: SKU ว่าง หรือ ไม่มีราคาใดเลย (W1=W2=R1=R2=SDM=0)
+ * =====================================================
+ */
+async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null) {
+  let imported = 0;
+
+  try {
+    console.log(`[ACC Parser] Starting import for sheet: ${sheetName}`);
+
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[sheetName] || workbook.Sheets[workbook.SheetNames[0]];
+    if (!worksheet) {
+      console.error(`[ACC Parser] Sheet "${sheetName}" not found`);
+      return 0;
+    }
+
+    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    console.log(`[ACC Parser] Raw rows: ${rawData.length}`);
+
+    // โหลด branch list จาก BranchMaster
+    const { allBranchCodes } = await loadBranchMapping();
+    console.log(`[ACC Parser] Branch codes: ${allBranchCodes.length}`);
+
+    // โหลด productName จาก StockStatusFact: sku → productName (ใช้ชื่อจาก DB แทน Excel)
+    console.log('[ACC Parser] Loading productName from StockStatusFact...');
+    const skuNameResult = await pool.request().query(`
+      SELECT DISTINCT skuNumber, productName
+      FROM StockStatusFact
+      WHERE category = 'Accessories' AND skuNumber LIKE 'E%'
+    `);
+    const skuNameMap = {};
+    skuNameResult.recordset.forEach(r => {
+      if (r.skuNumber && r.productName) skuNameMap[r.skuNumber] = r.productName;
+    });
+    console.log(`[ACC Parser] Loaded ${Object.keys(skuNameMap).length} SKU names from StockStatusFact`);
+
+    // ตรวจสอบ columns ที่มีใน DB
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
+    `);
+    const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasSellingPrices   = dbCols.includes('selling_price_w1');
+    const hasSellingPriceSdm = dbCols.includes('selling_price_sdm');
+
+    const fv = v => {
+      if (v === undefined || v === null || v === '' || v === '-') return 0;
+      const n = parseFloat(String(v).replace(/,/g, ''));
+      return isNaN(n) ? 0 : n;
+    };
+
+    // Parse rows — row 0 คือ header ข้ามไป
+    const insertRows = [];
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+      if (!row) continue;
+
+      const sku            = row[0]  !== undefined ? String(row[0]).trim()  : '';
+      const brand          = row[1]  !== undefined ? String(row[1]).trim()  : '';
+      const productNameRaw = row[2]  !== undefined ? String(row[2]).trim()  : '';
+      const unit           = row[4]  !== undefined ? String(row[4]).trim()  : '';
+      const basePrice      = fv(row[7]);   // H: ราคาตั้งไม่รวมVAT
+      const reExVat        = fv(row[9]);   // J: REก่อนVAT → discount_price_1
+      const sdm            = fv(row[10]);  // K: SDM
+      const w1             = fv(row[11]);  // L: W1
+      const w2             = fv(row[12]);  // M: W2
+      const r1             = fv(row[13]);  // N: R1
+      const r2             = fv(row[14]);  // O: R2
+
+      // ข้ามแถวที่ไม่มี SKU
+      if (!sku) continue;
+
+      // ข้ามแถวที่ไม่มีราคาใดเลย
+      if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && reExVat === 0) continue;
+
+      // ใช้ชื่อจาก StockStatusFact ถ้ามี ไม่งั้น fallback ไปชื่อจาก Excel
+      const productName = skuNameMap[sku] || productNameRaw;
+
+      // expand ทุกสาขา
+      for (const branchCode of allBranchCodes) {
+        insertRows.push({ branchCode, sku, brand, productName, unit, basePrice, reExVat, sdm, w1, w2, r1, r2 });
+      }
+    }
+
+    console.log(`[ACC Parser] Rows to insert: ${insertRows.length} (${insertRows.length / allBranchCodes.length} SKUs × ${allBranchCodes.length} branches)`);
+
+    if (insertRows.length === 0) {
+      console.warn('[ACC Parser] No rows to insert');
+      return 0;
+    }
+
+    // Build insert columns
+    let insertCols;
+    if (hasSellingPrices && hasSellingPriceSdm) {
+      insertCols = `branch, product_type, sku, product_name, brand, unit,
+        base_price, discount_price_1, discount_price_2, discount_price_3,
+        project_no, project_discount_1, project_discount_2, project_price,
+        carton_price, shipping_cost, free_item,
+        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+        selling_price_sdm, import_log_id`;
+    } else if (hasSellingPrices) {
+      insertCols = `branch, product_type, sku, product_name, brand, unit,
+        base_price, discount_price_1, discount_price_2, discount_price_3,
+        project_no, project_discount_1, project_discount_2, project_price,
+        carton_price, shipping_cost, free_item,
+        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+        import_log_id`;
+    } else {
+      insertCols = `branch, product_type, sku, product_name, brand, unit,
+        base_price, discount_price_1, discount_price_2, discount_price_3,
+        project_no, project_discount_1, project_discount_2, project_price,
+        carton_price, shipping_cost, free_item, import_log_id`;
+    }
+
+    // Batch insert — จำกัด 150 rows ต่อ batch
+    // (แต่ละ row มี ~13 parameters → 150 × 13 = 1,950 < SQL Server limit 2,100)
+    const BATCH_SIZE = 150;
+    for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
+      const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
+      const req = pool.request();
+      const valueParts = [];
+
+      batch.forEach((r, idx) => {
+        req.input(`branch${idx}`,      sql.NVarChar(100), r.branchCode);
+        req.input(`sku${idx}`,         sql.NVarChar(50),  r.sku);
+        req.input(`productName${idx}`, sql.NVarChar(255), r.productName);
+        req.input(`brand${idx}`,       sql.NVarChar(100), r.brand);
+        req.input(`unit${idx}`,        sql.NVarChar(50),  r.unit);
+        req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
+        req.input(`reExVat${idx}`,     sql.Decimal(18,2), r.reExVat);
+        req.input(`w1_${idx}`,         sql.Decimal(18,2), r.w1);
+        req.input(`w2_${idx}`,         sql.Decimal(18,2), r.w2);
+        req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1);
+        req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2);
+        req.input(`logId${idx}`,       sql.Int,           logId);
+        if (hasSellingPriceSdm) req.input(`sdm${idx}`, sql.Decimal(18,2), r.sdm);
+
+        if (hasSellingPrices && hasSellingPriceSdm) {
+          valueParts.push(
+            `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
+            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@sdm${idx},@logId${idx})`
+          );
+        } else if (hasSellingPrices) {
+          valueParts.push(
+            `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
+            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@logId${idx})`
+          );
+        } else {
+          valueParts.push(
+            `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
+            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',@logId${idx})`
+          );
+        }
+      });
+
+      try {
+        await req.query(`INSERT INTO excel_import_data (${insertCols}) VALUES ${valueParts.join(',')}`);
+        imported += batch.length;
+        console.log(`[ACC Parser] Inserted ${imported}/${insertRows.length}`);
+      } catch (err) {
+        console.error(`[ACC Parser] Batch insert error at ${batchStart}:`, err.message);
+        // fallback: insert ทีละ row
+        for (const r of batch) {
+          try {
+            const singleReq = pool.request()
+              .input('branch',      sql.NVarChar(100), r.branchCode)
+              .input('sku',         sql.NVarChar(50),  r.sku)
+              .input('productName', sql.NVarChar(255), r.productName)
+              .input('brand',       sql.NVarChar(100), r.brand)
+              .input('unit',        sql.NVarChar(50),  r.unit)
+              .input('basePrice',   sql.Decimal(18,2), r.basePrice)
+              .input('reExVat',     sql.Decimal(18,2), r.reExVat)
+              .input('w1',          sql.Decimal(18,2), r.w1)
+              .input('w2',          sql.Decimal(18,2), r.w2)
+              .input('r1',          sql.Decimal(18,2), r.r1)
+              .input('r2',          sql.Decimal(18,2), r.r2)
+              .input('logId',       sql.Int,           logId);
+            if (hasSellingPriceSdm) singleReq.input('sdm', sql.Decimal(18,2), r.sdm);
+
+            if (hasSellingPrices && hasSellingPriceSdm) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
+                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',
+                        @w1,@w2,@r1,@r2,@sdm,@logId)
+              `);
+            } else if (hasSellingPrices) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
+                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',
+                        @w1,@w2,@r1,@r2,@logId)
+              `);
+            } else {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
+                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',@logId)
+              `);
+            }
+            imported++;
+          } catch (e2) {
+            console.error(`[ACC Parser] Row insert error (${r.branchCode}/${r.sku}):`, e2.message);
+          }
+        }
+      }
+    }
+
+    console.log(`[ACC Parser] Done: ${imported} rows inserted`);
+    return imported;
+
+  } catch (err) {
+    console.error('[ACC Parser] Fatal error:', err);
+    return 0;
+  }
+}
+
+/**
+ * =====================================================
+ * Helper: Preview Accessories (ACC) Data
+ * =====================================================
+ */
+async function previewAccessoriesData(excelBuffer, sheetName) {
+  try {
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[sheetName] || workbook.Sheets[workbook.SheetNames[0]];
+    if (!worksheet) return { rows: [], allRows: [], totalSkus: 0, totalRows: 0, branches: [] };
+
+    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    const { allBranchCodes } = await loadBranchMapping();
+
+    // โหลด productName จาก StockStatusFact
+    const pool = await getPool();
+    const skuNameResult = await pool.request().query(`
+      SELECT DISTINCT skuNumber, productName
+      FROM StockStatusFact
+      WHERE category = 'Accessories' AND skuNumber LIKE 'E%'
+    `);
+    const skuNameMap = {};
+    skuNameResult.recordset.forEach(r => {
+      if (r.skuNumber && r.productName) skuNameMap[r.skuNumber] = r.productName;
+    });
+
+    const fv = v => {
+      if (v === undefined || v === null || v === '' || v === '-') return 0;
+      const n = parseFloat(String(v).replace(/,/g, ''));
+      return isNaN(n) ? 0 : n;
+    };
+
+    const previewRows = [];
+    const allRows = [];
+
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+      if (!row) continue;
+
+      const sku            = row[0]  !== undefined ? String(row[0]).trim()  : '';
+      const brand          = row[1]  !== undefined ? String(row[1]).trim()  : '';
+      const productNameRaw = row[2]  !== undefined ? String(row[2]).trim()  : '';
+      const unit           = row[4]  !== undefined ? String(row[4]).trim()  : '';
+      const basePrice      = fv(row[7]);
+      const reExVat        = fv(row[9]);
+      const sdm            = fv(row[10]);
+      const w1             = fv(row[11]);
+      const w2             = fv(row[12]);
+      const r1             = fv(row[13]);
+      const r2             = fv(row[14]);
+
+      if (!sku) continue;
+      if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && reExVat === 0) continue;
+
+      // ใช้ชื่อจาก StockStatusFact ถ้ามี ไม่งั้น fallback ไปชื่อจาก Excel
+      const productName = skuNameMap[sku] || productNameRaw;
+
+      // preview row (1 แถวต่อ SKU แสดงว่าจะ expand กี่สาขา)
+      previewRows.push({
+        sku,
+        productName,
+        brand,
+        branch: `ทุกสาขา (${allBranchCodes.length})`,
+        totalBranches: allBranchCodes.length,
+        unit,
+        base_price:        basePrice,
+        discount_price_1:  reExVat,
+        selling_price_sdm: sdm,
+        selling_price_w1:  w1,
+        selling_price_w2:  w2,
+        selling_price_r1:  r1,
+        selling_price_r2:  r2,
+        discount_pct_1: 0,
+        discount_pct_2: 0,
+        discount_pct_3: 0,
+      });
+
+      // allRows: expand เป็น full SKU|branch เพื่อเปรียบเทียบกับ DB
+      for (const branchCode of allBranchCodes) {
+        allRows.push({
+          sku,
+          branch: branchCode,
+          productName,
+          brand,
+          base_price:       basePrice,
+          discount_price_1: reExVat,
+          selling_price_w1: w1,
+          selling_price_w2: w2,
+          selling_price_r1: r1,
+          selling_price_r2: r2,
+        });
+      }
+    }
+
+    return {
+      rows:      previewRows,
+      allRows,
+      totalSkus: previewRows.length,
+      totalRows: previewRows.length * allBranchCodes.length,
+      branches:  allBranchCodes,
+    };
+
+  } catch (err) {
+    console.error('[ACC Preview] Fatal error:', err);
+    return { rows: [], allRows: [], totalSkus: 0, totalRows: 0, branches: [] };
   }
 }
 
@@ -2132,500 +2483,6 @@ async function previewGlassData(excelBuffer, sheetName) {
 
 /**
  * =====================================================
- * POST /api/excel/debug-acc
- * Debug: ดู raw rows ของ ACC Excel เพื่อตรวจสอบ format
- * =====================================================
- */
-export async function debugAccExcel(req, res) {
-  try {
-    const { sheetName, excelBuffer } = req.body;
-    if (!excelBuffer) return res.status(400).json({ message: 'excelBuffer required' });
-
-    const bufferData = Buffer.from(excelBuffer, 'base64');
-    const workbook = XLSX.read(bufferData, { type: 'buffer' });
-
-    const targetSheet = sheetName
-      ? (workbook.Sheets[sheetName] || workbook.Sheets[workbook.SheetNames[0]])
-      : workbook.Sheets[workbook.SheetNames[0]];
-
-    const data = XLSX.utils.sheet_to_json(targetSheet, { header: 1 });
-
-    // ส่ง 30 rows แรกกลับมาพร้อม index
-    const sample = data.slice(0, 30).map((row, i) => ({
-      rowIndex: i,
-      cols: (row || []).slice(0, 10).map((v, ci) => ({ col: ci, val: v }))
-    }));
-
-    // ลอง parse ด้วย parseAccRows และส่งผลกลับ
-    const parsed = parseAccRows(data);
-
-    res.json({
-      sheetNames: workbook.SheetNames,
-      totalRows: data.length,
-      sample,
-      parsedCount: parsed.length,
-      parsedSample: parsed.slice(0, 5)
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-}
-
-/**
- * =====================================================
- * Helper: Parse ACC Excel rows (shared logic)
- * =====================================================
- *
- * ACC file structure (ACC-NA Internal Memo format):
- *   Row 0-5 : header/memo rows (skip)
- *   Row 6   : main column headers
- *   Row 7   : sub-header row (ซ้ำ header — skip)
- *   Row 8+  : data rows / section headers
- *
- * Column index (0-based):
- *   col A(0) = supplier name (sup)
- *   col B(1) = SKU (รหัส)
- *   col C(2) = product name (รายการ)
- *   col D(3) = color (สี)
- *   col E(4) = unit/pack (บรรจุ/มาตรหน่วย)
- *   col F(5) = base price (ราคาตั้ง)
- *   col G(6) = RE before VAT (RE ก่อน VAT)
- *   col H(7) = selling price incl. VAT (ชุน รวม VAT)
- *   col I(8) = SDM price
- *   col J(9) = W1 price
- *   col K(10)= W2 price
- *   col L(11)= R1 price
- *   col M(12)= R2 price
- *
- * Section headers: rows where col B(1) is empty and col C(2) has a group name
- * =====================================================
- */
-function parseAccRows(data) {
-  const fv = v => {
-    if (v === undefined || v === null || v === '') return 0;
-    const n = parseFloat(String(v).replace(/,/g, ''));
-    return isNaN(n) ? 0 : n;
-  };
-  const rows = [];
-  let currentSection = '';
-
-  // Auto-detect header row: หา row ที่มี "รหัส" ใน col B(1) หรือ "รายการ" ใน col C(2)
-  // แล้วเริ่ม parse จาก row ถัดไป (ข้าม sub-header อีก 1 row)
-  let dataStartRow = 8; // default
-  for (let i = 0; i < Math.min(15, data.length); i++) {
-    const row = data[i];
-    if (!row) continue;
-    const c1 = String(row[1] ?? '').trim().toLowerCase();
-    const c2 = String(row[2] ?? '').trim().toLowerCase();
-    if (c1 === 'รหัส' || c1 === 'sku' || c2 === 'รายการ') {
-      dataStartRow = i + 2; // +2 เพราะมี sub-header row ถัดไปอีก 1 แถว
-      break;
-    }
-  }
-
-  // Label keywords ที่ใช้กรอง header/sub-header rows ออก
-  const SKIP_LABELS = new Set([
-    'รหัส', 'sku', 'sup', 'รายการ', 'สี', 'บรรจุ/มาตรหน่วย', 'บรรจุ',
-    'มาตรหน่วย', 'ราคาตั้ง', 're ก่อนvat', 're ก่อน vat', 'ชุน รวม vat',
-    'sdm', 'w1', 'w2', 'r1', 'r2',
-  ]);
-
-  for (let i = dataStartRow; i < data.length; i++) {
-    const row = data[i];
-    if (!row) continue;
-
-    const colB = row[1] !== undefined ? String(row[1]).trim() : '';  // SKU
-    const colC = row[2] !== undefined ? String(row[2]).trim() : '';  // รายการ
-    const colD = row[3] !== undefined ? String(row[3]).trim() : '';  // สี
-    const colE = row[4] !== undefined ? String(row[4]).trim() : '';  // หน่วย
-    const colF = row[5];   // ราคาตั้ง
-    const colG = row[6];   // RE ก่อน VAT
-    const colH = row[7];   // ชุน รวม VAT
-    const colI = row[8];   // SDM
-    const colJ = row[9];   // W1
-    const colK = row[10];  // W2
-    const colL = row[11];  // R1
-    const colM = row[12];  // R2
-
-    const basePrice    = fv(colF);
-    const reBeforeVat  = fv(colG);
-    const sellingPrice = fv(colH);
-    const priceSdm     = fv(colI);
-    const priceW1      = fv(colJ);
-    const priceW2      = fv(colK);
-    const priceR1      = fv(colL);
-    const priceR2      = fv(colM);
-
-    // Section header: col B ว่าง, col C มีข้อความ, ไม่มีราคาใดเลย
-    if (!colB && colC &&
-        basePrice === 0 && reBeforeVat === 0 && sellingPrice === 0 &&
-        priceSdm === 0 && priceW1 === 0 && priceW2 === 0 && priceR1 === 0 && priceR2 === 0) {
-      const label = colC.toLowerCase();
-      if (!SKIP_LABELS.has(label)) {
-        currentSection = colC;
-      }
-      continue;
-    }
-
-    // ต้องมี SKU ใน col B
-    if (!colB) continue;
-
-    // กรอง header/label rows ออก
-    if (SKIP_LABELS.has(colB.toLowerCase())) continue;
-
-    // ข้ามแถวที่ไม่มีราคาใดเลย
-    if (basePrice === 0 && reBeforeVat === 0 && sellingPrice === 0 &&
-        priceSdm === 0 && priceW1 === 0 && priceW2 === 0 && priceR1 === 0 && priceR2 === 0) continue;
-
-    // col B อาจมีหลาย SKU คั่นด้วย newline, comma, หรือ /
-    // แต่ต้อง normalize N/A ก่อน split เพื่อไม่ให้ถูกตีความเป็น SKU
-    const normalizedColB = colB.replace(/\bN\/A\b/gi, '').trim();
-    if (!normalizedColB) continue;
-
-    const rawSkus = normalizedColB.split(/[\n,\/]/).map(s => s.trim()).filter(s => s.length >= 3);
-    if (rawSkus.length === 0) continue;
-
-    const productName  = colC || currentSection || 'Accessories';
-    const displayName  = colD ? `${productName} ${colD}`.trim() : productName;
-
-    for (const sku of rawSkus) {
-      if (!sku) continue;
-      rows.push({
-        sku,
-        productName: displayName,
-        section: currentSection,
-        unit: colE,
-        basePrice,
-        reBeforeVat,
-        sellingPrice,
-        priceSdm,
-        priceW1,
-        priceW2,
-        priceR1,
-        priceR2,
-      });
-    }
-  }
-
-  return rows;
-}
-
-/**
- * =====================================================
- * Helper: Import Accessories (ACC) Data from Excel Buffer
- * =====================================================
- * ACC ราคาเดียวใช้ทุกสาขา — expand 1 SKU → N rows (1 row ต่อสาขาจาก BranchMaster)
- */
-async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null) {
-  let imported = 0;
-
-  try {
-    console.log(`[ACC Parser] Starting import for sheet: ${sheetName}`);
-
-    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
-    const worksheet = workbook.Sheets[sheetName] || workbook.Sheets[workbook.SheetNames[0]];
-    if (!worksheet) {
-      console.error(`[ACC Parser] Sheet "${sheetName}" not found`);
-      return 0;
-    }
-
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-    console.log(`[ACC Parser] Raw rows: ${data.length}`);
-
-    // Load brand name from Accessory_BRAND — ACC มีแบรนด์เดียว ดึงมาใช้ตรงๆ
-    let accBrandName = '';
-    try {
-      const brandResult = await pool.request().query(`SELECT TOP 1 BRAND_NAME FROM Accessory_BRAND`);
-      accBrandName = brandResult.recordset[0]?.BRAND_NAME || '';
-      console.log(`[ACC Parser] Brand: ${accBrandName}`);
-    } catch (e) {
-      console.warn(`[ACC Parser] Could not load Accessory_BRAND: ${e.message}`);
-    }
-
-    // Load all branch codes from BranchMaster
-    const { allBranchCodes } = await loadBranchMapping();
-    console.log(`[ACC Parser] Branch codes loaded: ${allBranchCodes.length} branches`);
-
-    // Check DB columns
-    const colCheck = await pool.request().query(`
-      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
-    `);
-    const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
-    const hasSellingPrices = dbCols.includes('selling_price_w1');
-    const hasSellingPriceSdm = dbCols.includes('selling_price_sdm');
-
-    // Parse Excel rows
-    const parsedRows = parseAccRows(data);
-    console.log(`[ACC Parser] Parsed ${parsedRows.length} SKU rows → expanding to ${parsedRows.length * allBranchCodes.length} rows`);
-
-    // โหลด productName จาก StockStatusFact: sku → productName (ใช้ชื่อจาก DB แทน Excel)
-    console.log('[ACC Parser] Loading productName from StockStatusFact...');
-    const accSkuList = parsedRows.map(r => `'${r.sku.replace(/'/g, "''")}'`).join(',');
-    const accSkuNameMap = {}; // sku → productName
-    if (parsedRows.length > 0) {
-      try {
-        const accSkuNameResult = await pool.request().query(`
-          SELECT DISTINCT skuNumber, productName
-          FROM StockStatusFact
-          WHERE skuNumber IN (${accSkuList})
-        `);
-        accSkuNameResult.recordset.forEach(r => {
-          if (r.skuNumber && r.productName) accSkuNameMap[r.skuNumber] = r.productName;
-        });
-        console.log(`[ACC Parser] Loaded ${Object.keys(accSkuNameMap).length} SKU names from StockStatusFact`);
-      } catch (e) {
-        console.warn(`[ACC Parser] Could not load SKU names from StockStatusFact: ${e.message}`);
-      }
-    }
-
-    // Build insert rows — expand 1 SKU → 1 row ต่อสาขา (ราคาเหมือนกันทุกสาขา)
-    const insertRows = [];
-    for (const pr of parsedRows) {
-      // เฉพาะ SKU ที่มีใน StockStatusFact เท่านั้น
-      if (!accSkuNameMap[pr.sku]) {
-        console.warn(`[ACC Parser] SKU "${pr.sku}" not found in StockStatusFact, skipping`);
-        continue;
-      }
-      const brand = accBrandName;
-      const productName = accSkuNameMap[pr.sku]; // ใช้ชื่อจาก DB เสมอ
-      for (const branchCode of allBranchCodes) {
-        insertRows.push({
-          branch:       branchCode,
-          sku:          pr.sku,
-          productName,
-          brand,
-          unit:         pr.unit,
-          basePrice:    pr.basePrice,
-          reBeforeVat:  pr.reBeforeVat,
-          sellingPrice: pr.sellingPrice,
-          priceSdm:     pr.priceSdm,
-          priceW1:      pr.priceW1,
-          priceW2:      pr.priceW2,
-          priceR1:      pr.priceR1,
-          priceR2:      pr.priceR2,
-        });
-      }
-    }
-
-    console.log(`[ACC Parser] Prepared ${insertRows.length} rows, inserting in batches...`);
-
-    // Batch insert 200 rows
-    const BATCH_SIZE = 200;
-
-    // Column mapping (ACC-NA format):
-    //   base_price         = ราคาตั้ง (col F)
-    //   discount_price_1   = RE ก่อน VAT (col G)
-    //   selling_price_sdm  = SDM (col I)
-    //   selling_price_w1   = W1 (col J)
-    //   selling_price_w2   = W2 (col K)
-    //   selling_price_r1   = R1 (col L)
-    //   selling_price_r2   = R2 (col M)
-    for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
-      const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
-      const req = pool.request();
-      const valueParts = [];
-
-      batch.forEach((r, idx) => {
-        req.input(`branch${idx}`,      sql.NVarChar(100), r.branch);
-        req.input(`sku${idx}`,         sql.NVarChar(50),  r.sku);
-        req.input(`productName${idx}`, sql.NVarChar(255), r.productName);
-        req.input(`brand${idx}`,       sql.NVarChar(100), r.brand);
-        req.input(`unit${idx}`,        sql.NVarChar(50),  r.unit);
-        req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
-        req.input(`reVat${idx}`,       sql.Decimal(18,2), r.reBeforeVat);
-        req.input(`sdm${idx}`,         sql.Decimal(18,2), r.priceSdm);
-        req.input(`w1${idx}`,          sql.Decimal(18,2), r.priceW1);
-        req.input(`w2${idx}`,          sql.Decimal(18,2), r.priceW2);
-        req.input(`r1${idx}`,          sql.Decimal(18,2), r.priceR1);
-        req.input(`r2${idx}`,          sql.Decimal(18,2), r.priceR2);
-        req.input(`logId${idx}`,       sql.Int,           logId);
-
-        if (hasSellingPrices && hasSellingPriceSdm) {
-          valueParts.push(
-            `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',` +
-            `@w1${idx},@w2${idx},@r1${idx},@r2${idx},@logId${idx},@sdm${idx})`
-          );
-        } else if (hasSellingPrices) {
-          valueParts.push(
-            `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',` +
-            `@w1${idx},@w2${idx},@r1${idx},@r2${idx},@logId${idx})`
-          );
-        } else {
-          valueParts.push(
-            `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reVat${idx},0,0,'',0,0,0,0,0,'',@logId${idx})`
-          );
-        }
-      });
-
-      const insertCols = hasSellingPrices && hasSellingPriceSdm
-        ? `branch, product_type, sku, product_name, brand, unit,
-           base_price, discount_price_1, discount_price_2, discount_price_3,
-           project_no, project_discount_1, project_discount_2, project_price,
-           carton_price, shipping_cost, free_item,
-           selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, import_log_id,
-           selling_price_sdm`
-        : hasSellingPrices
-        ? `branch, product_type, sku, product_name, brand, unit,
-           base_price, discount_price_1, discount_price_2, discount_price_3,
-           project_no, project_discount_1, project_discount_2, project_price,
-           carton_price, shipping_cost, free_item,
-           selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, import_log_id`
-        : `branch, product_type, sku, product_name, brand, unit,
-           base_price, discount_price_1, discount_price_2, discount_price_3,
-           project_no, project_discount_1, project_discount_2, project_price,
-           carton_price, shipping_cost, free_item, import_log_id`;
-
-      try {
-        await req.query(`INSERT INTO excel_import_data (${insertCols}) VALUES ${valueParts.join(',')}`);
-        imported += batch.length;
-        console.log(`[ACC Parser] Inserted ${imported}/${insertRows.length}`);
-      } catch (err) {
-        console.error(`[ACC Parser] Batch insert error at ${batchStart}:`, err.message);
-        // Fallback: insert row by row
-        for (const r of batch) {
-          try {
-            const singleReq = pool.request()
-              .input('branch',      sql.NVarChar(100), r.branch)
-              .input('sku',         sql.NVarChar(50),  r.sku)
-              .input('productName', sql.NVarChar(255), r.productName)
-              .input('brand',       sql.NVarChar(100), r.brand)
-              .input('unit',        sql.NVarChar(50),  r.unit)
-              .input('basePrice',   sql.Decimal(18,2), r.basePrice)
-              .input('reVat',       sql.Decimal(18,2), r.reBeforeVat)
-              .input('sdm',         sql.Decimal(18,2), r.priceSdm)
-              .input('w1',          sql.Decimal(18,2), r.priceW1)
-              .input('w2',          sql.Decimal(18,2), r.priceW2)
-              .input('r1',          sql.Decimal(18,2), r.priceR1)
-              .input('r2',          sql.Decimal(18,2), r.priceR2)
-              .input('logId',       sql.Int,           logId);
-
-            if (hasSellingPrices && hasSellingPriceSdm) {
-              await singleReq.query(`
-                INSERT INTO excel_import_data (${insertCols})
-                VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,0,0,'',0,0,0,0,0,'',
-                        @w1,@w2,@r1,@r2,@logId,@sdm)
-              `);
-            } else if (hasSellingPrices) {
-              await singleReq.query(`
-                INSERT INTO excel_import_data (${insertCols})
-                VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,0,0,'',0,0,0,0,0,'',
-                        @w1,@w2,@r1,@r2,@logId)
-              `);
-            } else {
-              await singleReq.query(`
-                INSERT INTO excel_import_data (${insertCols})
-                VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reVat,0,0,'',0,0,0,0,0,'',@logId)
-              `);
-            }
-            imported++;
-          } catch (e2) {
-            console.error(`[ACC Parser] Row insert error (${r.branch}/${r.sku}):`, e2.message);
-          }
-        }
-      }
-    }
-
-    console.log(`[ACC Parser] Done: ${imported} rows inserted`);
-    return imported;
-
-  } catch (err) {
-    console.error('[ACC Parser] Fatal error:', err);
-    return 0;
-  }
-}
-
-/**
- * =====================================================
- * Helper: Preview Accessories (ACC) Data
- * =====================================================
- */
-async function previewAccessoriesData(excelBuffer, sheetName) {
-  try {
-    const pool = await getPool();
-
-    // Load brand mapping
-    let brandMap = {};
-    try {
-      const brandResult = await pool.request().query(`SELECT BRAND_NO, BRAND_NAME FROM Accessory_BRAND`);
-      brandResult.recordset.forEach(r => {
-        brandMap[String(r.BRAND_NO).padStart(2, '0')] = r.BRAND_NAME;
-      });
-    } catch (e) {
-      console.warn(`[ACC Preview] Could not load Accessory_BRAND: ${e.message}`);
-    }
-
-    // Load all branch codes from BranchMaster
-    const { allBranchCodes } = await loadBranchMapping();
-
-    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
-    const worksheet = workbook.Sheets[sheetName] || workbook.Sheets[workbook.SheetNames[0]];
-    if (!worksheet) return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
-
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-    // Debug: log 15 rows แรกเพื่อดู format จริง
-    console.log(`[ACC Preview] Sheet: ${sheetName}, total rows: ${data.length}`);
-    for (let i = 0; i < Math.min(15, data.length); i++) {
-      const row = data[i];
-      if (!row) continue;
-      const cols = row.slice(0, 13).map((v, ci) => `[${ci}]=${JSON.stringify(v)}`).join(' | ');
-      console.log(`  row${i}: ${cols}`);
-    }
-
-    const parsedRows = parseAccRows(data);
-    console.log(`[ACC Preview] parsedRows: ${parsedRows.length}, branches: ${allBranchCodes.length}`);
-    if (parsedRows.length > 0) {
-      console.log(`[ACC Preview] first parsed:`, JSON.stringify(parsedRows[0]));
-    }
-
-    const previewRows = [];
-    const allRows = [];
-    const totalSkus = parsedRows.length;
-    const totalRows = parsedRows.length * allBranchCodes.length;
-
-    for (const pr of parsedRows) {
-      const brandName = brandMap[pr.sku.substring(1, 3)] || '';
-
-      const rowData = {
-        sku:              pr.sku,
-        productName:      pr.productName,
-        brand:            brandName,
-        unit:             pr.unit,
-        branch:           `ทุกสาขา (${allBranchCodes.length})`,
-        totalBranches:    allBranchCodes.length,
-        base_price:       pr.basePrice,
-        discount_price_1: pr.reBeforeVat,
-        discount_price_2: 0,
-        discount_price_3: 0,
-        selling_price_sdm: pr.priceSdm,
-        selling_price_w1: pr.priceW1,
-        selling_price_w2: pr.priceW2,
-        selling_price_r1: pr.priceR1,
-        selling_price_r2: pr.priceR2,
-      };
-      allRows.push(rowData);
-      // แสดง preview เฉพาะ row แรก (สาขาแรก) ต่อ SKU เพื่อไม่ให้ preview ยาวเกิน
-      if (previewRows.length < 15) {
-        previewRows.push(rowData);
-      }
-    }
-
-    return { rows: previewRows, allRows, totalSkus, totalRows, branches: allBranchCodes };
-
-  } catch (err) {
-    console.error('[ACC Preview] Fatal error:', err);
-    return { rows: [], totalSkus: 0, totalRows: 0, branches: [] };
-  }
-}
-
-/**
- * =====================================================
  * GET /api/excel/draft/:logId
  * ดูข้อมูล draft ของ logId นั้น
  * =====================================================
@@ -3063,6 +2920,7 @@ async function importSealantData(pool, excelBuffer, sheetName, logId = null) {
          project_no, project_discount_1, project_discount_2, project_price,
          carton_price, shipping_cost, free_item, import_log_id`;
 
+    // Batch insert — 10 params/row → 200×10=2,000 < 2,100 limit (ปลอดภัย)
     const BATCH_SIZE = 200;
     for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
       const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
@@ -3561,7 +3419,8 @@ async function importCLineData(pool, excelBuffer, sheetName, logId = null) {
          project_no, project_discount_1, project_discount_2, project_price,
          carton_price, shipping_cost, free_item, import_log_id`;
 
-    const BATCH_SIZE = 200;
+    // Batch insert — 11 params/row → 180×11=1,980 < 2,100 limit
+    const BATCH_SIZE = 180;
     for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
       const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
       const req = pool.request();
@@ -3834,6 +3693,14 @@ export async function checkReadableSheets(req, res) {
 
       const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
       if (!data || data.length < 2) return { sheetName, readable: false, reason: 'too few rows' };
+
+      // Accessories: ไม่มี branch headers และไม่มี Y-SKU
+      // ตรวจสอบด้วย SKU format E000... ใน col 0 แทน
+      if (productType === 'Accessories') {
+        const hasAccSku = data.slice(1).some(row => row && /^E\d/.test(String(row[0] ?? '').trim()));
+        if (!hasAccSku) return { sheetName, readable: false, reason: 'no ACC SKUs (E...) found' };
+        return { sheetName, readable: true };
+      }
 
       // ตรวจสอบ branch headers ใน 6 rows แรก
       let hasBranchHeaders = false;

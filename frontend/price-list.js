@@ -1,4 +1,38 @@
+import { requireRole, logout, getUserRole, canImportPrice } from "/js/auth.js";
+
 const API_BASE = "http://localhost:3000";
+
+// ==================================================
+// AUTH INIT
+// ==================================================
+let _currentUser = null;
+
+(async () => {
+  const user = await requireRole();
+  if (!user) return;
+  _currentUser = user;
+
+  // แสดงชื่อ user ใน header
+  const avatar = document.getElementById("userAvatar");
+  const nameEl = document.getElementById("userName");
+  const codeEl = document.getElementById("userCode");
+  const role   = getUserRole(user);
+
+  if (avatar) avatar.textContent = (user.empname || user.username || "U")[0].toUpperCase();
+  if (nameEl) nameEl.textContent = user.empname || user.username || "-";
+  if (codeEl) codeEl.textContent = role || user.username || "-";
+
+  // ผูกปุ่ม logout
+  document.getElementById("btnLogout")?.addEventListener("click", logout);
+
+  // ซ่อนปุ่ม import ถ้าไม่มีสิทธิ์
+  if (!canImportPrice(user)) {
+    const importBtn = document.getElementById("importBtn");
+    if (importBtn) importBtn.style.display = "none";
+    const dropzone = document.getElementById("dropzone");
+    if (dropzone) dropzone.style.display = "none";
+  }
+})();
 
 let currentWorkbook = null;
 let currentSheetName = null;

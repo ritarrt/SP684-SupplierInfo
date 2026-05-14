@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dev Login — SP684 Supplier Info</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-100 flex items-center justify-center">
+
+  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+    <div class="text-center mb-6">
+      <div class="text-3xl mb-2">🛠️</div>
+      <h1 class="text-xl font-bold text-gray-800">Dev Login</h1>
+      <p class="text-sm text-gray-400 mt-1">SP684 Supplier Info — เลือก Role เพื่อจำลองการเข้าถึง (localhost only)</p>
+    </div>
+
+    <!-- Role selector -->
+    <div class="mb-4">
+      <label class="block text-sm font-semibold text-gray-700 mb-2">Role</label>
+      <select id="roleSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </select>
+    </div>
+
+    <!-- Page selector -->
+    <div class="mb-6">
+      <label class="block text-sm font-semibold text-gray-700 mb-2">หน้าที่จะเปิด</label>
+      <select id="pageSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </select>
+    </div>
+
+    <button id="btnGo"
+      class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-lg transition">
+      เข้าสู่ระบบ (Dev)
+    </button>
+
+    <!-- Allowed pages preview -->
+    <div class="mt-5 text-xs text-gray-500">
+      <p class="font-semibold text-gray-600 mb-1">หน้าที่ Role นี้เข้าได้:</p>
+      <ul id="allowedList" class="list-disc list-inside space-y-0.5"></ul>
+    </div>
+
+    <!-- Permission summary -->
+    <div id="permSummary" class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 hidden">
+      <p class="font-semibold text-gray-700 mb-1">สิทธิ์ในระบบ:</p>
+      <ul id="permList" class="space-y-0.5 list-disc list-inside"></ul>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ROLE_PAGES } from "/js/auth.js";
+
+    const roleSelect  = document.getElementById("roleSelect");
+    const pageSelect  = document.getElementById("pageSelect");
+    const allowedList = document.getElementById("allowedList");
+    const permSummary = document.getElementById("permSummary");
+    const permList    = document.getElementById("permList");
+    const btnGo       = document.getElementById("btnGo");
+
+    // คำอธิบาย permission ของแต่ละ role
+    const ROLE_PERMS = {
+      "จัดซื้อ":        ["Tab ข้อมูลพื้นฐาน: แก้ไขได้แค่ Card 3 (เงื่อนไขพิเศษ)", "Card 1/2/เอกสาร/4 ดูได้อย่างเดียว", "Tab อื่น ๆ: ไม่เห็นเลย", "price-list: นำเข้าราคาได้"],
+      "WareHouse":      ["Tab ข้อมูลพื้นฐาน: ดูได้ทั้งหมด แก้ไขไม่ได้เลย (read-only ทุก card)", "Tab อื่น ๆ: เห็นทุก tab แต่ปุ่มทั้งหมด disabled", "ไม่เข้า price-list"],
+      "PM_Glass":       ["supplier-list: เห็นทุก supplier ทุก cat", "Supplier-Info Card 2: เห็นแค่ cat: Glass", "Tab อื่น ๆ: เห็นทุก tab ดูข้อมูลได้แค่ cat: Glass", "price-list: นำเข้าราคาได้เฉพาะ Glass"],
+      "PM_Aluminium":   ["supplier-list: เห็นทุก supplier ทุก cat", "Supplier-Info Card 2: เห็นแค่ cat: Aluminium", "Tab อื่น ๆ: เห็นทุก tab ดูข้อมูลได้แค่ cat: Aluminium", "price-list: นำเข้าราคาได้เฉพาะ Aluminium"],
+      "PM_Gypsum":      ["supplier-list: เห็นทุก supplier ทุก cat", "Supplier-Info Card 2: เห็นแค่ cat: Gypsum", "Tab อื่น ๆ: เห็นทุก tab ดูข้อมูลได้แค่ cat: Gypsum", "price-list: นำเข้าราคาได้เฉพาะ Gypsum"],
+      "PM_Sealant":     ["supplier-list: เห็นทุก supplier ทุก cat", "Supplier-Info Card 2: เห็นแค่ cat: Sealant", "Tab อื่น ๆ: เห็นทุก tab ดูข้อมูลได้แค่ cat: Sealant", "price-list: นำเข้าราคาได้เฉพาะ Sealant"],
+      "PM_CLine":       ["supplier-list: เห็นทุก supplier ทุก cat", "Supplier-Info Card 2: เห็นแค่ cat: C-Line", "Tab อื่น ๆ: เห็นทุก tab ดูข้อมูลได้แค่ cat: C-Line", "price-list: นำเข้าราคาได้เฉพาะ C-Line"],
+      "PM_Accessories": ["supplier-list: เห็นทุก supplier ทุก cat", "Supplier-Info Card 2: เห็นแค่ cat: Accessories", "Tab อื่น ๆ: เห็นทุก tab ดูข้อมูลได้แค่ cat: Accessories", "price-list: นำเข้าราคาได้เฉพาะ Accessories"],
+      "Admin_Glass":       ["เข้าได้แค่ price-list", "ดูข้อมูลได้อย่างเดียว (ไม่นำเข้าราคา)", "เห็นแค่ category: Glass"],
+      "Admin_Aluminium":   ["เข้าได้แค่ price-list", "ดูข้อมูลได้อย่างเดียว (ไม่นำเข้าราคา)", "เห็นแค่ category: Aluminium"],
+      "Admin_Gypsum":      ["เข้าได้แค่ price-list", "ดูข้อมูลได้อย่างเดียว (ไม่นำเข้าราคา)", "เห็นแค่ category: Gypsum"],
+      "Admin_Sealant":     ["เข้าได้แค่ price-list", "ดูข้อมูลได้อย่างเดียว (ไม่นำเข้าราคา)", "เห็นแค่ category: Sealant"],
+      "Admin_CLine":       ["เข้าได้แค่ price-list", "ดูข้อมูลได้อย่างเดียว (ไม่นำเข้าราคา)", "เห็นแค่ category: C-Line"],
+      "Admin_Accessories": ["เข้าได้แค่ price-list", "ดูข้อมูลได้อย่างเดียว (ไม่นำเข้าราคา)", "เห็นแค่ category: Accessories"],
+      "admin": ["เข้าได้ทุกหน้า", "แก้ไขได้ทุกอย่าง", "นำเข้าราคาได้", "เห็นทุก category"],
+    };
+
+    // ── populate role dropdown ──
+    Object.keys(ROLE_PAGES).forEach(role => {
+      const opt = document.createElement("option");
+      opt.value = role;
+      opt.textContent = role;
+      roleSelect.appendChild(opt);
+    });
+
+    roleSelect.addEventListener("change", onRoleChange);
+
+    function onRoleChange() {
+      const role  = roleSelect.value;
+      const pages = ROLE_PAGES[role] ?? [];
+
+      // update allowed preview
+      allowedList.innerHTML = pages.map(p => `<li>${p}</li>`).join("");
+
+      // update page dropdown
+      pageSelect.innerHTML = pages
+        .map(p => `<option value="${p}">${p}</option>`)
+        .join("");
+
+      // update permission summary
+      const perms = ROLE_PERMS[role];
+      if (perms) {
+        permSummary.classList.remove("hidden");
+        permList.innerHTML = perms.map(p => `<li>${p}</li>`).join("");
+      } else {
+        permSummary.classList.add("hidden");
+      }
+    }
+
+    onRoleChange(); // init
+
+    // ── กด Go ──
+    btnGo.addEventListener("click", () => {
+      const role = roleSelect.value;
+      const page = pageSelect.value;
+      if (!page) return;
+
+      sessionStorage.setItem("devRole",     role);
+      sessionStorage.setItem("devBranches", JSON.stringify(["90HO"]));
+
+      window.location.href = page;
+    });
+  </script>
+
+</body>
+</html>

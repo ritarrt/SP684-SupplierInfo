@@ -709,10 +709,11 @@ const filtered = data.filter(item => {
 </td>
 
           <td class="small">
-            ${item.region || "-"} / ${item.province || "-"} / ${item.branch || "-"}<br>
-            ${item.category || "-"} / ${item.brand_name || "-"} / ${item.sub_group || "-"}
-${item.color || "-"} / ${item.thickness || "-"}
-            Mold: ${item.mold || "-"} / SKU: ${item.sku || "-"}
+            <div>${item.region || "-"} / ${item.province || "-"} / ${item.branch || "-"}</div>
+            <div>${item.category || "-"} / ${item.brand_name || "-"}</div>
+            <div>กลุ่ม: ${item.group_name || item.product_group || item.product_group_code || "-"} / ย่อย: ${item.sub_group || item.sub_group_code || "-"}</div>
+            <div>สี: ${item.color || "-"} / หนา: ${item.thickness || "-"}</div>
+            <div>Mold: ${item.mold || "-"} / SKU: ${item.sku || "-"}</div>
           </td>
 
           <td>

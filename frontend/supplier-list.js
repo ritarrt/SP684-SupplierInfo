@@ -1,7 +1,33 @@
+import { requireRole, logout, getUserRole } from "/js/auth.js";
+
 const API_BASE = "http://localhost:3000";
 
 const tableBody = document.getElementById("supplierTableBody");
 const searchInput = document.getElementById("searchInput");
+
+// ==================================================
+// AUTH INIT
+// ==================================================
+(async () => {
+  const user = await requireRole();
+  if (!user) return;
+
+  // แสดงชื่อ user ใน header
+  const avatar = document.getElementById("userAvatar");
+  const nameEl = document.getElementById("userName");
+  const codeEl = document.getElementById("userCode");
+  const role   = getUserRole(user);
+
+  if (avatar) avatar.textContent = (user.empname || user.username || "U")[0].toUpperCase();
+  if (nameEl) nameEl.textContent = user.empname || user.username || "-";
+  if (codeEl) codeEl.textContent = role || user.username || "-";
+
+  // ผูกปุ่ม logout
+  document.getElementById("btnLogout")?.addEventListener("click", logout);
+
+  // โหลดข้อมูล
+  fetchSuppliers();
+})();
 
 async function fetchSuppliers(page = 1, keyword = "") {
   try {
@@ -63,6 +89,3 @@ function renderTable(list) {
 searchInput.addEventListener("input", (e) => {
   fetchSuppliers(1, e.target.value);
 });
-
-/* FIRST LOAD */
-fetchSuppliers();

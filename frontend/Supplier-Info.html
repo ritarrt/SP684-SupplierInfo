@@ -2296,6 +2296,27 @@
 
 <script src="supplier-info-script.js" defer></script>
 
+<!-- Auth: ต้องเป็น module เพื่อใช้ import -->
+<script type="module">
+  import { requireRole, logout, getUserRole } from "/js/auth.js";
+
+  (async () => {
+    const user = await requireRole();
+    if (!user) return;
+
+    const avatar = document.getElementById("userAvatar");
+    const nameEl = document.getElementById("userName");
+    const codeEl = document.getElementById("userCode");
+    const role   = getUserRole(user);
+
+    if (avatar) avatar.textContent = (user.empname || user.username || "U")[0].toUpperCase();
+    if (nameEl) nameEl.textContent = user.empname || user.username || "-";
+    if (codeEl) codeEl.textContent = role || user.username || "-";
+
+    document.getElementById("btnLogout")?.addEventListener("click", logout);
+  })();
+</script>
+
 
 
 </html>

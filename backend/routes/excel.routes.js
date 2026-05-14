@@ -6,7 +6,6 @@ import {
   getImportDataByLog,
   updateImportData,
   previewExcelData,
-  debugAccExcel,
   getDraftData,
   updateDraftRow,
   publishDraft,
@@ -20,7 +19,6 @@ const router = express.Router();
 router.post("/import",                    importExcelData);
 router.post("/preview",                   previewExcelData);
 router.post("/check-sheets",              checkReadableSheets);
-router.post("/debug-acc",                 debugAccExcel);
 router.get("/import-logs",                getImportLogs);
 router.get("/data",                       getImportData);
 router.get("/history/:logId",             getImportDataByLog);
