@@ -1187,6 +1187,7 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
       const brand          = row[1]  !== undefined ? String(row[1]).trim()  : '';
       const productNameRaw = row[2]  !== undefined ? String(row[2]).trim()  : '';
       const unit           = row[4]  !== undefined ? String(row[4]).trim()  : '';
+      const cartonLabel    = row[5]  !== undefined ? String(row[5]).trim()  : ''; // F: ไม่ลงลัง / ลงลัง
       const basePrice      = fv(row[7]);   // H: ราคาตั้งไม่รวมVAT
       const reExVat        = fv(row[9]);   // J: REก่อนVAT → discount_price_1
       const sdm            = fv(row[10]);  // K: SDM
@@ -1199,7 +1200,7 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
       if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && reExVat === 0) continue;
 
       const productName = skuNameMap[sku] || productNameRaw;
-      const isNonCarton = unit.includes('ไม่ลงลัง');
+      const isNonCarton = cartonLabel.includes('ไม่ลงลัง');
 
       if (!skuMap.has(sku)) {
         skuMap.set(sku, {
@@ -1440,6 +1441,7 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
 
     const previewRows = [];
     const allRows = [];
+    const skuPreviewMap = new Map(); // sku → entry (รวม 2 แถวต่อ SKU)
 
     for (let i = 1; i < rawData.length; i++) {
       const row = rawData[i];
@@ -1449,6 +1451,7 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
       const brand          = row[1]  !== undefined ? String(row[1]).trim()  : '';
       const productNameRaw = row[2]  !== undefined ? String(row[2]).trim()  : '';
       const unit           = row[4]  !== undefined ? String(row[4]).trim()  : '';
+      const cartonLabel    = row[5]  !== undefined ? String(row[5]).trim()  : ''; // F: ไม่ลงลัง / ลงลัง
       const basePrice      = fv(row[7]);
       const reExVat        = fv(row[9]);
       const sdm            = fv(row[10]);
@@ -1462,22 +1465,46 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
 
       // ใช้ชื่อจาก StockStatusFact ถ้ามี ไม่งั้น fallback ไปชื่อจาก Excel
       const productName = skuNameMap[sku] || productNameRaw;
+      const isNonCarton = cartonLabel.includes('ไม่ลงลัง');
 
-      // preview row (1 แถวต่อ SKU แสดงว่าจะ expand กี่สาขา)
+      if (!skuPreviewMap.has(sku)) {
+        skuPreviewMap.set(sku, {
+          sku, brand, productName, unit,
+          basePrice, reExVat, sdm,
+          w1: 0, w2: 0, r1: 0, r2: 0,
+          ncW1: 0, ncW2: 0, ncR1: 0, ncR2: 0,
+        });
+      }
+      const entry = skuPreviewMap.get(sku);
+      if (isNonCarton) {
+        entry.ncW1 = w1; entry.ncW2 = w2; entry.ncR1 = r1; entry.ncR2 = r2;
+      } else {
+        entry.brand = brand; entry.unit = unit;
+        entry.basePrice = basePrice; entry.reExVat = reExVat; entry.sdm = sdm;
+        entry.w1 = w1; entry.w2 = w2; entry.r1 = r1; entry.r2 = r2;
+      }
+    }
+
+    for (const entry of skuPreviewMap.values()) {
+      // preview row (1 แถวต่อ SKU)
       previewRows.push({
-        sku,
-        productName,
-        brand,
-        branch: `ทุกสาขา (${allBranchCodes.length})`,
-        totalBranches: allBranchCodes.length,
-        unit,
-        base_price:        basePrice,
-        discount_price_1:  reExVat,
-        selling_price_sdm: sdm,
-        selling_price_w1:  w1,
-        selling_price_w2:  w2,
-        selling_price_r1:  r1,
-        selling_price_r2:  r2,
+        sku:               entry.sku,
+        productName:       entry.productName,
+        brand:             entry.brand,
+        branch:            `ทุกสาขา (${allBranchCodes.length})`,
+        totalBranches:     allBranchCodes.length,
+        unit:              entry.unit,
+        base_price:        entry.basePrice,
+        discount_price_1:  entry.reExVat,
+        selling_price_sdm: entry.sdm,
+        selling_price_w1:  entry.w1,
+        selling_price_w2:  entry.w2,
+        selling_price_r1:  entry.r1,
+        selling_price_r2:  entry.r2,
+        non_carton_w1:     entry.ncW1,
+        non_carton_w2:     entry.ncW2,
+        non_carton_r1:     entry.ncR1,
+        non_carton_r2:     entry.ncR2,
         discount_pct_1: 0,
         discount_pct_2: 0,
         discount_pct_3: 0,
@@ -1486,16 +1513,16 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
       // allRows: expand เป็น full SKU|branch เพื่อเปรียบเทียบกับ DB
       for (const branchCode of allBranchCodes) {
         allRows.push({
-          sku,
-          branch: branchCode,
-          productName,
-          brand,
-          base_price:       basePrice,
-          discount_price_1: reExVat,
-          selling_price_w1: w1,
-          selling_price_w2: w2,
-          selling_price_r1: r1,
-          selling_price_r2: r2,
+          sku:              entry.sku,
+          branch:           branchCode,
+          productName:      entry.productName,
+          brand:            entry.brand,
+          base_price:       entry.basePrice,
+          discount_price_1: entry.reExVat,
+          selling_price_w1: entry.w1,
+          selling_price_w2: entry.w2,
+          selling_price_r1: entry.r1,
+          selling_price_r2: entry.r2,
         });
       }
     }
@@ -1552,19 +1579,24 @@ export async function getImportData(req, res) {
     const hasSellingPrices = cols.includes('selling_price_w1');
     const hasDiscPct       = cols.includes('discount_pct_1');
 
-    const hasLogId = cols.includes('import_log_id');
-
-    const hasSdm = cols.includes('selling_price_sdm');
+    const hasLogId     = cols.includes('import_log_id');
+    const hasSdm       = cols.includes('selling_price_sdm');
+    const hasNonCarton = cols.includes('non_carton_w1');
 
     const sellingCols = hasSellingPrices ? `
         [selling_price_w1] AS [sellingPriceW1],
         [selling_price_w2] AS [sellingPriceW2],
         [selling_price_r1] AS [sellingPriceR1],
         [selling_price_r2] AS [sellingPriceR2],
-        ${hasSdm ? '[selling_price_sdm] AS [sellingPriceSdm],' : 'NULL AS [sellingPriceSdm],'}` : `
+        ${hasSdm       ? '[selling_price_sdm] AS [sellingPriceSdm],' : 'NULL AS [sellingPriceSdm],'}
+        ${hasNonCarton ? `[non_carton_w1] AS [nonCartonW1],
+        [non_carton_w2] AS [nonCartonW2],
+        [non_carton_r1] AS [nonCartonR1],
+        [non_carton_r2] AS [nonCartonR2],` : 'NULL AS [nonCartonW1], NULL AS [nonCartonW2], NULL AS [nonCartonR1], NULL AS [nonCartonR2],'}` : `
         NULL AS [sellingPriceW1], NULL AS [sellingPriceW2],
         NULL AS [sellingPriceR1], NULL AS [sellingPriceR2],
-        NULL AS [sellingPriceSdm],`;
+        NULL AS [sellingPriceSdm],
+        NULL AS [nonCartonW1], NULL AS [nonCartonW2], NULL AS [nonCartonR1], NULL AS [nonCartonR2],`;
 
     const discPctCols = hasDiscPct ? `
         CASE WHEN [discount_pct_1] > 1 THEN [discount_pct_1] / 100.0 ELSE [discount_pct_1] END AS [discountPct1],
@@ -3216,12 +3248,10 @@ function parseCLineSheet(workbook, sheetName) {
     const row = data[i];
     if (!row) continue;
 
-    const colA = row[0]; // น้ำหนัก kg
-    const colB = row[1] !== undefined ? String(row[1]).trim() : '';
+    const colA = row[0];
+    const colB = row[1] !== undefined ? String(row[1]).replace(/\s+/g, ' ').trim() : '';
 
-    // Data row: col A ต้องเป็นตัวเลข > 0
-    const weight = parseFloat(colA);
-    if (!colA || isNaN(weight) || weight <= 0) continue;
+    // ต้องมีชื่อสินค้าใน col B
     if (!colB) continue;
 
     const sdm = fv(row[5]);
@@ -3262,11 +3292,18 @@ function buildCLineRefMap(workbook) {
   const nameRow = refData[0] || [];
   const skuRow  = refData[1] || [];
 
+  // normalize: ตัด whitespace ซ้ำ และ trim
+  const norm = s => String(s).replace(/\s+/g, ' ').trim();
+
   nameRow.forEach((name, col) => {
     if (!name) return;
-    const sku = String(skuRow[col] ?? '').trim();
+    const sku = norm(String(skuRow[col] ?? ''));
     if (!sku || !sku.startsWith('C')) return;
-    nameToSku.set(String(name).trim(), sku);
+    const key = norm(String(name));
+    if (nameToSku.has(key)) {
+      console.warn(`[C-Line Ref.] Duplicate name "${key}" — old SKU: ${nameToSku.get(key)}, new SKU: ${sku}`);
+    }
+    nameToSku.set(key, sku);
   });
 
   return nameToSku;
@@ -3439,6 +3476,20 @@ async function importCLineData(pool, excelBuffer, sheetName, logId = null) {
 
     const parsedRows = parseCLineSheet(workbook, sheetName);
     console.log(`[C-Line Parser] Parsed ${parsedRows.length} rows from "${sheetName}"`);
+
+    // Debug: แสดง sample ชื่อจาก data sheet vs Ref. map
+    if (parsedRows.length > 0) {
+      const uniqueNames = [...new Set(parsedRows.map(r => r.productName))];
+      const matched   = uniqueNames.filter(n => nameToSku.has(n));
+      const unmatched = uniqueNames.filter(n => !nameToSku.has(n));
+      console.log(`[C-Line Parser] Unique product names in sheet: ${uniqueNames.length}`);
+      console.log(`[C-Line Parser] Matched: ${matched.length}, Unmatched: ${unmatched.length}`);
+      if (unmatched.length > 0) {
+        console.log(`[C-Line Parser] Unmatched names (first 10):`, unmatched.slice(0, 10));
+      }
+      const matchCount = parsedRows.filter(r => nameToSku.has(r.productName)).length;
+      console.log(`[C-Line Parser] Matched ${matchCount}/${parsedRows.length} rows`);
+    }
 
     // Build insert rows
     const insertRows = [];

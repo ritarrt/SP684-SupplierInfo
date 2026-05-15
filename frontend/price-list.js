@@ -887,34 +887,54 @@ async function exportSellingPriceExcel() {
 
     const fmt = v => (v != null && parseFloat(v) !== 0) ? parseFloat(v) : "";
 
-    // สร้าง rows
-    const headers = [
-      "SKU", "Branch",
-      "SDM", "W1", "W2", "R1", "R2"
-    ];
+    const isAcc = productType === "Accessories";
 
-    const rows = data.map(r => [
-      r.sku || "", r.branch || "",
-      fmt(r.sellingPriceSdm), fmt(r.sellingPriceW1), fmt(r.sellingPriceW2), fmt(r.sellingPriceR1), fmt(r.sellingPriceR2)
-    ]);
+    const headers = isAcc
+      ? ["SKU", "Branch", "ประเภท", "SDM", "W1", "W2", "R1", "R2"]
+      : ["SKU", "Branch", "SDM", "W1", "W2", "R1", "R2"];
+
+    const rows = [];
+    for (const r of data) {
+      if (isAcc) {
+        // แถวลงลัง (ราคาปกติ)
+        rows.push([
+          r.sku || "", r.branch || "", "ลงลัง",
+          fmt(r.sellingPriceSdm), fmt(r.sellingPriceW1), fmt(r.sellingPriceW2),
+          fmt(r.sellingPriceR1), fmt(r.sellingPriceR2)
+        ]);
+        // แถวไม่ลงลัง — แสดงเฉพาะเมื่อมีราคา
+        const hasNonCarton = r.nonCartonW1 || r.nonCartonW2 || r.nonCartonR1 || r.nonCartonR2;
+        if (hasNonCarton) {
+          rows.push([
+            r.sku || "", r.branch || "", "ไม่ลงลัง",
+            "", fmt(r.nonCartonW1), fmt(r.nonCartonW2),
+            fmt(r.nonCartonR1), fmt(r.nonCartonR2)
+          ]);
+        }
+      } else {
+        rows.push([
+          r.sku || "", r.branch || "",
+          fmt(r.sellingPriceSdm), fmt(r.sellingPriceW1), fmt(r.sellingPriceW2),
+          fmt(r.sellingPriceR1), fmt(r.sellingPriceR2)
+        ]);
+      }
+    }
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
-    // กำหนดความกว้างคอลัมน์
-    ws['!cols'] = [
-      {wch:22},{wch:8},
-      {wch:14},{wch:14},{wch:14},{wch:14},{wch:14}
-    ];
+    ws['!cols'] = isAcc
+      ? [{wch:22},{wch:8},{wch:10},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14}]
+      : [{wch:22},{wch:8},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14}];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "ราคาขาย");
 
-    const typeSuffix = productType || "ทุกประเภท";
+    const typeSuffix   = productType || "ทุกประเภท";
     const branchSuffix = branch || "ทุกสาขา";
     const today = new Date().toLocaleDateString('th-TH', { dateStyle: 'short' }).replace(/\//g, '-');
     XLSX.writeFile(wb, `ราคาขาย_${typeSuffix}_${branchSuffix}_${today}.xlsx`);
 
-    showToast(`นำออกสำเร็จ ${data.length.toLocaleString()} รายการ`, "success");
+    showToast(`นำออกสำเร็จ ${rows.length.toLocaleString()} แถว`, "success");
 
   } catch (err) {
     console.error("exportSellingPriceExcel error:", err);
