@@ -257,7 +257,34 @@
 
   </main>
 
-  <script type="module" src="price-list.js"></script>
+  <script src="price-list.js"></script>
+
+  <!-- Auth: ต้องเป็น module เพื่อใช้ import -->
+  <script type="module">
+    import { requireRole, logout, getUserRole, canImportPrice } from "/js/auth.js";
+
+    (async () => {
+      const user = await requireRole();
+      if (!user) return;
+
+      const avatar = document.getElementById("userAvatar");
+      const nameEl = document.getElementById("userName");
+      const codeEl = document.getElementById("userCode");
+      const role   = getUserRole(user);
+
+      if (avatar) avatar.textContent = (user.empname || user.username || "U")[0].toUpperCase();
+      if (nameEl) nameEl.textContent = user.empname || user.username || "-";
+      if (codeEl) codeEl.textContent = role || user.username || "-";
+
+      document.getElementById("btnLogout")?.addEventListener("click", logout);
+
+      // ซ่อนปุ่ม import ถ้าไม่มีสิทธิ์
+      if (!canImportPrice(user)) {
+        document.getElementById("importBtn")?.style && (document.getElementById("importBtn").style.display = "none");
+        document.getElementById("dropzone")?.style && (document.getElementById("dropzone").style.display = "none");
+      }
+    })();
+  </script>
 
   <!-- TOAST CONTAINER -->
   <div id="toastContainer" class="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-50"></div>
