@@ -1162,6 +1162,7 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
     const hasSellingPrices   = dbCols.includes('selling_price_w1');
     const hasSellingPriceSdm = dbCols.includes('selling_price_sdm');
+    const hasNonCarton       = dbCols.includes('non_carton_w1');
 
     const fv = v => {
       if (v === undefined || v === null || v === '' || v === '-') return 0;
@@ -1170,7 +1171,14 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     };
 
     // Parse rows — row 0 คือ header ข้ามไป
-    const insertRows = [];
+    // Logic: SKU เดียวกันอาจมี 2 แถว
+    //   แถวปกติ (unit ≠ "ไม่ลงลัง") → ราคาลงลัง → selling_price_w1/w2/r1/r2
+    //   แถว "ไม่ลงลัง"               → ราคาไม่ลงลัง → non_carton_w1/w2/r1/r2
+    // รวมเป็น row เดียวต่อ SKU
+
+    // Pass 1: อ่านทุกแถวแล้วจัดกลุ่มตาม SKU
+    const skuMap = new Map(); // sku → { carton: {...}, nonCarton: {...} }
+
     for (let i = 1; i < rawData.length; i++) {
       const row = rawData[i];
       if (!row) continue;
@@ -1187,22 +1195,47 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
       const r1             = fv(row[13]);  // N: R1
       const r2             = fv(row[14]);  // O: R2
 
-      // ข้ามแถวที่ไม่มี SKU
       if (!sku) continue;
-
-      // ข้ามแถวที่ไม่มีราคาใดเลย
       if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && reExVat === 0) continue;
 
-      // ใช้ชื่อจาก StockStatusFact ถ้ามี ไม่งั้น fallback ไปชื่อจาก Excel
       const productName = skuNameMap[sku] || productNameRaw;
+      const isNonCarton = unit.includes('ไม่ลงลัง');
 
-      // expand ทุกสาขา
-      for (const branchCode of allBranchCodes) {
-        insertRows.push({ branchCode, sku, brand, productName, unit, basePrice, reExVat, sdm, w1, w2, r1, r2 });
+      if (!skuMap.has(sku)) {
+        skuMap.set(sku, {
+          sku, brand, productName, unit,
+          basePrice, reExVat, sdm,
+          w1: 0, w2: 0, r1: 0, r2: 0,
+          ncW1: 0, ncW2: 0, ncR1: 0, ncR2: 0,
+        });
+      }
+
+      const entry = skuMap.get(sku);
+      if (isNonCarton) {
+        // ราคาไม่ลงลัง
+        entry.ncW1 = w1; entry.ncW2 = w2; entry.ncR1 = r1; entry.ncR2 = r2;
+      } else {
+        // ราคาลงลัง (ปกติ) — อัปเดต metadata จากแถวนี้ด้วย
+        entry.brand     = brand;
+        entry.unit      = unit;
+        entry.basePrice = basePrice;
+        entry.reExVat   = reExVat;
+        entry.sdm       = sdm;
+        entry.w1 = w1; entry.w2 = w2; entry.r1 = r1; entry.r2 = r2;
       }
     }
 
-    console.log(`[ACC Parser] Rows to insert: ${insertRows.length} (${insertRows.length / allBranchCodes.length} SKUs × ${allBranchCodes.length} branches)`);
+    console.log(`[ACC Parser] Unique SKUs: ${skuMap.size}`);
+
+    // Pass 2: expand ทุกสาขา
+    const insertRows = [];
+    for (const entry of skuMap.values()) {
+      for (const branchCode of allBranchCodes) {
+        insertRows.push({ branchCode, ...entry });
+      }
+    }
+
+    console.log(`[ACC Parser] Rows to insert: ${insertRows.length} (${skuMap.size} SKUs × ${allBranchCodes.length} branches)`);
 
     if (insertRows.length === 0) {
       console.warn('[ACC Parser] No rows to insert');
@@ -1211,7 +1244,16 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
 
     // Build insert columns
     let insertCols;
-    if (hasSellingPrices && hasSellingPriceSdm) {
+    if (hasSellingPrices && hasSellingPriceSdm && hasNonCarton) {
+      insertCols = `branch, product_type, sku, product_name, brand, unit,
+        base_price, discount_price_1, discount_price_2, discount_price_3,
+        project_no, project_discount_1, project_discount_2, project_price,
+        carton_price, shipping_cost, free_item,
+        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+        selling_price_sdm,
+        non_carton_w1, non_carton_w2, non_carton_r1, non_carton_r2,
+        import_log_id`;
+    } else if (hasSellingPrices && hasSellingPriceSdm) {
       insertCols = `branch, product_type, sku, product_name, brand, unit,
         base_price, discount_price_1, discount_price_2, discount_price_3,
         project_no, project_discount_1, project_discount_2, project_price,
@@ -1232,9 +1274,9 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         carton_price, shipping_cost, free_item, import_log_id`;
     }
 
-    // Batch insert — จำกัด 150 rows ต่อ batch
-    // (แต่ละ row มี ~13 parameters → 150 × 13 = 1,950 < SQL Server limit 2,100)
-    const BATCH_SIZE = 150;
+    // Batch insert — จำกัด 120 rows ต่อ batch
+    // (แต่ละ row มี ~17 parameters เมื่อมี non_carton → 120×17=2,040 < 2,100)
+    const BATCH_SIZE = 120;
     for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
       const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
       const req = pool.request();
@@ -1253,9 +1295,22 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1);
         req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2);
         req.input(`logId${idx}`,       sql.Int,           logId);
-        if (hasSellingPriceSdm) req.input(`sdm${idx}`, sql.Decimal(18,2), r.sdm);
+        if (hasSellingPriceSdm) req.input(`sdm${idx}`,   sql.Decimal(18,2), r.sdm);
+        if (hasNonCarton) {
+          req.input(`ncW1_${idx}`, sql.Decimal(18,2), r.ncW1);
+          req.input(`ncW2_${idx}`, sql.Decimal(18,2), r.ncW2);
+          req.input(`ncR1_${idx}`, sql.Decimal(18,2), r.ncR1);
+          req.input(`ncR2_${idx}`, sql.Decimal(18,2), r.ncR2);
+        }
 
-        if (hasSellingPrices && hasSellingPriceSdm) {
+        if (hasSellingPrices && hasSellingPriceSdm && hasNonCarton) {
+          valueParts.push(
+            `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
+            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@sdm${idx},` +
+            `@ncW1_${idx},@ncW2_${idx},@ncR1_${idx},@ncR2_${idx},@logId${idx})`
+          );
+        } else if (hasSellingPrices && hasSellingPriceSdm) {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
             `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',` +
@@ -1297,9 +1352,22 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
               .input('r1',          sql.Decimal(18,2), r.r1)
               .input('r2',          sql.Decimal(18,2), r.r2)
               .input('logId',       sql.Int,           logId);
-            if (hasSellingPriceSdm) singleReq.input('sdm', sql.Decimal(18,2), r.sdm);
+            if (hasSellingPriceSdm) singleReq.input('sdm',  sql.Decimal(18,2), r.sdm);
+            if (hasNonCarton) {
+              singleReq.input('ncW1', sql.Decimal(18,2), r.ncW1)
+                       .input('ncW2', sql.Decimal(18,2), r.ncW2)
+                       .input('ncR1', sql.Decimal(18,2), r.ncR1)
+                       .input('ncR2', sql.Decimal(18,2), r.ncR2);
+            }
 
-            if (hasSellingPrices && hasSellingPriceSdm) {
+            if (hasSellingPrices && hasSellingPriceSdm && hasNonCarton) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
+                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',
+                        @w1,@w2,@r1,@r2,@sdm,@ncW1,@ncW2,@ncR1,@ncR2,@logId)
+              `);
+            } else if (hasSellingPrices && hasSellingPriceSdm) {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
