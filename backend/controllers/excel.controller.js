@@ -1608,16 +1608,18 @@ export async function getImportData(req, res) {
     let fromClause = '';
     if (hasLogId) {
       fromClause = `
-        FROM [excel_import_data] d
-        INNER JOIN (
-          SELECT l.product_type, MAX(l.id) AS latest_log_id
-          FROM excel_import_logs l
-          WHERE l.status = 'published' AND l.imported_rows > 0
-          GROUP BY l.product_type
-        ) latest_log
-          ON d.product_type = latest_log.product_type
-          AND d.import_log_id = latest_log.latest_log_id
-        WHERE d.status = 'published'
+        FROM (
+          SELECT d.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY d.sku, d.branch, d.product_type
+              ORDER BY l.imported_at DESC
+            ) AS rn
+          FROM [excel_import_data] d
+          INNER JOIN [excel_import_logs] l ON l.id = d.import_log_id
+          WHERE l.status = 'published'
+            AND l.imported_rows > 0
+            AND d.status = 'published'
+        ) d WHERE d.rn = 1
       `;
     } else {
       // fallback: ล่าสุดต่อ sku+branch
@@ -1633,10 +1635,8 @@ export async function getImportData(req, res) {
       `;
     }
 
-    // WHERE clause — ใช้ prefix ถูกต้องตาม path
-    // hasLogId path: FROM ... (ไม่มี WHERE ใน FROM) → ใช้ WHERE
-    // fallback path: FROM (...) d WHERE d.rn = 1 → ต้องใช้ AND
-    const whereStr = buildWhereStr(!hasLogId);
+    // WHERE clause — fromClause ใหม่เป็น subquery ทั้งสอง path → ใช้ AND เสมอ
+    const whereStr = buildWhereStr(true);
 
     // Count
     const countReq = pool.request();
@@ -1670,15 +1670,42 @@ export async function getImportData(req, res) {
         ${discPctCols}
         ${sellingCols}
         d.[created_at] AS [createdAt],
-        -- is_new: SKU นี้ไม่มีใน log ที่ published ก่อนหน้า (ของ product_type เดียวกัน)
+        -- is_new: SKU+branch นี้ไม่เคยมีใน log published ก่อนหน้า (เปรียบเทียบต่อ sku+branch+product_type)
         CASE WHEN NOT EXISTS (
           SELECT 1 FROM excel_import_data prev
           JOIN excel_import_logs pl ON pl.id = prev.import_log_id
-          WHERE prev.sku = d.sku
+          WHERE prev.sku          = d.sku
+            AND prev.branch       = d.branch
             AND prev.product_type = d.product_type
-            AND pl.status = 'published'
-            AND pl.id < d.import_log_id
-        ) THEN 1 ELSE 0 END AS [isNew]
+            AND pl.status         = 'published'
+            AND pl.imported_at    < (
+              SELECT imported_at FROM excel_import_logs WHERE id = d.import_log_id
+            )
+        ) THEN 1 ELSE 0 END AS [isNew],
+        -- is_stale: SKU+branch นี้ไม่ได้อยู่ใน log ล่าสุดของ branch นั้น
+        -- (มี log ใหม่กว่าสำหรับ branch+product_type นี้ แต่ไม่มี SKU นี้อยู่ใน log นั้น)
+        CASE WHEN EXISTS (
+          SELECT 1 FROM excel_import_logs newer
+          WHERE newer.product_type = d.product_type
+            AND newer.status       = 'published'
+            AND newer.imported_rows > 0
+            AND newer.imported_at  > (
+              SELECT imported_at FROM excel_import_logs WHERE id = d.import_log_id
+            )
+            AND EXISTS (
+              SELECT 1 FROM excel_import_data nd
+              WHERE nd.import_log_id = newer.id
+                AND nd.branch        = d.branch
+                AND nd.status        = 'published'
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM excel_import_data nd
+              WHERE nd.import_log_id = newer.id
+                AND nd.branch        = d.branch
+                AND nd.sku           = d.sku
+                AND nd.status        = 'published'
+            )
+        ) THEN 1 ELSE 0 END AS [isStale]
       ${fromClause}
       ${whereStr}
       ORDER BY d.[product_type], d.[sku], d.[branch]

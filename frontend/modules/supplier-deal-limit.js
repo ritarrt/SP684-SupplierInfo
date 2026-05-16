@@ -173,6 +173,18 @@ function renderDealLimitTable() {
 
   let rows = [...dealLimitData];
 
+  // filter by allowed categories (PM/Admin จำกัด cat)
+  const allowedCats = window.__allowedCategories ?? [];
+  if (allowedCats.length > 0) {
+    rows = rows.filter(r => {
+      const itemCat = (r.category || "").toLowerCase().replace(/[-\s]/g, "");
+      return allowedCats.some(c =>
+        itemCat.includes(c.toLowerCase().replace(/[-\s]/g, "")) ||
+        c.toLowerCase().replace(/[-\s]/g, "").includes(itemCat)
+      );
+    });
+  }
+
   if (filterValue === "active") {
     rows = rows.filter(r => r.status === "OPEN" || r.status === "USE");
   } else if (filterValue === "closed") {

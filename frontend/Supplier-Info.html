@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script>
-  window.API_BASE = "http://192.192.0.37:3000";
+  window.API_BASE = "http://192.192.0.37:5847";
   
   // Placeholder - will be replaced when supplier-deal.js module loads
   window.renderDealTable = function() {
@@ -2298,22 +2298,136 @@
 
 <!-- Auth: ต้องเป็น module เพื่อใช้ import -->
 <script type="module">
-  import { requireRole, logout, getUserRole } from "/js/auth.js";
+  import {
+    requireRole, logout,
+    getUserRoles, getUserCategories,
+    isPM, isWareHouse, isJadSue, isAdminCat
+  } from "/js/auth.js";
 
   (async () => {
-    const user = await requireRole();
-    if (!user) return;
+  const user = await requireRole();
+  if (!user) return;
 
-    const avatar = document.getElementById("userAvatar");
-    const nameEl = document.getElementById("userName");
-    const codeEl = document.getElementById("userCode");
-    const role   = getUserRole(user);
+  const nameEl   = document.getElementById("userName");
+  const codeEl   = document.getElementById("userCode");
+  const avatarEl = document.getElementById("userAvatar");
+  if (nameEl)   nameEl.textContent   = user.empname ?? "-";
+  if (codeEl)   codeEl.textContent   = user.username ?? "-";
+  if (avatarEl) avatarEl.textContent = (user.empname ?? user.username ?? "U")[0].toUpperCase();
+  document.getElementById("btnLogout")?.addEventListener("click", logout);
 
-    if (avatar) avatar.textContent = (user.empname || user.username || "U")[0].toUpperCase();
-    if (nameEl) nameEl.textContent = user.empname || user.username || "-";
-    if (codeEl) codeEl.textContent = role || user.username || "-";
+  window.__allowedCategories = getUserCategories(user);
+  window.__userRoles         = getUserRoles(user);
+  window.__isPM              = isPM(user);
+  window.__isWareHouse       = isWareHouse(user);
+  window.__isJadSue          = isJadSue(user);
 
-    document.getElementById("btnLogout")?.addEventListener("click", logout);
+  const cats = window.__allowedCategories;
+
+  function hideEditButtonsExceptCard3() {
+    document.querySelectorAll('[onclick="addProductRow()"]').forEach(el => el.style.display = "none");
+    document.querySelectorAll('[onclick="saveProductCoverageOnly()"]').forEach(el => el.style.display = "none");
+    const cancelProductBtn = document.getElementById("cancelEditProductBtn");
+    if (cancelProductBtn) cancelProductBtn.style.display = "none";
+    const productForm = document.getElementById("companyProductForm");
+    if (productForm) {
+      productForm.querySelectorAll("input, select, textarea, button").forEach(el => {
+        el.disabled = true; el.style.pointerEvents = "none";
+      });
+      productForm.querySelectorAll(".category-display, .brand-display, .group-display, .subgroup-display").forEach(el => {
+        el.style.pointerEvents = "none"; el.style.cursor = "default";
+      });
+    }
+    document.querySelectorAll('[onclick="addSupplierDocument()"]').forEach(el => el.style.display = "none");
+    document.querySelectorAll('input[type="file"]').forEach(el => { el.disabled = true; el.style.display = "none"; });
+    const docDescBasic = document.getElementById("supplierDocDesc_basic");
+    if (docDescBasic) docDescBasic.disabled = true;
+    document.querySelectorAll('[onclick="saveSupplierContact()"]').forEach(el => el.style.display = "none");
+    document.querySelectorAll('[onclick="addPhoneRow()"]').forEach(el => el.style.display = "none");
+    const contactForm = document.getElementById("contactForm");
+    if (contactForm) {
+      contactForm.querySelectorAll("input, select, textarea, button").forEach(el => {
+        el.disabled = true; el.style.pointerEvents = "none";
+      });
+    }
+    const phoneContainer = document.getElementById("phoneContainer");
+    if (phoneContainer) {
+      phoneContainer.querySelectorAll("input, button").forEach(el => {
+        el.disabled = true; el.style.pointerEvents = "none";
+      });
+    }
+  }
+
+  function hideAllEditButtons() {
+    hideEditButtonsExceptCard3();
+    const submitSpecialBtn = document.getElementById("submitSpecialTermsBtn");
+    const cancelEditBtn    = document.getElementById("cancelEditBtn");
+    if (submitSpecialBtn) submitSpecialBtn.style.display = "none";
+    if (cancelEditBtn)    cancelEditBtn.style.display    = "none";
+    document.querySelectorAll('[onclick="addPaymentRow()"]').forEach(el => el.style.display = "none");
+    document.querySelectorAll('[onclick="addLeadtimeSkuRow()"]').forEach(el => el.style.display = "none");
+    document.querySelectorAll('[onclick="removePaymentRow(this)"]').forEach(el => el.style.display = "none");
+    const specialTermsIds = [
+      "spBillingCycle","spCreditTerm","spCreditLimit","spCreditLimitUnit",
+      "spClaimPeriod","spClaimCondition","spClaimNote","spLeadtimeType","spLeadtimeDays"
+    ];
+    specialTermsIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.disabled = true; el.style.pointerEvents = "none"; }
+    });
+    document.querySelectorAll(".payment-method-select, .bank-input, .account-input, .account-name-input")
+      .forEach(el => { el.disabled = true; el.style.pointerEvents = "none"; });
+    document.querySelectorAll("#leadtimeSkuContainer input, #leadtimeSkuContainer select")
+      .forEach(el => { el.disabled = true; el.style.pointerEvents = "none"; });
+  }
+
+  window.__applyPermissions = function applyPermissions() {
+    if (isJadSue(user)) {
+      const otherTabs = ["pills-target", "pills-moq", "pills-deal-limit", "pills-document"];
+      otherTabs.forEach(tabId => {
+        const btn = document.querySelector(`[data-tab="${tabId}"]`);
+        if (btn) btn.closest("li")?.remove();
+      });
+    }
+    if (isWareHouse(user)) {
+      const hiddenTabs = ["pills-target", "pills-moq", "pills-deal-limit", "pills-document"];
+      hiddenTabs.forEach(tabId => {
+        const btn = document.querySelector(`[data-tab="${tabId}"]`);
+        if (btn) btn.closest("li")?.remove();
+      });
+    }
+    if (isJadSue(user)) hideEditButtonsExceptCard3();
+    if (isWareHouse(user)) hideAllEditButtons();
+    if (cats.length > 0 && (isPM(user) || isWareHouse(user))) {
+      const header = document.querySelector(".page-header");
+      if (header && !header.querySelector(".cat-badge")) {
+        const badge = document.createElement("span");
+        badge.className = "cat-badge ml-3 px-2 py-1 text-xs rounded-full font-medium " +
+          (isPM(user) ? "bg-yellow-100 text-yellow-700" : "bg-blue-100 text-blue-700");
+        badge.textContent = `Category: ${cats.join(", ")}`;
+        header.appendChild(badge);
+      }
+    }
+  };
+
+  if (isJadSue(user) || isWareHouse(user)) {
+    window.addPhoneRow = function() {
+      const container = document.getElementById("phoneContainer");
+      if (!container) return;
+      const row = document.createElement("div");
+      row.className = "flex gap-2 items-center mb-2";
+      row.innerHTML = `<input type="text" class="form-control phone-input bg-readonly-info"
+        placeholder="เบอร์โทรศัพท์" disabled style="pointer-events:none;" />`;
+      container.appendChild(row);
+    };
+  }
+
+  window.__applyPermissions();
+  setTimeout(window.__applyPermissions, 100);
+  setTimeout(window.__applyPermissions, 500);
+
+  window.__authReady = true;
+  window.dispatchEvent(new Event("authReady"));
   })();
 </script>
 

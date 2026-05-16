@@ -471,6 +471,18 @@ function renderMoqTable() {
 
   let rows = [...moqData];
 
+  // filter by allowed categories (PM/Admin จำกัด cat)
+  const allowedCats = window.__allowedCategories ?? [];
+  if (allowedCats.length > 0) {
+    rows = rows.filter(r => {
+      const itemCat = (r.category || "").toLowerCase().replace(/[-\s]/g, "");
+      return allowedCats.some(c =>
+        itemCat.includes(c.toLowerCase().replace(/[-\s]/g, "")) ||
+        c.toLowerCase().replace(/[-\s]/g, "").includes(itemCat)
+      );
+    });
+  }
+
   // 🔥 อ่านค่า filter (radio)
   const filterValue =
     document.querySelector("input[name='moqFilter']:checked")?.value;

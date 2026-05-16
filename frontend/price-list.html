@@ -259,9 +259,13 @@
 
   <script src="price-list.js"></script>
 
-  <!-- Auth: ต้องเป็น module เพื่อใช้ import -->
+  <!-- Auth -->
   <script type="module">
-    import { requireRole, logout, getUserRole, canImportPrice } from "/js/auth.js";
+    import {
+      requireRole, logout,
+      getUserRoles, getUserCategories,
+      isPM, isAdminCat, canImportPrice
+    } from "/js/auth.js";
 
     (async () => {
       const user = await requireRole();
@@ -270,19 +274,37 @@
       const avatar = document.getElementById("userAvatar");
       const nameEl = document.getElementById("userName");
       const codeEl = document.getElementById("userCode");
-      const role   = getUserRole(user);
-
-      if (avatar) avatar.textContent = (user.empname || user.username || "U")[0].toUpperCase();
-      if (nameEl) nameEl.textContent = user.empname || user.username || "-";
-      if (codeEl) codeEl.textContent = role || user.username || "-";
-
+      if (avatar) avatar.textContent = (user.empname ?? user.username ?? "U")[0].toUpperCase();
+      if (nameEl) nameEl.textContent = user.empname ?? "-";
+      if (codeEl) codeEl.textContent = user.username ?? "-";
       document.getElementById("btnLogout")?.addEventListener("click", logout);
 
-      // ซ่อนปุ่ม import ถ้าไม่มีสิทธิ์
+      // ── เก็บ global ──────────────────────────────────────────
+      window.__allowedCategories = getUserCategories(user);
+      window.__canImportPrice    = canImportPrice(user);
+      window.__isAdminCat        = isAdminCat(user);
+
+      // ── Admin_* ดูได้อย่างเดียว ──────────────────────────────
       if (!canImportPrice(user)) {
-        document.getElementById("importBtn")?.style && (document.getElementById("importBtn").style.display = "none");
-        document.getElementById("dropzone")?.style && (document.getElementById("dropzone").style.display = "none");
+        const dropzone = document.getElementById("dropzone");
+        if (dropzone) dropzone.style.display = "none";
+        const importBtn = document.getElementById("importBtn");
+        if (importBtn) importBtn.style.display = "none";
+        const sheetSection = document.getElementById("sheetSection");
+        if (sheetSection) sheetSection.style.display = "none";
+        document.querySelectorAll('[onclick="exportSellingPriceExcel()"]')
+          .forEach(el => { el.disabled = true; el.style.display = "none"; });
+        const h1 = document.querySelector("main h1");
+        if (h1 && !h1.querySelector(".readonly-badge")) {
+          const badge = document.createElement("span");
+          badge.className = "readonly-badge ml-3 text-sm px-3 py-1 bg-gray-100 text-gray-500 rounded-full font-normal";
+          badge.textContent = "ดูข้อมูลได้อย่างเดียว";
+          h1.appendChild(badge);
+        }
       }
+
+      window.__authReady = true;
+      window.dispatchEvent(new Event("authReady"));
     })();
   </script>
 

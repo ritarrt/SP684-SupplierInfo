@@ -618,7 +618,19 @@ if (!Array.isArray(data)) {
 const selectedFilter =
   document.querySelector('input[name="tgFilter"]:checked')?.value || "OPEN";
 
+// filter by allowed categories (PM/Admin จำกัด cat)
+const allowedCats = window.__allowedCategories ?? [];
+
 const filtered = data.filter(item => {
+    // filter category ก่อน
+    if (allowedCats.length > 0) {
+      const itemCat = (item.category || "").toLowerCase().replace(/[-\s]/g, "");
+      const match = allowedCats.some(c =>
+        itemCat.includes(c.toLowerCase().replace(/[-\s]/g, "")) ||
+        c.toLowerCase().replace(/[-\s]/g, "").includes(itemCat)
+      );
+      if (!match) return false;
+    }
 
     if (selectedFilter === "OPEN") {
       return item.status === "OPEN";

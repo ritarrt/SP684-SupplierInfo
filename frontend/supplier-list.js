@@ -1,9 +1,8 @@
 import { requireRole, logout, getUserRole } from "/js/auth.js";
 
-const API_BASE = "http://192.192.0.37:3000";
-
-const tableBody = document.getElementById("supplierTableBody");
+const API_BASE = "http://192.192.0.37:5847";
 const searchInput = document.getElementById("searchInput");
+const tableBody = document.getElementById("supplierTableBody");
 
 // ==================================================
 // AUTH INIT
@@ -24,9 +23,6 @@ const searchInput = document.getElementById("searchInput");
 
   // ผูกปุ่ม logout
   document.getElementById("btnLogout")?.addEventListener("click", logout);
-
-  // โหลดข้อมูล
-  fetchSuppliers();
 })();
 
 async function fetchSuppliers(page = 1, keyword = "") {
@@ -89,3 +85,17 @@ function renderTable(list) {
 searchInput.addEventListener("input", (e) => {
   fetchSuppliers(1, e.target.value);
 });
+
+/* รอ auth พร้อมก่อนโหลด */
+function startApp() {
+  fetchSuppliers();
+}
+
+if (window.__authReady) {
+  startApp();
+} else {
+  window.addEventListener("authReady", startApp, { once: true });
+  setTimeout(() => {
+    if (!window.__authReady) startApp();
+  }, 3000);
+}

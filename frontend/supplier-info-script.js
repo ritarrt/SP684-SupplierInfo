@@ -58,12 +58,35 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSpecialTermsCurrent(supplierNo);
 
 
-  loadLatestCoverageFromHistory(supplierNo);
+  // ⭐ รอ auth พร้อมก่อนโหลด coverage (ต้องรู้ allowedCategories)
+  function loadCoverageWhenReady() {
+    loadLatestCoverageFromHistory(supplierNo);
+  }
+
+  if (window.__allowedCategories !== undefined) {
+    loadCoverageWhenReady();
+  } else {
+    window.addEventListener("authReady", loadCoverageWhenReady, { once: true });
+    setTimeout(() => {
+      if (window.__allowedCategories === undefined) {
+        window.__allowedCategories = [];
+        loadCoverageWhenReady();
+      }
+    }, 3000);
+  }
+
   // ⭐⭐⭐ เพิ่มบรรทัดนี้เท่านั้น ⭐⭐⭐
   loadSupplierHistory(supplierNo);
 
   loadSupplierDocuments(supplierNo, "basic");
   loadSupplierDocuments(supplierNo, "document");
+
+  // re-apply permissions หลัง DOM content โหลดเสร็จ
+  setTimeout(() => {
+    if (typeof window.__applyPermissions === "function") {
+      window.__applyPermissions();
+    }
+  }, 200);
   // ===============================
   // GLOBAL CLICK HANDLER
   // ===============================

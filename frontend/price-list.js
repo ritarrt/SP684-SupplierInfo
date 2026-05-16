@@ -1,5 +1,4 @@
-const API_BASE = "http://192.192.0.37:3000";
-let currentSheetName = null;
+const API_BASE = "http://192.192.0.37:5847";
 let currentData = [];
 let currentTab = null;
 let currentFile = null;
@@ -29,13 +28,21 @@ async function initializeProductTypes() {
     const response = await fetch(`${API_BASE}/api/master/categories`);
     if (response.ok) {
       const data = await response.json();
-      // Extract category names
-      productTypes = data.map(item => item.name).filter(Boolean);
+      let types = data.map(item => item.name).filter(Boolean);
+
+      // filter ตาม __allowedCategories ถ้ามี (PM_* / Admin_* เห็นแค่ cat ตัวเอง)
+      const allowed = window.__allowedCategories ?? [];
+      if (allowed.length > 0) {
+        types = types.filter(t =>
+          allowed.some(c => t.toLowerCase().replace(/[-\s]/g, '') === c.toLowerCase().replace(/[-\s]/g, ''))
+        );
+      }
+
+      productTypes = types;
       createProductTypeTabs();
     }
   } catch (err) {
     console.error("Failed to load product types:", err);
-    // Fallback: create empty tabs, user can add manually
     createProductTypeTabs();
   }
 }
@@ -781,7 +788,8 @@ async function loadImportData(page = 1) {
           <td><span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${row.productType || '-'}</span></td>
           <td class="font-mono text-xs">
             ${row.sku || '-'}
-            ${row.isNew ? '<span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">New</span>' : ''}
+            ${row.isNew   ? '<span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">New</span>' : ''}
+            ${row.isStale ? '<span class="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-semibold">ราคาเก่า</span>' : ''}
           </td>
           <td>${row.productName || '-'}</td>
           <td class="text-gray-600">${row.brand || '-'}</td>
@@ -858,7 +866,17 @@ async function initializeBranchFilter() {
 // initializeProductTypes จะเรียก loadImportData เองผ่าน selectTab
 // ไม่ต้องเรียก loadImportData() แยกเพื่อป้องกัน race condition
 initializeBranchFilter();
-initializeProductTypes();
+
+// รอ authReady ก่อนเพื่อให้ __allowedCategories ถูก set แล้ว
+function startApp() {
+  initializeProductTypes();
+}
+
+if (window.__authReady) {
+  startApp();
+} else {
+  window.addEventListener("authReady", startApp, { once: true });
+}
 
 // ============================================
 // EXPORT SELLING PRICE EXCEL

@@ -239,6 +239,22 @@ function renderDealTable() {
   // แสดงทุก status ไม่ filter
   let rows = [...dealData];
 
+  // filter by allowed categories (PM/Admin จำกัด cat)
+  const allowedCats = window.__allowedCategories ?? [];
+  if (allowedCats.length > 0 && window.cachedSkuData?.length > 0) {
+    const skuToCategory = {};
+    window.cachedSkuData.forEach(s => {
+      if (s.sku) skuToCategory[s.sku] = (s.category || "").toLowerCase().replace(/[-\s]/g, "");
+    });
+    rows = rows.filter(r => {
+      const itemCat = skuToCategory[r.sku] || "";
+      return allowedCats.some(c =>
+        itemCat.includes(c.toLowerCase().replace(/[-\s]/g, "")) ||
+        c.toLowerCase().replace(/[-\s]/g, "").includes(itemCat)
+      );
+    });
+  }
+
   // Sort by SKU then branch
   rows.sort((a, b) => {
     const skuA = (a.sku || "").toLowerCase();

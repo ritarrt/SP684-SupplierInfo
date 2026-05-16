@@ -155,7 +155,8 @@ export async function getProfile({ force = false } = {}) {
   }
 
   try {
-    const res = await fetch(`/api/me`, { credentials: "include" });
+    // เรียก auth server โดยตรง (ไม่ proxy) เพื่อให้ cookie ถูกส่งไปถูก domain
+    const res = await fetch(`${AUTH_API}/api/me`, { credentials: "include" });
     if (!res.ok) { cachedUser = null; return null; }
     const data = await res.json();
     cachedUser = data?.user ?? null;

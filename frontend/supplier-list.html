@@ -77,8 +77,27 @@
 
   </main>
 
-  <!-- JS: ทำงานภายหลัง -->
-  <script type="module" src="supplier-list.js"></script>
+  <!-- Auth + JS -->
+  <script type="module">
+    import { requireRole, logout, getUserRole, getUserCategories } from "/js/auth.js";
+
+    const user = await requireRole();
+    if (user) {
+      const nameEl   = document.getElementById("userName");
+      const codeEl   = document.getElementById("userCode");
+      const avatarEl = document.getElementById("userAvatar");
+      if (nameEl)   nameEl.textContent   = user.empname ?? "-";
+      if (codeEl)   codeEl.textContent   = user.username ?? "-";
+      if (avatarEl) avatarEl.textContent = (user.empname ?? user.username ?? "U")[0].toUpperCase();
+      document.getElementById("btnLogout")?.addEventListener("click", logout);
+
+      // เก็บ allowed categories ไว้ให้ supplier-list.js ใช้
+      window.__allowedCategories = getUserCategories(user);
+      window.__authReady = true;
+      window.dispatchEvent(new Event("authReady"));
+    }
+  </script>
+  <script src="supplier-list.js"></script>
 
 </body>
 </html>
