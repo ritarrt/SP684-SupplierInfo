@@ -258,14 +258,33 @@ function toggleCategoryDropdown(el) {
 
   const dropdown = row.querySelector(".category-dropdown");
 
-  dropdown.innerHTML = `
-    ${renderRadio("cat", seq, "Glass", CATEGORY_LABEL.Glass, row.dataset.category === "Glass")}
-    ${renderRadio("cat", seq, "Aluminum", CATEGORY_LABEL.Aluminum, row.dataset.category === "Aluminum")}
-    ${renderRadio("cat", seq, "Gypsum", CATEGORY_LABEL.Gypsum, row.dataset.category === "Gypsum")}
-    ${renderRadio("cat", seq, "Accessories", CATEGORY_LABEL.Accessories, row.dataset.category === "Accessories")}
-    ${renderRadio("cat", seq, "C-Line", CATEGORY_LABEL["C-Line"], row.dataset.category === "C-Line")}
-    ${renderRadio("cat", seq, "Sealant", CATEGORY_LABEL.Sealant, row.dataset.category === "Sealant")}
-  `;
+  // ===== FILTER by allowed categories =====
+  const allowedCats = window.__allowedCategories ?? [];
+  console.log("🔍 toggleCategoryDropdown - allowedCats:", allowedCats);
+  
+  const allCategories = [
+    { value: "Glass", label: CATEGORY_LABEL.Glass },
+    { value: "Aluminum", label: CATEGORY_LABEL.Aluminum },
+    { value: "Gypsum", label: CATEGORY_LABEL.Gypsum },
+    { value: "Accessories", label: CATEGORY_LABEL.Accessories },
+    { value: "C-Line", label: CATEGORY_LABEL["C-Line"] },
+    { value: "Sealant", label: CATEGORY_LABEL.Sealant }
+  ];
+
+  let visibleCategories = allCategories;
+  if (allowedCats.length > 0) {
+    visibleCategories = allCategories.filter(cat =>
+      allowedCats.some(allowed =>
+        cat.value.toLowerCase().replace(/[-\s]/g, '') === allowed.toLowerCase().replace(/[-\s]/g, '')
+      )
+    );
+  }
+
+  console.log("✅ visibleCategories:", visibleCategories);
+
+  dropdown.innerHTML = visibleCategories
+    .map(cat => renderRadio("cat", seq, cat.value, cat.label, row.dataset.category === cat.value))
+    .join("");
 
   dropdown.querySelectorAll("input").forEach((r) =>
     r.addEventListener("change", () => onCategoryChange(r))
@@ -599,6 +618,18 @@ async function saveProductCoverageOnly() {
 async function applyCoverageToRow(row, item) {
   if (!row || !item) return;
 
+  // ===== FILTER by allowed categories =====
+  const allowedCats = window.__allowedCategories ?? [];
+  if (allowedCats.length > 0 && item.category) {
+    const isAllowed = allowedCats.some(allowed =>
+      item.category.toLowerCase().replace(/[-\s]/g, '') === allowed.toLowerCase().replace(/[-\s]/g, '')
+    );
+    if (!isAllowed) {
+      console.log("🚫 Category not allowed:", item.category, "- Skipping row");
+      return false; // ส่งสัญญาณให้ลบแถวนี้
+    }
+  }
+
   // reset ก่อน
   resetRow(row);
 
@@ -711,6 +742,7 @@ async function renderCoverageItems(items) {
   resetRow(templateRow);
 
   // สร้างแถวเพิ่มแบบ append ทีละแถว แล้ว apply ข้อมูล
+  const rowsToRemove = [];
   for (let idx = 0; idx < items.length; idx++) {
     if (idx > 0) {
       // clone จาก template แล้ว append (ไม่ prepend)
@@ -718,8 +750,16 @@ async function renderCoverageItems(items) {
       container.appendChild(newRow);
     }
     const rows = getAllRows();
-    await applyCoverageToRow(rows[idx], items[idx]);
+    const result = await applyCoverageToRow(rows[idx], items[idx]);
+    
+    // ถ้า applyCoverageToRow return false (category ไม่อนุญาต) ให้เก็บไว้ลบทีหลัง
+    if (result === false) {
+      rowsToRemove.push(rows[idx]);
+    }
   }
+  
+  // ลบแถวที่ไม่อนุญาต
+  rowsToRemove.forEach(row => row.remove());
 }
 
 function createEmptyRow(templateRow) {

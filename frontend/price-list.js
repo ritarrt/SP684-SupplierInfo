@@ -1,4 +1,4 @@
-const API_BASE = "http://192.192.0.37:5847";
+const API_BASE = "http://localhost:5847";
 let currentData = [];
 let currentTab = null;
 let currentFile = null;

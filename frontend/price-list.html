@@ -259,7 +259,7 @@
 
   <script src="price-list.js"></script>
 
-  <!-- Auth -->
+  <!-- Auth (โหลดก่อน!) -->
   <script type="module">
     import {
       requireRole, logout,
@@ -283,6 +283,10 @@
       window.__allowedCategories = getUserCategories(user);
       window.__canImportPrice    = canImportPrice(user);
       window.__isAdminCat        = isAdminCat(user);
+
+      console.log("✅ Auth Ready - __allowedCategories:", window.__allowedCategories);
+      console.log("✅ Auth Ready - __canImportPrice:", window.__canImportPrice);
+      console.log("✅ Auth Ready - __isAdminCat:", window.__isAdminCat);
 
       // ── Admin_* ดูได้อย่างเดียว ──────────────────────────────
       if (!canImportPrice(user)) {

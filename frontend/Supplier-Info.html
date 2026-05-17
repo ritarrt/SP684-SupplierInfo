@@ -2280,23 +2280,7 @@
 
 </body>
 
-<script src="modules/supplier-product-coverage.js"></script>
-<script src="modules/supplier-contact.js"></script>
-<script src="modules/supplier-special-terms.js"></script>
-  <script src="modules/supplier-excel-handler.js"></script>
-<script src="./components/supplier-history.js" defer></script>
-<script src="./components/supplier-document.js"></script>
-<script type="module" src="modules/supplier-moq.js"></script>
-<script type="module" src="modules/supplier-deal.js"></script>
-<script type="module" src="modules/supplier-deal-limit.js"></script>
-<script type="module" src="modules/supplier-target.js"></script>
-<script src="modules/supplier-target-excel.js" defer></script>
-
-
-
-<script src="supplier-info-script.js" defer></script>
-
-<!-- Auth: ต้องเป็น module เพื่อใช้ import -->
+<!-- Auth: ต้องเป็น module เพื่อใช้ import (โหลดก่อน!) -->
 <script type="module">
   import {
     requireRole, logout,
@@ -2311,9 +2295,9 @@
   const nameEl   = document.getElementById("userName");
   const codeEl   = document.getElementById("userCode");
   const avatarEl = document.getElementById("userAvatar");
-  if (nameEl)   nameEl.textContent   = user.empname ?? "-";
+  if (nameEl)   nameEl.textContent   = user.username ?? "-";
   if (codeEl)   codeEl.textContent   = user.username ?? "-";
-  if (avatarEl) avatarEl.textContent = (user.empname ?? user.username ?? "U")[0].toUpperCase();
+  if (avatarEl) avatarEl.textContent = (user.username ?? user.empname ?? "U")[0].toUpperCase();
   document.getElementById("btnLogout")?.addEventListener("click", logout);
 
   window.__allowedCategories = getUserCategories(user);
@@ -2321,6 +2305,9 @@
   window.__isPM              = isPM(user);
   window.__isWareHouse       = isWareHouse(user);
   window.__isJadSue          = isJadSue(user);
+
+  console.log("✅ Auth Ready - __allowedCategories:", window.__allowedCategories);
+  console.log("✅ Auth Ready - __userRoles:", window.__userRoles);
 
   const cats = window.__allowedCategories;
 
@@ -2430,6 +2417,19 @@
   window.dispatchEvent(new Event("authReady"));
   })();
 </script>
+
+<script src="modules/supplier-product-coverage.js"></script>
+<script src="modules/supplier-contact.js"></script>
+<script src="modules/supplier-special-terms.js"></script>
+<script src="modules/supplier-excel-handler.js"></script>
+<script src="./components/supplier-history.js" defer></script>
+<script src="./components/supplier-document.js"></script>
+<script type="module" src="modules/supplier-moq.js"></script>
+<script type="module" src="modules/supplier-deal.js"></script>
+<script type="module" src="modules/supplier-deal-limit.js"></script>
+<script type="module" src="modules/supplier-target.js"></script>
+<script src="modules/supplier-target-excel.js" defer></script>
+<script src="supplier-info-script.js" defer></script>
 
 
 

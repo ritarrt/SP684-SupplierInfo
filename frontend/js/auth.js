@@ -3,7 +3,7 @@
 // ใช้ระบบ Auth เดียวกับ SupplySense (proxy /api/me)
 // ============================================================
 
-const AUTH_API = "http://192.192.0.37:3004";
+const AUTH_API = "http://192.192.0.37:5847";
 const DX_URL   = "http://192.192.0.37:53683";
 
 export const APP_NAME = "Stock Insight and Purchasing Plan";
@@ -46,13 +46,13 @@ const ROLE_CATEGORIES = {
   "PM_Aluminium":      ["Aluminum", "Aluminium"],
   "PM_Gypsum":         ["Gypsum"],
   "PM_Sealant":        ["Sealant"],
-  "PM_CLine":          ["CLine", "C-Line"],
+  "PM_CLine":          ["C-Line"],
   "PM_Accessories":    ["Accessories"],
   "Admin_Glass":       ["Glass"],
   "Admin_Aluminium":   ["Aluminum", "Aluminium"],
   "Admin_Gypsum":      ["Gypsum"],
   "Admin_Sealant":     ["Sealant"],
-  "Admin_CLine":       ["CLine", "C-Line"],
+  "Admin_CLine":       ["C-Line"],
   "Admin_Accessories": ["Accessories"],
 };
 
@@ -63,9 +63,16 @@ const ROLE_CATEGORIES = {
 /** ดึง roles ทั้งหมดของ user สำหรับ app นี้ */
 export function getUserRoles(user) {
   const roles = user?.roles ?? [];
-  return roles
-    .filter(r => r.app === APP_NAME)
+  console.log("🔍 getUserRoles - all roles:", roles);
+  console.log("🔍 getUserRoles - APP_NAME:", APP_NAME);
+  const filtered = roles
+    .filter(r => {
+      console.log("  - Checking role:", r.app, "===", APP_NAME, "?", r.app === APP_NAME);
+      return r.app === APP_NAME;
+    })
     .map(r => r.role);
+  console.log("✅ getUserRoles - filtered:", filtered);
+  return filtered;
 }
 
 /** ดึง role แรก (ใช้แสดงผล) */
@@ -75,25 +82,36 @@ export function getUserRole(user) {
 
 /**
  * คืน categories ที่ user มีสิทธิ์ดู
- * คืน [] = ดูได้ทุก category (จัดซื้อ / admin / WareHouse)
+ * คืน [] = ดูได้ทุก category (จัดซื้อ / admin / WareHouse เท่านั้น)
  */
 export function getUserCategories(user) {
   const roles = getUserRoles(user);
+  console.log("🔍 getUserCategories - roles:", roles);
 
-  // จัดซื้อ / admin / WareHouse → ไม่จำกัด
-  if (
+  // ถ้ามี Admin_* หรือ PM_* ให้จำกัด category
+  const hasAdminOrPM = roles.some(r => r.startsWith("Admin_") || r.startsWith("PM_"));
+  if (hasAdminOrPM) {
+    console.log("✅ getUserCategories - has Admin_* or PM_* → restricted");
+    // ไปต่อเพื่อ map categories
+  } else if (
     roles.includes("admin") ||
     roles.includes("จัดซื้อ") ||
     roles.includes("WareHouse")
-  ) return [];
+  ) {
+    console.log("✅ getUserCategories - unrestricted (admin/จัดซื้อ/WareHouse)");
+    return [];
+  }
 
   const cats = new Set();
   roles.forEach(role => {
     const mapped = ROLE_CATEGORIES[role];
+    console.log("  - Role:", role, "→ Categories:", mapped);
     if (mapped) mapped.forEach(c => cats.add(c));
   });
 
-  return cats.size > 0 ? [...cats] : [];
+  const result = cats.size > 0 ? [...cats] : [];
+  console.log("✅ getUserCategories - result:", result);
+  return result;
 }
 
 /** เช็คว่า user เป็น PM (PM_*) */
@@ -135,7 +153,10 @@ let cachedUser = null;
 // GET PROFILE
 // ==================================================
 export async function getProfile({ force = false } = {}) {
-  if (!force && cachedUser) return cachedUser;
+  if (!force && cachedUser) {
+    console.log("📦 Using cached user:", cachedUser);
+    return cachedUser;
+  }
 
   // DEV BYPASS: localhost
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
@@ -156,10 +177,14 @@ export async function getProfile({ force = false } = {}) {
 
   try {
     // เรียก auth server โดยตรง (ไม่ proxy) เพื่อให้ cookie ถูกส่งไปถูก domain
+    console.log("🔄 Fetching fresh user profile from:", AUTH_API);
     const res = await fetch(`${AUTH_API}/api/me`, { credentials: "include" });
     if (!res.ok) { cachedUser = null; return null; }
     const data = await res.json();
     cachedUser = data?.user ?? null;
+    console.log("✅ Fresh user profile:", cachedUser);
+    console.log("✅ User roles:", cachedUser?.roles);
+    console.log("✅ Filtered roles for this app:", getUserRoles(cachedUser));
     return cachedUser;
   } catch (err) {
     console.error("getProfile error:", err);
@@ -185,8 +210,12 @@ export async function requireAuth() {
 // REQUIRE ROLE
 // ==================================================
 export async function requireRole() {
-  const user = await requireAuth();
-  if (!user) return null;
+  const user = await getProfile({ force: true });
+  if (!user) {
+    const returnUrl = window.location.origin + window.location.pathname;
+    window.location.replace(`${DX_URL}?returnUrl=${encodeURIComponent(returnUrl)}`);
+    return null;
+  }
 
   // DEV bypass
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {

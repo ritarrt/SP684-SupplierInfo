@@ -1,6 +1,6 @@
 import { requireRole, logout, getUserRole } from "/js/auth.js";
 
-const API_BASE = "http://192.192.0.37:5847";
+const API_BASE = "http://localhost:5847";
 const searchInput = document.getElementById("searchInput");
 const tableBody = document.getElementById("supplierTableBody");
 

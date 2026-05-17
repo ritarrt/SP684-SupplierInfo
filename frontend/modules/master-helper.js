@@ -1,4 +1,4 @@
-const API_BASE = window.API_BASE || "http://192.192.0.37:5847";
+const API_BASE = window.API_BASE || "http://localhost:5847";
 
 import { renderCheckboxDropdown } from "./coverage-helper.js";
 
