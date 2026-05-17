@@ -947,10 +947,21 @@ async function exportSellingPriceExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "ราคาขาย");
 
-    const typeSuffix   = productType || "ทุกประเภท";
-    const branchSuffix = branch || "ทุกสาขา";
-    const today = new Date().toLocaleDateString('th-TH', { dateStyle: 'short' }).replace(/\//g, '-');
-    XLSX.writeFile(wb, `ราคาขาย_${typeSuffix}_${branchSuffix}_${today}.xlsx`);
+    // ── ชื่อไฟล์: {ประเภทสินค้า}_{ปีพ.ศ. 2 หลัก}{เดือน}{วัน}_{running 5 หลัก}.xlsx
+    const now = new Date();
+    const buddhistYear = (now.getFullYear() + 543).toString().slice(-2); // 2 หลักท้าย
+    const mm   = String(now.getMonth() + 1).padStart(2, '0');
+    const dd   = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${buddhistYear}${mm}${dd}`;
+
+    const typeKey = productType || "All";
+    const runKey  = `exportRunNo_${typeKey}`;
+    const runNo   = (parseInt(localStorage.getItem(runKey) || "0") + 1);
+    localStorage.setItem(runKey, String(runNo));
+    const runStr  = String(runNo).padStart(5, '0');
+
+    const fileName = `${typeKey}_${dateStr}_${runStr}.xlsx`;
+    XLSX.writeFile(wb, fileName);
 
     showToast(`นำออกสำเร็จ ${rows.length.toLocaleString()} แถว`, "success");
 
