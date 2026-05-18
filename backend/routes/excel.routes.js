@@ -12,6 +12,7 @@ import {
   discardDraft,
   getPendingDraft,
   checkReadableSheets,
+  recordExportKey,
 } from "../controllers/excel.controller.js";
 
 const router = express.Router();
@@ -29,5 +30,8 @@ router.put("/draft/:logId/rows/:rowId",   updateDraftRow);
 router.post("/draft/:logId/publish",      publishDraft);
 router.delete("/draft/:logId",            discardDraft);
 router.get("/pending-draft",              getPendingDraft);
+
+// Export key logging
+router.post("/record-export-key",         recordExportKey);
 
 export default router;

@@ -2766,6 +2766,7 @@ export async function updateDraftRow(req, res) {
 export async function publishDraft(req, res) {
   try {
     const { logId } = req.params;
+    const { totalSkus, newSkus, priceChanges } = req.body || {};
     const pool = await getPool();
 
     // ตรวจสอบว่ามี draft อยู่
@@ -2781,10 +2782,38 @@ export async function publishDraft(req, res) {
       .input('logId', sql.Int, parseInt(logId))
       .query(`UPDATE excel_import_data SET status = 'published' WHERE import_log_id = @logId AND status = 'draft'`);
 
-    // อัปเดต log status
-    await pool.request()
-      .input('logId', sql.Int, parseInt(logId))
-      .query(`UPDATE excel_import_logs SET status = 'published' WHERE id = @logId`);
+    // อัปเดต log status + preview summary (ถ้ามี columns)
+    try {
+      const colCheck = await pool.request().query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'excel_import_logs'
+          AND COLUMN_NAME IN ('preview_total_skus','preview_new_skus','preview_price_changes')
+      `);
+      const hasCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+
+      let setCols = `status = 'published'`;
+      const logReq = pool.request().input('logId', sql.Int, parseInt(logId));
+
+      if (hasCols.includes('preview_total_skus') && totalSkus != null) {
+        setCols += ', preview_total_skus = @totalSkus';
+        logReq.input('totalSkus', sql.Int, parseInt(totalSkus) || 0);
+      }
+      if (hasCols.includes('preview_new_skus') && newSkus != null) {
+        setCols += ', preview_new_skus = @newSkus';
+        logReq.input('newSkus', sql.Int, parseInt(newSkus) || 0);
+      }
+      if (hasCols.includes('preview_price_changes') && priceChanges != null) {
+        setCols += ', preview_price_changes = @priceChanges';
+        logReq.input('priceChanges', sql.Int, parseInt(priceChanges) || 0);
+      }
+
+      await logReq.query(`UPDATE excel_import_logs SET ${setCols} WHERE id = @logId`);
+    } catch (logErr) {
+      // fallback: อัปเดตแค่ status
+      await pool.request()
+        .input('logId', sql.Int, parseInt(logId))
+        .query(`UPDATE excel_import_logs SET status = 'published' WHERE id = @logId`);
+    }
 
     res.json({ success: true, published: r.rowsAffected[0] });
   } catch (err) {
@@ -3682,6 +3711,7 @@ async function previewCLineData(excelBuffer, sheetName) {
     }
 
     const nameToSku = buildCLineRefMap(workbook);
+    console.log(`[C-Line Preview] Ref. map loaded: ${nameToSku.size} products, sheets: ${workbook.SheetNames.join(', ')}`);
 
     const pool = await getPool();
 
@@ -3790,6 +3820,82 @@ export async function getPendingDraft(req, res) {
     res.json(result.recordset);
   } catch (err) {
     console.error('getPendingDraft error:', err);
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * POST /api/excel/record-export-key
+ * บันทึก export_key ลงใน log ล่าสุดของ product_type นั้น
+ * Body: { productType, exportKey }
+ * =====================================================
+ */
+export async function recordExportKey(req, res) {
+  try {
+    const { productType, exportKey, totalSkus, newSkus, priceChanges, versionLabel } = req.body;
+    if (!productType || !exportKey) {
+      return res.status(400).json({ message: 'productType and exportKey are required' });
+    }
+
+    const pool = await getPool();
+
+    // ตรวจสอบว่ามี column export_key ใน excel_import_logs ไหม
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'excel_import_logs'
+        AND COLUMN_NAME IN ('export_key','export_total_skus','export_new_skus','export_price_changes','exported_at')
+    `);
+    const existingCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    if (!existingCols.includes('export_key')) {
+      return res.status(400).json({ message: 'export_key column not found — run migration first' });
+    }
+
+    // build SET clause ตาม columns ที่มี
+    const setCols = ['export_key = @exportKey'];
+    const req2 = pool.request()
+      .input('pt',        sql.NVarChar(100), productType)
+      .input('exportKey', sql.NVarChar(10),  exportKey);
+
+    if (existingCols.includes('export_total_skus') && totalSkus != null) {
+      setCols.push('export_total_skus = @totalSkus');
+      req2.input('totalSkus', sql.Int, parseInt(totalSkus) || 0);
+    }
+    if (existingCols.includes('export_new_skus') && newSkus != null) {
+      setCols.push('export_new_skus = @newSkus');
+      req2.input('newSkus', sql.Int, parseInt(newSkus) || 0);
+    }
+    if (existingCols.includes('export_price_changes') && priceChanges != null) {
+      setCols.push('export_price_changes = @priceChanges');
+      req2.input('priceChanges', sql.Int, parseInt(priceChanges) || 0);
+    }
+    if (existingCols.includes('exported_at')) {
+      setCols.push('exported_at = GETDATE()');
+    }
+
+    // อัปเดต log ล่าสุดที่ published ของ product_type นี้
+    // ถ้ามี versionLabel ให้ใช้ match ตรงๆ ไม่งั้น fallback ไป log ล่าสุด
+    let whereClause;
+    if (versionLabel) {
+      whereClause = `WHERE product_type = @pt AND version_label = @versionLabel AND status = 'published'`;
+      req2.input('versionLabel', sql.NVarChar(30), versionLabel);
+    } else {
+      whereClause = `WHERE id = (
+        SELECT TOP 1 id FROM excel_import_logs
+        WHERE product_type = @pt AND status = 'published'
+        ORDER BY imported_at DESC
+      )`;
+    }
+
+    const result = await req2.query(`
+      UPDATE excel_import_logs
+      SET ${setCols.join(', ')}
+      ${whereClause}
+    `);
+
+    res.json({ success: true, updated: result.rowsAffected[0] });
+  } catch (err) {
+    console.error('recordExportKey error:', err);
     res.status(500).json({ message: err.message });
   }
 }

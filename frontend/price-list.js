@@ -328,6 +328,9 @@ async function loadGypsumPreview() {
 
     const result = await response.json();
 
+    // เก็บ preview result ไว้ใช้ตอน export
+    window.__lastPreviewResult = result;
+
     if (result.success && result.totalSkus > 0) {
       renderImportSummary(result);
     } else {
@@ -955,13 +958,40 @@ async function exportSellingPriceExcel() {
     const dateStr = `${buddhistYear}${mm}${dd}`;
 
     const typeKey = productType || "All";
-    const runKey  = `exportRunNo_${typeKey}`;
-    const runNo   = (parseInt(localStorage.getItem(runKey) || "0") + 1);
+
+    // prefix ตามประเภทสินค้า
+    const TYPE_PREFIX = {
+      Gypsum: 'Y', Glass: 'G', Accessories: 'E',
+      Sealant: 'S', 'C-Line': 'C', Aluminum: 'A'
+    };
+    const prefix = TYPE_PREFIX[productType] || '?';
+
+    const runKey = `exportRunNo_priceList`;
+    const runNo  = (parseInt(localStorage.getItem(runKey) || "0") + 1);
     localStorage.setItem(runKey, String(runNo));
-    const runStr  = String(runNo).padStart(5, '0');
+    const runStr = prefix + String(runNo).padStart(4, '0');
 
     const fileName = `${typeKey}_${dateStr}_${runStr}.xlsx`;
     XLSX.writeFile(wb, fileName);
+
+    // บันทึก export key ลง log พร้อม preview summary
+    try {
+      const preview = window.__lastPreviewResult || {};
+      await fetch(`${API_BASE}/api/excel/record-export-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productType:   typeKey,
+          exportKey:     runStr,
+          totalSkus:     preview.totalSkus     ?? null,
+          newSkus:       preview.newSkusTotal  ?? null,
+          priceChanges:  preview.priceChangesTotal ?? null,
+          versionLabel:  preview.previewVersionLabel ?? null,
+        })
+      });
+    } catch (e) {
+      console.warn('record-export-key failed:', e.message);
+    }
 
     showToast(`นำออกสำเร็จ ${rows.length.toLocaleString()} แถว`, "success");
 
