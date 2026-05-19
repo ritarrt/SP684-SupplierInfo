@@ -867,6 +867,73 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
  *   E   → 06RY,15CB
  *   S   → 13SR,14HY,16PK,19PC
  */
+
+/**
+ * detectGlassColumns — auto-detect zone column positions จาก header rows ของ Glass Excel
+ * รองรับทั้งแบบเก่า (W1/W2/R1/R2 ที่ col 21+) และแบบใหม่ (RE เท่านั้น)
+ * คืนค่า: { reColMap, retColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, firstReCol, skuCol, nameCol, thickCol }
+ */
+function detectGlassColumns(data) {
+  const ZONE_ORDER = ['BKK', 'N', 'NE', 'C', 'E', 'S'];
+  let reColMap = {}, retColMap = {}, w1ColMap = {}, w2ColMap = {}, r1ColMap = {}, r2ColMap = {};
+
+  for (let ri = 0; ri < Math.min(8, data.length); ri++) {
+    const row = data[ri];
+    if (!row) continue;
+
+    const zoneColsFound = {};
+    for (let ci = 0; ci < row.length; ci++) {
+      const v = row[ci] !== undefined ? String(row[ci]).trim().toUpperCase() : '';
+      if (ZONE_ORDER.includes(v)) {
+        if (!zoneColsFound[v]) zoneColsFound[v] = [];
+        zoneColsFound[v].push(ci);
+      }
+    }
+
+    if (Object.keys(zoneColsFound).length < 3) continue;
+
+    for (const zone of ZONE_ORDER) {
+      const cols = zoneColsFound[zone] || [];
+      if (cols.length >= 1) reColMap[zone]  = cols[0];
+      if (cols.length >= 2) retColMap[zone] = cols[1];
+    }
+    break;
+  }
+
+  // fallback hardcoded ถ้า detect ไม่ได้
+  if (Object.keys(reColMap).length < 3) {
+    reColMap  = { BKK: 5, N: 6, NE: 7, C: 8, E: 9, S: 10 };
+    w1ColMap  = { BKK: 21, N: 26, NE: 31, C: 36, E: 41, S: 46 };
+    w2ColMap  = { BKK: 22, N: 27, NE: 32, C: 37, E: 42, S: 47 };
+    r1ColMap  = { BKK: 23, N: 28, NE: 33, C: 38, E: 43, S: 48 };
+    r2ColMap  = { BKK: 24, N: 29, NE: 34, C: 39, E: 44, S: 49 };
+  }
+
+  const firstReCol = reColMap['BKK'] ?? reColMap['N'] ?? reColMap['NE'] ?? reColMap['C'] ?? 5;
+
+  // ตรวจหา skuCol: หา column แรกที่มี G-SKU ใน data rows (row 6+)
+  let skuCol = 0; // default col 0
+  for (let ri = 6; ri < Math.min(15, data.length); ri++) {
+    const row = data[ri];
+    if (!row) continue;
+    for (let ci = 0; ci < Math.min(5, row.length); ci++) {
+      if (/^G\d{5,}/.test(String(row[ci] ?? '').trim())) {
+        skuCol = ci;
+        break;
+      }
+    }
+    if (skuCol > 0) break; // เจอแล้ว
+    // ถ้า col 0 มี G-SKU ก็ใช้ 0 เลย
+    if (/^G\d{5,}/.test(String(row[0] ?? '').trim())) break;
+  }
+
+  // nameCol และ thickCol อยู่ถัดจาก skuCol
+  const nameCol  = skuCol + 1;
+  const thickCol = skuCol + 2;
+
+  return { reColMap, retColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, firstReCol, ZONE_ORDER, skuCol, nameCol, thickCol };
+}
+
 async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
   let imported = 0;
 
@@ -902,19 +969,26 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
       for (const b of branches) BRANCH_REGION[b] = region;
     }
 
-    // float sheet column mapping per region
-    // { region, reCol, w1Col, w2Col, r1Col, r2Col }
-    const REGION_COLS = [
-      { region: 'BKK', reCol:  5, w1Col: 21, w2Col: 22, r1Col: 23, r2Col: 24 },
-      { region: 'N',   reCol:  6, w1Col: 26, w2Col: 27, r1Col: 28, r2Col: 29 },
-      { region: 'NE',  reCol:  7, w1Col: 31, w2Col: 32, r1Col: 33, r2Col: 34 },
-      { region: 'C',   reCol:  8, w1Col: 36, w2Col: 37, r1Col: 38, r2Col: 39 },
-      { region: 'E',   reCol:  9, w1Col: 41, w2Col: 42, r1Col: 43, r2Col: 44 },
-      { region: 'S',   reCol: 10, w1Col: 46, w2Col: 47, r1Col: 48, r2Col: 49 },
-    ];
-    // region → col map สำหรับ lookup ราคาจาก region
+    // ===== Auto-detect column positions =====
+    const { reColMap, retColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, firstReCol, ZONE_ORDER, skuCol, nameCol, thickCol } = detectGlassColumns(data);
+    console.log('[Glass Parser] reColMap:', reColMap, '| skuCol:', skuCol);
+
+    // สร้าง REGION_COL_MAP
     const REGION_COL_MAP = {};
-    for (const rc of REGION_COLS) REGION_COL_MAP[rc.region] = rc;
+    for (const zone of ZONE_ORDER) {
+      if (reColMap[zone] !== undefined) {
+        REGION_COL_MAP[zone] = {
+          region: zone,
+          reCol:  reColMap[zone],
+          retCol: retColMap[zone],
+          w1Col:  w1ColMap[zone],
+          w2Col:  w2ColMap[zone],
+          r1Col:  r1ColMap[zone],
+          r2Col:  r2ColMap[zone],
+        };
+      }
+    }
+    console.log('[Glass Parser] REGION_COL_MAP:', JSON.stringify(REGION_COL_MAP));
 
     // โหลด full SKU จาก StockStatusFact ล่วงหน้า จัดกลุ่มตาม prefix 12 หลัก
     console.log('[Glass Parser] Loading full SKUs from StockStatusFact via LIKE...');
@@ -956,19 +1030,19 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
       const row = data[i];
       if (!row) continue;
 
-      const col0 = row[0] !== undefined ? String(row[0]).trim() : '';
-      const col1 = row[1] !== undefined ? String(row[1]).trim() : '';
-      const col2 = row[2];
+      const col0 = row[skuCol] !== undefined ? String(row[skuCol]).trim() : '';
+      const col1 = row[nameCol] !== undefined ? String(row[nameCol]).trim() : '';
+      const col2 = row[thickCol];
 
-      // Section header: col0 ว่าง, col1 = brand name, ไม่มีราคา
+      // Section header: skuCol ว่าง, nameCol = brand name, ไม่มีราคา
       if (!col0 && col1 && col1 !== 'undefined' && col1 !== 'CUT SIZE' &&
           !col1.startsWith('เจียร') && col1 !== 'ต่อเมตร' &&
-          (row[21] === null || row[21] === undefined)) {
+          (row[firstReCol] === null || row[firstReCol] === undefined)) {
         currentBrand = col1;
         continue;
       }
 
-      if (!col0 && (row[21] === null || row[21] === undefined)) continue;
+      if (!col0 && (row[firstReCol] === null || row[firstReCol] === undefined)) continue;
       if (!col0 || !/^G\d/.test(col0)) continue;
 
       // col0 อาจมีหลาย SKU คั่นด้วย "/" หรือ ","
@@ -977,37 +1051,85 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
       const productName = col1 || currentProductName || currentBrand || 'Glass';
       if (col1) currentProductName = col1;
       const thickness = col2 !== undefined ? String(col2).trim() : '';
-      const remark    = row[3] !== undefined ? String(row[3]).trim() : '';
+      const remarkCol = skuCol + 3;
+      const remark    = row[remarkCol] !== undefined ? String(row[remarkCol]).trim() : '';
       const fullName  = remark ? `${productName} ${remark} ${thickness}mm` : `${productName} ${thickness}mm`;
 
       for (const excelSku of skuList) {
         const brandCode = excelSku.substring(1, 3);
         const brandName = brandMap[brandCode] || currentBrand || 'ไม่ระบุ';
 
-        const dbRows = skuByPrefix.get(excelSku) || [];
+        // รองรับทั้ง SKU 12 หลัก (prefix) และ 18 หลัก (full SKU)
+        // ถ้า excelSku ยาว >= 18 หลัก → ใช้ตรงๆ เป็น full SKU, lookup prefix 12 หลักแรก
+        // ถ้า excelSku สั้นกว่า 18 หลัก → ใช้เป็น prefix เหมือนเดิม
+        const lookupPrefix = excelSku.length >= 18
+          ? excelSku.substring(0, 12)
+          : excelSku;
+
+        let dbRows = skuByPrefix.get(lookupPrefix) || [];
+
+        // ถ้า excelSku เป็น full SKU 18 หลัก → filter เฉพาะ row ที่ตรงกับ full SKU นั้น
+        if (excelSku.length >= 18) {
+          dbRows = dbRows.filter(r => r.skuNumber === excelSku);
+          // ถ้าไม่มีใน DB ให้ลอง prefix อีกครั้ง (fallback)
+          if (dbRows.length === 0) {
+            dbRows = skuByPrefix.get(lookupPrefix) || [];
+          }
+        }
 
         if (dbRows.length === 0) {
-          // ไม่มีใน StockStatusFact → skip
-          console.warn(`[Glass Parser] SKU "${excelSku}" not found in StockStatusFact, skipping`);
+          // ไม่มีใน StockStatusFact → ใช้ข้อมูลจาก Excel โดยตรง insert ให้ทุก branch
+          console.warn(`[Glass Parser] SKU "${excelSku}" not found in StockStatusFact, using Excel data for all branches`);
+
+          for (const [zone, branches] of Object.entries(REGION_BRANCHES)) {
+            const rc = REGION_COL_MAP[zone];
+            if (!rc) continue;
+            const rePrice = fv(row[rc.reCol]);
+            if (rePrice === 0) continue;
+            const w1 = rc.w1Col !== undefined ? fv(row[rc.w1Col]) : rePrice;
+            const w2 = rc.w2Col !== undefined ? fv(row[rc.w2Col]) : rePrice;
+            const r1 = rc.r1Col !== undefined ? fv(row[rc.r1Col]) : rePrice;
+            const r2 = rc.r2Col !== undefined ? fv(row[rc.r2Col]) : rePrice;
+
+            for (const branchCode of branches) {
+              insertRows.push({
+                branch: branchCode, sku: excelSku,
+                productName: fullName, brand: brandName,
+                basePrice: rePrice, w1, w2, r1, r2
+              });
+            }
+          }
           continue;
         }
 
         // มีใน StockStatusFact → ใช้ full SKU 18 หลัก + branch จาก DB
-        // ราคาดูจาก region ของ branch นั้น
+        // ถ้า excelSku เป็น full SKU 18 หลักอยู่แล้ว ให้ใช้ excelSku โดยตรง
+        const useFullSku = excelSku.length >= 18;
+
         for (const { skuNumber: fullSku, branchCode, productName: dbName } of dbRows) {
           const region = BRANCH_REGION[branchCode];
           if (!region) continue;
           const rc = REGION_COL_MAP[region];
           if (!rc) continue;
 
-          const w1 = fv(row[rc.w1Col]);
-          if (w1 === 0) continue;
+          // ราคา RE (ex-factory) จาก reCol เสมอ
+          const rePrice = fv(row[rc.reCol]);
+
+          // W1/W2/R1/R2 — ถ้ามี col ให้ใช้, ถ้าไม่มีให้ใช้ rePrice แทน
+          const w1 = rc.w1Col !== undefined ? fv(row[rc.w1Col]) : rePrice;
+          const w2 = rc.w2Col !== undefined ? fv(row[rc.w2Col]) : rePrice;
+          const r1 = rc.r1Col !== undefined ? fv(row[rc.r1Col]) : rePrice;
+          const r2 = rc.r2Col !== undefined ? fv(row[rc.r2Col]) : rePrice;
+
+          // ข้าม row ที่ไม่มีราคาเลย
+          if (rePrice === 0 && w1 === 0) continue;
 
           insertRows.push({
-            branch: branchCode, sku: fullSku,
+            branch: branchCode,
+            sku: useFullSku ? excelSku : fullSku,
             productName: dbName || fullName, brand: brandName,
-            basePrice: fv(row[rc.reCol]),
-            w1, w2: fv(row[rc.w2Col]), r1: fv(row[rc.r1Col]), r2: fv(row[rc.r2Col])
+            basePrice: rePrice,
+            w1, w2, r1, r2
           });
         }
       }
@@ -2479,14 +2601,26 @@ async function previewGlassData(excelBuffer, sheetName) {
 
     // Region → branchCodes จาก BranchMaster
     const { zoneToBranches: REGION_BRANCHES, allBranchCodes } = await loadBranchMapping();
-    const REGION_COLS = [
-      { region:'BKK', reCol:5,  w1Col:21, w2Col:22, r1Col:23, r2Col:24 },
-      { region:'N',   reCol:6,  w1Col:26, w2Col:27, r1Col:28, r2Col:29 },
-      { region:'NE',  reCol:7,  w1Col:31, w2Col:32, r1Col:33, r2Col:34 },
-      { region:'C',   reCol:8,  w1Col:36, w2Col:37, r1Col:38, r2Col:39 },
-      { region:'E',   reCol:9,  w1Col:41, w2Col:42, r1Col:43, r2Col:44 },
-      { region:'S',   reCol:10, w1Col:46, w2Col:47, r1Col:48, r2Col:49 },
-    ];
+
+    // ===== Auto-detect column positions =====
+    const { reColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, firstReCol, ZONE_ORDER, skuCol, nameCol, thickCol } = detectGlassColumns(data);
+    console.log('[Glass Preview] reColMap:', reColMap, '| skuCol:', skuCol);
+    console.log('[Glass Preview] firstReCol:', firstReCol);
+    console.log('[Glass Preview] data rows 0-6:');
+    for (let ri = 0; ri < Math.min(7, data.length); ri++) {
+      console.log(`  row[${ri}]:`, JSON.stringify(data[ri]?.slice(0, 15)));
+    }
+
+    const REGION_COLS = ZONE_ORDER
+      .filter(z => reColMap[z] !== undefined)
+      .map(z => ({
+        region: z,
+        reCol:  reColMap[z],
+        w1Col:  w1ColMap[z],
+        w2Col:  w2ColMap[z],
+        r1Col:  r1ColMap[z],
+        r2Col:  r2ColMap[z],
+      }));
 
     // Load StockStatusFact prefix map
     const branchInListP = allBranchCodes.map(b => `'${b}'`).join(',');
@@ -2514,68 +2648,75 @@ async function previewGlassData(excelBuffer, sheetName) {
     for (let i = 6; i < data.length; i++) {
       const row = data[i];
       if (!row) continue;
-      const col0 = String(row[0] ?? '').trim();
-      const col1 = String(row[1] ?? '').trim();
-      const col2 = row[2];
+      const col0 = String(row[skuCol] ?? '').trim();
+      const col1 = String(row[nameCol] ?? '').trim();
+      const col2 = row[thickCol];
 
-      // Section header
+      // Section header: skuCol ว่าง, nameCol = brand name, ไม่มีราคา
       if (!col0 && col1 && col1 !== 'undefined' && col1 !== 'CUT SIZE' &&
           !col1.startsWith('เจียร') && col1 !== 'ต่อเมตร' &&
-          (row[21] === null || row[21] === undefined)) {
+          (row[firstReCol] === null || row[firstReCol] === undefined)) {
         currentBrand = col1; currentProductName = ''; continue;
       }
-      if (!col0 && (row[21] === null || row[21] === undefined)) continue;
+      if (!col0 && (row[firstReCol] === null || row[firstReCol] === undefined)) continue;
       if (!col0 || !/^G\d/.test(col0)) continue;
 
       const skuList = col0.split(/[\/,]/).map(s => s.trim()).filter(s => /^G\d/.test(s));
       const productName = col1 || currentProductName || currentBrand || 'Glass';
       if (col1) currentProductName = col1;
       const thickness = col2 !== undefined ? String(col2).trim() : '';
-      const remark    = row[3] !== undefined ? String(row[3]).trim() : '';
+      const remarkCol = skuCol + 3;
+      const remark    = row[remarkCol] !== undefined ? String(row[remarkCol]).trim() : '';
       const fullName  = remark ? `${productName} ${remark} ${thickness}mm` : `${productName} ${thickness}mm`;
 
       for (const excelSku of skuList) {
         const brandCode = excelSku.substring(1, 3);
         const brandName = brandMap[brandCode] || currentBrand || 'ไม่ระบุ';
 
-        // นับ branches จาก StockStatusFact หรือ fallback 26
-        const dbEntries = skuByPrefix.get(excelSku) || [];
+        // lookup prefix (รองรับทั้ง 12 และ 18 หลัก)
+        const lookupPrefix = excelSku.length >= 18 ? excelSku.substring(0, 12) : excelSku;
+        let dbEntries = skuByPrefix.get(lookupPrefix) || [];
+        if (excelSku.length >= 18) {
+          const exact = dbEntries.filter(e => e.skuNumber === excelSku);
+          if (exact.length > 0) dbEntries = exact;
+        }
         const branchCount = dbEntries.length > 0 ? new Set(dbEntries.map(e => e.branchCode)).size : allBranches.length;
 
-        // ราคาตัวอย่าง BKK (col 21-24)
-        const re_bkk = fv(row[5]);
-        const w1_bkk = fv(row[21]);
-        const w2_bkk = fv(row[22]);
-        const r1_bkk = fv(row[23]);
-        const r2_bkk = fv(row[24]);
+        // ราคาตัวอย่าง BKK จาก reColMap ที่ detect ได้
+        const bkkReCol = reColMap['BKK'] ?? 5;
+        const bkkW1Col = w1ColMap['BKK'];
+        const re_bkk = fv(row[bkkReCol]);
+        const w1_bkk = bkkW1Col !== undefined ? fv(row[bkkW1Col]) : re_bkk;
+        const w2_bkk = w2ColMap['BKK'] !== undefined ? fv(row[w2ColMap['BKK']]) : re_bkk;
+        const r1_bkk = r1ColMap['BKK'] !== undefined ? fv(row[r1ColMap['BKK']]) : re_bkk;
+        const r2_bkk = r2ColMap['BKK'] !== undefined ? fv(row[r2ColMap['BKK']]) : re_bkk;
 
-        if (w1_bkk === 0) continue;
+        // ข้าม row ที่ไม่มีราคาเลย
+        if (re_bkk === 0 && w1_bkk === 0) continue;
 
         totalSkus++;
         totalRows += branchCount;
 
-        // allRows — expand เป็น full SKU|branch เพื่อเปรียบเทียบกับ DB ได้ถูกต้อง
+        // allRows — expand เป็น full SKU|branch
         if (dbEntries.length > 0) {
           for (const { skuNumber: fullSku, branchCode } of dbEntries) {
             allRows.push({
-              sku: fullSku,
-              branch: branchCode,
-              productName: fullName,
-              brand: brandName,
-              selling_price_w1: w1_bkk,
-              selling_price_w2: w2_bkk,
-              selling_price_r1: r1_bkk,
-              selling_price_r2: r2_bkk,
+              sku: fullSku, branch: branchCode,
+              productName: fullName, brand: brandName,
+              selling_price_w1: w1_bkk, selling_price_w2: w2_bkk,
+              selling_price_r1: r1_bkk, selling_price_r2: r2_bkk,
             });
           }
         } else {
-          // ไม่มีใน DB → ใช้ excelSku + branch ตัวอย่าง
-          allRows.push({
-            sku: excelSku, branch: '00TR',
-            productName: fullName, brand: brandName,
-            selling_price_w1: w1_bkk, selling_price_w2: w2_bkk,
-            selling_price_r1: r1_bkk, selling_price_r2: r2_bkk,
-          });
+          // ไม่มีใน DB → expand ให้ทุก branch ใน allBranches
+          for (const branchCode of allBranches) {
+            allRows.push({
+              sku: excelSku, branch: branchCode,
+              productName: fullName, brand: brandName,
+              selling_price_w1: w1_bkk, selling_price_w2: w2_bkk,
+              selling_price_r1: r1_bkk, selling_price_r2: r2_bkk,
+            });
+          }
         }
 
         const rowData = {
@@ -3954,7 +4095,18 @@ export async function checkReadableSheets(req, res) {
         return { sheetName, readable: true };
       }
 
-      // ตรวจสอบ branch headers ใน 6 rows แรก
+      // Glass: ใช้ G-SKU เป็น indicator แทน branch headers
+      // scan ทุก column เพราะ merged cells อาจทำให้ col 0 เป็น undefined
+      if (productType === 'Glass') {
+        const hasGSku = data.some(row => {
+          if (!row) return false;
+          return row.some(cell => /^G\d{10,}/.test(String(cell ?? '').trim()));
+        });
+        if (!hasGSku) return { sheetName, readable: false, reason: 'no Glass SKUs (G...) found' };
+        return { sheetName, readable: true };
+      }
+
+      // ตรวจสอบ branch headers ใน 6 rows แรก (สำหรับ Gypsum และอื่นๆ)
       let hasBranchHeaders = false;
       for (let ri = 0; ri <= Math.min(5, data.length - 1); ri++) {
         const row = data[ri]; if (!row) continue;
@@ -3987,6 +4139,45 @@ export async function checkReadableSheets(req, res) {
     res.json({ sheets: results });
   } catch (err) {
     console.error('checkReadableSheets error:', err);
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * POST /api/excel/debug-structure
+ * Debug: dump rows 0-10 ของทุก sheet เพื่อตรวจสอบ structure
+ * Body: { excelBuffer: base64 }
+ * =====================================================
+ */
+export async function debugExcelStructure(req, res) {
+  try {
+    const { excelBuffer } = req.body;
+    if (!excelBuffer) return res.status(400).json({ message: 'excelBuffer required' });
+
+    const buf = Buffer.from(excelBuffer, 'base64');
+    const workbook = XLSX.read(buf, { type: 'buffer' });
+
+    const result = {};
+    for (const sheetName of workbook.SheetNames) {
+      const ws = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+      // dump 10 rows แรก พร้อม col index
+      result[sheetName] = data.slice(0, 10).map((row, ri) => {
+        const cells = {};
+        if (Array.isArray(row)) {
+          row.forEach((v, ci) => {
+            if (v !== null && v !== undefined && v !== '') {
+              cells[`col${ci}`] = v;
+            }
+          });
+        }
+        return { row: ri, cells };
+      });
+    }
+
+    res.json({ sheetNames: workbook.SheetNames, structure: result });
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 }

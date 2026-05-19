@@ -157,8 +157,12 @@ function handleFile(file) {
         sheetSection.classList.remove("hidden");
 
         try {
+          // แปลง Uint8Array → base64 แบบ chunk เพื่อรองรับไฟล์ขนาดใหญ่
           let binary = '';
-          for (let i = 0; i < data.byteLength; i++) binary += String.fromCharCode(data[i]);
+          const CHUNK = 8192;
+          for (let i = 0; i < data.byteLength; i += CHUNK) {
+            binary += String.fromCharCode(...data.subarray(i, i + CHUNK));
+          }
           const excelBuffer = btoa(binary);
 
           const resp = await fetch(`${API_BASE}/api/excel/check-sheets`, {
@@ -166,8 +170,38 @@ function handleFile(file) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ excelBuffer, productType: currentTab })
           });
-          const { sheets } = await resp.json();
+
+          if (!resp.ok) {
+            console.warn('check-sheets HTTP error:', resp.status, await resp.text());
+            showSheetSelection(null); // fallback: แสดง sheets ทั้งหมด
+            return;
+          }
+
+          const result = await resp.json();
+          console.log('[check-sheets] response:', result);
+          console.log('[check-sheets] sheets detail:', JSON.stringify(result.sheets, null, 2));
+          const sheets = result.sheets || result;
           showSheetSelection(sheets);
+
+          // DEBUG: ถ้าไม่มี readable sheet ให้ dump structure
+          const hasReadable = Array.isArray(sheets) && sheets.some(s => s.readable);
+          if (!hasReadable) {
+            console.warn('[check-sheets] No readable sheets found! Fetching debug structure...');
+            try {
+              const dbgResp = await fetch(`${API_BASE}/api/excel/debug-structure`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ excelBuffer })
+              });
+              const dbg = await dbgResp.json();
+              console.log('[debug-structure] sheetNames:', dbg.sheetNames);
+              for (const [sn, rows] of Object.entries(dbg.structure || {})) {
+                console.log(`[debug-structure] Sheet "${sn}" first 10 rows:`, rows);
+              }
+            } catch (dbgErr) {
+              console.error('[debug-structure] error:', dbgErr);
+            }
+          }
         } catch (err) {
           console.error('check-sheets error:', err);
           showSheetSelection(null);
@@ -177,7 +211,11 @@ function handleFile(file) {
       }
       
     } catch (err) {
-      showStatus("เกิดข้อผิดพลาดในการอ่านไฟล์", "error");
+      if (err.message && err.message.toLowerCase().includes('password')) {
+        showStatus("ไฟล์นี้มีการป้องกันด้วยรหัสผ่าน กรุณาเปิดไฟล์ใน Excel แล้ว Save As ใหม่โดยไม่ใส่รหัสผ่าน", "error");
+      } else {
+        showStatus("เกิดข้อผิดพลาดในการอ่านไฟล์: " + err.message, "error");
+      }
       console.error(err);
     }
   };
@@ -306,7 +344,10 @@ async function loadGypsumPreview() {
       reader.onload = (e) => {
         const bytes = new Uint8Array(e.target.result);
         let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        const CHUNK = 8192;
+        for (let i = 0; i < bytes.byteLength; i += CHUNK) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+        }
         resolve(btoa(binary));
       };
       reader.onerror = reject;
@@ -524,7 +565,10 @@ importBtn.addEventListener("click", async () => {
       reader.onload = (e) => {
         const bytes = new Uint8Array(e.target.result);
         let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        const CHUNK = 8192;
+        for (let i = 0; i < bytes.byteLength; i += CHUNK) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+        }
         resolve(btoa(binary));
       };
       reader.onerror = reject;
