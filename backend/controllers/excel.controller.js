@@ -67,6 +67,54 @@ async function loadBranchMapping() {
 }
 
 /**
+ * loadBranchMapping สำหรับ Glass โดยเฉพาะ
+ * Override zone บางสาขาที่ Glass ใช้ราคา zone ต่างจาก product อื่น
+ * เช่น 24TL (ทาลัย/ตลิ่งชัน) → BKK สำหรับ Glass
+ */
+const GLASS_ZONE_OVERRIDES = {
+  // branchCode: zone ที่ต้องการสำหรับ Glass
+  '24TL': 'BKK',
+};
+
+let _glassBranchCache = null;
+async function loadGlassBranchMapping() {
+  if (_glassBranchCache) return _glassBranchCache;
+
+  const base = await loadBranchMapping();
+
+  // Deep clone zoneToBranches
+  const zoneToBranches = {};
+  for (const [zone, branches] of Object.entries(base.zoneToBranches)) {
+    zoneToBranches[zone] = [...branches];
+  }
+
+  // Apply overrides
+  for (const [branchCode, targetZone] of Object.entries(GLASS_ZONE_OVERRIDES)) {
+    // ลบออกจาก zone เดิม
+    for (const zone of Object.keys(zoneToBranches)) {
+      zoneToBranches[zone] = zoneToBranches[zone].filter(b => b !== branchCode);
+    }
+    // เพิ่มเข้า zone ใหม่
+    if (zoneToBranches[targetZone]) {
+      zoneToBranches[targetZone].push(branchCode);
+    }
+  }
+
+  // สร้าง BRANCH_REGION reverse map ใหม่
+  const branchRegion = {};
+  for (const [zone, branches] of Object.entries(zoneToBranches)) {
+    for (const b of branches) branchRegion[b] = zone;
+  }
+
+  _glassBranchCache = {
+    ...base,
+    zoneToBranches,
+    branchRegion,
+  };
+  return _glassBranchCache;
+}
+
+/**
  * =====================================================
  * POST /api/excel/import
  * Import data from Excel
@@ -960,13 +1008,15 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
     });
     console.log(`[Glass Parser] Brand map loaded: ${Object.keys(brandMap).length} brands`);
 
-    // Region → branchCodes mapping จาก BranchMaster
-    const { zoneToBranches: REGION_BRANCHES, allBranchCodes } = await loadBranchMapping();
+    // Region → branchCodes mapping — ใช้ Glass-specific mapping (24TL → BKK)
+    const { zoneToBranches: REGION_BRANCHES, allBranchCodes, branchRegion: BRANCH_REGION_GLASS } = await loadGlassBranchMapping();
 
     // branchCode → region (reverse map สำหรับ lookup ราคา)
-    const BRANCH_REGION = {};
-    for (const [region, branches] of Object.entries(REGION_BRANCHES)) {
-      for (const b of branches) BRANCH_REGION[b] = region;
+    const BRANCH_REGION = BRANCH_REGION_GLASS || {};
+    if (!BRANCH_REGION_GLASS) {
+      for (const [region, branches] of Object.entries(REGION_BRANCHES)) {
+        for (const b of branches) BRANCH_REGION[b] = region;
+      }
     }
 
     // ===== Auto-detect column positions =====
@@ -2599,8 +2649,8 @@ async function previewGlassData(excelBuffer, sheetName) {
 
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-    // Region → branchCodes จาก BranchMaster
-    const { zoneToBranches: REGION_BRANCHES, allBranchCodes } = await loadBranchMapping();
+    // Region → branchCodes จาก BranchMaster — ใช้ Glass-specific mapping (24TL → BKK)
+    const { zoneToBranches: REGION_BRANCHES, allBranchCodes } = await loadGlassBranchMapping();
 
     // ===== Auto-detect column positions =====
     const { reColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, firstReCol, ZONE_ORDER, skuCol, nameCol, thickCol } = detectGlassColumns(data);
