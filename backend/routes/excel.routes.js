@@ -3,6 +3,7 @@ import {
   importExcelData,
   getImportLogs,
   getImportData,
+  getExportData,
   getImportDataByLog,
   updateImportData,
   previewExcelData,
@@ -24,6 +25,7 @@ router.post("/check-sheets",              checkReadableSheets);
 router.post("/debug-structure",           debugExcelStructure);
 router.get("/import-logs",                getImportLogs);
 router.get("/data",                       getImportData);
+router.get("/export-data",                getExportData);
 router.get("/history/:logId",             getImportDataByLog);
 
 // Draft workflow

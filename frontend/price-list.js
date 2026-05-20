@@ -830,8 +830,34 @@ async function loadImportData(page = 1) {
         return `<td class="text-right">${display}</td>`;
       };
 
-      return `
-        <tr>
+      // ตรวจว่ามีราคาซื้อไม่ลงลัง
+      const hasNcPurchase = [row.nonCartonBasePrice, row.nonCartonReExVat]
+        .some(v => v != null && parseFloat(v) !== 0);
+
+      // cell helpers สำหรับ non-carton (ใช้สีเหลือง)
+      const ncPriceCell = (value, priceBefore = null) => {
+        const numVal = value != null ? parseFloat(value) : 0;
+        const ok = numVal > 0 && (priceBefore == null || numVal < parseFloat(priceBefore));
+        const display = ok ? fmt(value) : '<span class="text-gray-300">-</span>';
+        return `<td class="text-right px-1 text-amber-700">${display}</td>`;
+      };
+      const ncPctCell = (storedPct, priceBefore, priceAfter) => {
+        let dp = null;
+        if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0)
+          dp = storedPct * 100;
+        else {
+          const b = parseFloat(priceBefore), a = parseFloat(priceAfter);
+          if (b && a && a > 0 && a < b) { const p = ((b-a)/b)*100; if (p >= 0.01) dp = p; }
+        }
+        const display = dp != null
+          ? `<span class="text-amber-600 font-medium">${dp.toFixed(1)}%</span>`
+          : '<span class="text-gray-300">-</span>';
+        return `<td class="text-right">${display}</td>`;
+      };
+
+      // แถวลงลัง
+      const cartonRow = `
+        <tr class="hover:bg-gray-50">
           <td><span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${row.productType || '-'}</span></td>
           <td class="font-mono text-xs">
             ${row.sku || '-'}
@@ -851,6 +877,30 @@ async function loadImportData(page = 1) {
           <td class="text-gray-400 text-xs">${date}</td>
         </tr>
       `;
+
+      // แถวไม่ลงลัง — แสดงเฉพาะเมื่อมีข้อมูล
+      const ncRow = hasNcPurchase ? `
+        <tr class="hover:bg-gray-50">
+          <td></td>
+          <td class="font-mono text-xs text-gray-500">
+            ${row.sku || '-'}
+            <span class="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-semibold">ไม่ลงลัง</span>
+          </td>
+          <td class="text-gray-500 text-sm">${row.productName || '-'}</td>
+          <td class="text-gray-400 text-xs">${row.brand || '-'}</td>
+          <td><span class="font-medium text-gray-500">${row.branch || '-'}</span></td>
+          ${priceCell(row.nonCartonBasePrice)}
+          ${pctCell(row.nonCartonDiscountPct, row.nonCartonBasePrice, row.nonCartonReExVat)}
+          ${priceCell(row.nonCartonReExVat, row.nonCartonBasePrice)}
+          <td class="text-gray-200 text-right px-1">-</td>
+          <td class="text-gray-200 text-right px-1">-</td>
+          <td class="text-gray-200 text-right px-1">-</td>
+          <td class="text-gray-200 text-right px-1">-</td>
+          <td></td>
+        </tr>
+      ` : '';
+
+      return cartonRow + ncRow;
     }).join('');
 
     // Pagination
@@ -938,13 +988,13 @@ async function exportSellingPriceExcel() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> กำลังนำออก...'; }
 
   try {
-    // ดึงข้อมูลทั้งหมด (limit สูงๆ)
-    const params = new URLSearchParams({ page: 1, limit: 99999 });
+    // ดึงข้อมูลทั้งหมดจาก export-optimized endpoint (ไม่มี correlated subquery)
+    const params = new URLSearchParams();
     if (productType) params.append("productType", productType);
     if (branch)      params.append("branch", branch);
     if (searchText)  params.append("search", searchText);
 
-    const response = await fetch(`${API_BASE}/api/excel/data?${params}`);
+    const response = await fetch(`${API_BASE}/api/excel/export-data?${params}`);
     if (!response.ok) { showToast("โหลดข้อมูลไม่สำเร็จ", "error"); return; }
 
     const { data } = await response.json();
@@ -961,18 +1011,19 @@ async function exportSellingPriceExcel() {
     const rows = [];
     for (const r of data) {
       if (isAcc) {
-        // แถวลงลัง (ราคาปกติ)
+        // แถวลงลัง
         rows.push([
           r.sku || "", r.branch || "", "ลงลัง",
           fmt(r.sellingPriceSdm), fmt(r.sellingPriceW1), fmt(r.sellingPriceW2),
           fmt(r.sellingPriceR1), fmt(r.sellingPriceR2)
         ]);
-        // แถวไม่ลงลัง — แสดงเฉพาะเมื่อมีราคา
-        const hasNonCarton = r.nonCartonW1 || r.nonCartonW2 || r.nonCartonR1 || r.nonCartonR2;
+        // แถวไม่ลงลัง — แสดงเฉพาะเมื่อมีราคาขาย
+        const hasNonCarton = [r.nonCartonW1, r.nonCartonW2, r.nonCartonR1, r.nonCartonR2]
+          .some(v => v != null && parseFloat(v) !== 0);
         if (hasNonCarton) {
           rows.push([
             r.sku || "", r.branch || "", "ไม่ลงลัง",
-            "", fmt(r.nonCartonW1), fmt(r.nonCartonW2),
+            fmt(r.nonCartonSdm), fmt(r.nonCartonW1), fmt(r.nonCartonW2),
             fmt(r.nonCartonR1), fmt(r.nonCartonR2)
           ]);
         }
