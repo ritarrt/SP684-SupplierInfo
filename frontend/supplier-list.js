@@ -19,7 +19,7 @@ const tableBody = document.getElementById("supplierTableBody");
 
   if (avatar) avatar.textContent = (user.empname || user.username || "U")[0].toUpperCase();
   if (nameEl) nameEl.textContent = user.empname || user.username || "-";
-  if (codeEl) codeEl.textContent = role || user.username || "-";
+  if (codeEl) codeEl.textContent = user.username || "-";
 
   // ผูกปุ่ม logout
   document.getElementById("btnLogout")?.addEventListener("click", logout);

@@ -147,12 +147,85 @@ if (groupDD) groupDD.innerHTML = "";
 // ===================================================
 // ADD / REMOVE ROW
 // ===================================================
+
+// Template HTML สำหรับสร้าง product row ใหม่ (ใช้เมื่อ container ว่างเปล่า)
+function getProductRowTemplate() {
+  return `
+  <div class="product-row grid grid-cols-12 gap-3 border rounded-lg p-3 bg-white">
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label text-blue-600">ประเภทสินค้า *</label>
+      <div class="relative w-full">
+        <div class="form-control flex items-center justify-between cursor-pointer category-display" onclick="toggleCategoryDropdown(this)">
+          <span class="text-gray-400">ทั้งหมด</span>
+          <i class="bi bi-chevron-down text-gray-500"></i>
+        </div>
+        <div class="category-dropdown absolute z-50 mt-1 w-full bg-white border rounded shadow hidden"></div>
+      </div>
+    </div>
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label text-blue-600">แบรนด์ที่ดูแล *</label>
+      <div class="relative w-full">
+        <div class="form-control flex items-center justify-between cursor-pointer brand-display" onclick="toggleBrandDropdown(this)">
+          <span class="text-gray-400">- เลือกแบรนด์ -</span>
+          <i class="bi bi-chevron-down text-gray-500"></i>
+        </div>
+        <div class="brand-dropdown absolute z-50 mt-1 w-full bg-white border rounded shadow hidden max-h-60 overflow-y-auto"></div>
+      </div>
+    </div>
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label text-blue-600">กลุ่มสินค้า *</label>
+      <div class="relative w-full">
+        <div class="form-control flex items-center justify-between cursor-pointer group-display" onclick="toggleGroupDropdown(this)">
+          <span class="text-gray-400">- ทั้งหมด -</span>
+          <i class="bi bi-chevron-down text-gray-500"></i>
+        </div>
+        <div class="group-dropdown absolute z-50 mt-1 w-full bg-white border rounded shadow hidden max-h-60 overflow-y-auto"></div>
+      </div>
+    </div>
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label text-blue-600">กลุ่มย่อย</label>
+      <div class="relative w-full">
+        <div class="form-control flex items-center justify-between cursor-pointer subgroup-display" onclick="toggleSubGroupDropdown(this)">
+          <span class="text-gray-400">- ทั้งหมด -</span>
+          <i class="bi bi-chevron-down text-gray-500"></i>
+        </div>
+        <div class="subgroup-dropdown absolute z-50 mt-1 w-full bg-white border rounded shadow hidden"></div>
+      </div>
+    </div>
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label">SKU (ระบุเองได้)</label>
+      <input type="text" class="form-control sku-input">
+    </div>
+    <div class="col-span-12 md:col-span-2">
+      <label class="form-label">Package Size</label>
+      <div class="flex gap-1">
+        <input type="number" min="0" class="form-control package-size-input" placeholder="เช่น 12">
+        <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="removeProductRow(this)">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function addProductRow() {
   const container = getCoverageContainer();
   if (!container) return;
 
-  const firstRow = container.querySelector(".product-row");
-  if (!firstRow) return;
+  let firstRow = container.querySelector(".product-row");
+
+  // ถ้าไม่มีแถวเลย (เช่น supplier ไม่มี category ที่ user ดูแล)
+  // ให้สร้างแถวว่างใหม่จาก HTML template แทน
+  if (!firstRow) {
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = getProductRowTemplate();
+    firstRow = tempDiv.firstElementChild;
+    container.appendChild(firstRow);
+    PRODUCT_ROW_SEQ++;
+    firstRow.dataset.rowSeq = String(PRODUCT_ROW_SEQ);
+    attachSkuAutocomplete(firstRow.querySelector(".sku-input"));
+    return;
+  }
 
   const newRow = firstRow.cloneNode(true);
   PRODUCT_ROW_SEQ++;
@@ -760,6 +833,12 @@ async function renderCoverageItems(items) {
   
   // ลบแถวที่ไม่อนุญาต
   rowsToRemove.forEach(row => row.remove());
+
+  // ถ้าลบออกหมดเลย ให้เหลือ template row ว่างๆ ไว้ (เพื่อให้ addProductRow clone ได้)
+  if (getAllRows().length === 0) {
+    const emptyRow = createEmptyRow(templateRow);
+    container.appendChild(emptyRow);
+  }
 }
 
 function createEmptyRow(templateRow) {
