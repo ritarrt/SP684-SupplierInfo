@@ -180,7 +180,7 @@ export async function importExcelData(req, res) {
             WHERE product_type = @pt AND imported_at >= @today
           `);
         const runNo = (countResult.recordset[0].cnt || 0) + 1;
-        versionLabel = runNo === 1 ? dateKey : `${dateKey}-${runNo}`;
+        versionLabel = runNo === 1 ? dateKey : `${dateKey}R${runNo - 1}`;
 
         const hasVersionLabel = logCols.includes('version_label');
         const insertQuery = hasVersionLabel
@@ -2400,7 +2400,7 @@ export async function previewExcelData(req, res) {
         WHERE product_type = @pt AND imported_at >= @today
       `);
     const uploadRoundToday = (roundResult.recordset[0].cnt || 0) + 1;
-    const previewVersionLabel = uploadRoundToday === 1 ? dateKey : `${dateKey}-${uploadRoundToday}`;
+    const previewVersionLabel = uploadRoundToday === 1 ? dateKey : `${dateKey}R${uploadRoundToday - 1}`;
 
     // 2. เปรียบเทียบราคากับข้อมูลล่าสุดใน DB
     let priceChanges = [];
