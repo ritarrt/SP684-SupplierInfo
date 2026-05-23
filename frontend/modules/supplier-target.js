@@ -71,7 +71,21 @@ function _syncCheckboxText(containerId, textId) {
   if (!el || !textEl) return;
   const labels = [...el.querySelectorAll('.item-checkbox:checked')]
     .map(cb => cb.dataset.label || cb.value);
-  textEl.textContent = labels.length ? labels.join(", ") : "ทั้งหมด";
+
+  // placeholder สำหรับ field ที่บังคับเลือก
+  const PLACEHOLDER_MAP = {
+    brandText: "เลือกแบรนด์",
+    groupText: "เลือกกลุ่มสินค้า"
+  };
+  const placeholder = PLACEHOLDER_MAP[textId] || "ทั้งหมด";
+
+  if (labels.length) {
+    textEl.textContent = labels.join(", ");
+    textEl.style.color = "";          // สีปกติ
+  } else {
+    textEl.textContent = placeholder;
+    textEl.style.color = PLACEHOLDER_MAP[textId] ? "#9ca3af" : ""; // สีเทาเฉพาะ required
+  }
 }
 
 // ============================================================
@@ -212,6 +226,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ============================================================
+  // 🔄 Sync หน่วยตามประเภทเป้า
+  // ============================================================
+  const UNIT_MAP = {
+    "น้ำหนัก":              "ตัน",
+    "มูลค่ารวมในการซื้อ":   "บาท",
+    "จำนวน":                "ชิ้น",
+    "เป้าพื้นที่":           "ตร.ฟุต"
+  };
+
+  function syncUnitByType(typeValue) {
+    const unitSelect = document.getElementById("tgUnit");
+    if (!unitSelect) return;
+    const unit = UNIT_MAP[typeValue];
+    if (unit) unitSelect.value = unit;
+  }
+
+  const tgTypeSelect = document.getElementById("tgType");
+  if (tgTypeSelect) {
+    tgTypeSelect.addEventListener("change", (e) => {
+      syncUnitByType(e.target.value);
+    });
+    // ตั้งค่าเริ่มต้นให้ตรงกัน
+    syncUnitByType(tgTypeSelect.value);
+  }
+  // ============================================================
   // 3️⃣ Radio Filter
   // ============================================================
   document.querySelectorAll('input[name="tgFilter"]')
@@ -342,13 +381,37 @@ function showTargetConfirmModal({ payload, displayData: d }) {
   // ลบ modal เก่าถ้ามี
   document.getElementById("tgConfirmModal")?.remove();
 
+  // fields ที่ "ทั้งหมด" = ไม่ได้กรอง → แสดงเป็น "ทั้งหมด" สีเทา ไม่ซ่อน
+  const SHOW_ALL_LABELS = new Set(["ภาค","จังหวัด","สาขา","กลุ่มย่อย","สีสินค้า","ความหนา","แบรนด์","กลุ่มสินค้า"]);
+
   function row(label, value) {
-    if (!value || value === "-" || value === "ทั้งหมด" && label !== "ภาค" && label !== "จังหวัด" && label !== "สาขา") {
+    const isEmpty = !value || value === "-";
+    const isAll   = value === "ทั้งหมด";
+
+    if (isEmpty) {
+      // ซ่อน row ที่ไม่มีข้อมูลเลย (เช่น mold, sku ที่ไม่ได้กรอก)
       return `<tr>
         <td style="padding:6px 10px;color:#6b7280;font-size:13px;white-space:nowrap;width:160px;">${label}</td>
         <td style="padding:6px 10px;color:#9ca3af;font-size:13px;">-</td>
       </tr>`;
     }
+
+    if (isAll && SHOW_ALL_LABELS.has(label)) {
+      // แสดง "ทั้งหมด" สีเทาอ่อนสำหรับ scope fields ที่ไม่ได้เลือก
+      return `<tr>
+        <td style="padding:6px 10px;color:#6b7280;font-size:13px;white-space:nowrap;width:160px;">${label}</td>
+        <td style="padding:6px 10px;color:#9ca3af;font-size:13px;font-style:italic;">ทั้งหมด</td>
+      </tr>`;
+    }
+
+    if (isAll) {
+      // "ทั้งหมด" สำหรับ field อื่นที่ไม่ใช่ scope → ซ่อน
+      return `<tr>
+        <td style="padding:6px 10px;color:#6b7280;font-size:13px;white-space:nowrap;width:160px;">${label}</td>
+        <td style="padding:6px 10px;color:#9ca3af;font-size:13px;">-</td>
+      </tr>`;
+    }
+
     return `<tr>
       <td style="padding:6px 10px;color:#6b7280;font-size:13px;white-space:nowrap;width:160px;">${label}</td>
       <td style="padding:6px 10px;font-weight:500;font-size:13px;">${value}</td>
@@ -405,11 +468,11 @@ function showTargetConfirmModal({ payload, displayData: d }) {
             row("จังหวัด", d.province),
             row("สาขา", d.branch),
             row("ประเภทสินค้า", d.category),
-            row("แบรนด์", d.brandLabels.join(", ") || "-"),
-            row("กลุ่มสินค้า", d.groupLabels.join(", ") || "-"),
-            row("กลุ่มย่อย", d.subLabels.join(", ") || "-"),
-            row("สีสินค้า", d.colorLabels.join(", ") || "-"),
-            row("ความหนา", d.thickLabels.join(", ") || "-"),
+            row("แบรนด์", d.brandLabels.join(", ") || "ทั้งหมด"),
+            row("กลุ่มสินค้า", d.groupLabels.join(", ") || "ทั้งหมด"),
+            row("กลุ่มย่อย", d.subLabels.join(", ") || "ทั้งหมด"),
+            row("สีสินค้า", d.colorLabels.join(", ") || "ทั้งหมด"),
+            row("ความหนา", d.thickLabels.join(", ") || "ทั้งหมด"),
             row("รหัสแม่พิมพ์", d.mold),
             row("SKU", d.sku)
           ].join(""))}
@@ -820,7 +883,14 @@ const filtered = data.filter(item => {
 </td>
 
           <td>
-            ${formatDateTime(item.updated_at)}
+            <div>${formatDateTime(item.updated_at)}</div>
+            <div style="margin-top:6px;">
+              <button
+                onclick="openCopyTargetModal(${item.id})"
+                style="padding:4px 10px;border:1px solid #0d6efd;border-radius:6px;background:#fff;color:#0d6efd;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                <i class="bi bi-copy"></i> คัดลอก
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -1466,3 +1536,131 @@ Raw Sample: ${JSON.stringify(data.debug?.raw_data_sample, null, 2)}`);
 
 window.debugTargetCalc = debugTargetCalc;
 window.loadTargetTable = loadTargetTable;
+
+// ============================================================
+// COPY TARGET — เปิด modal ให้กรอกวันที่ใหม่
+// ============================================================
+let copySourceData = null;
+
+window.openCopyTargetModal = function(targetId) {
+  // ดึงข้อมูลจาก cache ที่โหลดมาแล้ว (จาก API response ล่าสุด)
+  fetch(`${API_BASE}/api/targets/single/${targetId}`)
+    .then(r => r.json())
+    .then(item => {
+      copySourceData = item;
+
+      // ตั้งค่า default วันที่เริ่มต้น = วันนี้
+      const today = new Date().toISOString().split("T")[0];
+      document.getElementById("copyTgStart").value = today;
+      document.getElementById("copyTgEnd").value = "";
+      document.getElementById("copyTgName").value = `${item.target_name || ""} (คัดลอก)`;
+
+      // แสดง summary ของต้นฉบับ
+      document.getElementById("copySourceSummary").innerHTML = `
+        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-size:13px;">
+          <div style="font-weight:600;margin-bottom:6px;color:#374151;">ต้นฉบับ: ${item.target_ref || "-"}</div>
+          <div style="color:#6b7280;">
+            <span>${item.category || "-"}</span> /
+            <span>${item.brand_name || item.brand || "-"}</span> /
+            <span>${item.group_name || item.product_group || "-"}</span>
+          </div>
+          <div style="color:#6b7280;margin-top:2px;">
+            เป้า: <strong style="color:#059669;">${Number(item.target_qty || 0).toLocaleString()} ${item.target_unit || ""}</strong>
+          </div>
+          <div style="color:#6b7280;margin-top:2px;">
+            ช่วงเดิม: ${formatDate(item.start_date)} – ${formatDate(item.end_date)}
+          </div>
+        </div>
+      `;
+
+      const modal = document.getElementById("copyTargetModal");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+    })
+    .catch(err => {
+      console.error("Load target for copy error:", err);
+      showToast("โหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่", true);
+    });
+};
+
+function closeCopyModal() {
+  const modal = document.getElementById("copyTargetModal");
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+  copySourceData = null;
+}
+
+document.getElementById("copyTargetCancelBtn")
+  ?.addEventListener("click", closeCopyModal);
+
+document.getElementById("copyTargetConfirmBtn")
+  ?.addEventListener("click", async () => {
+    if (!copySourceData) return;
+
+    const newName  = document.getElementById("copyTgName")?.value?.trim();
+    const newStart = document.getElementById("copyTgStart")?.value;
+    const newEnd   = document.getElementById("copyTgEnd")?.value;
+
+    if (!newName)  return showToast("กรุณากรอกชื่อเป้าหมาย", true, "copyTgName");
+    if (!newStart) return showToast("กรุณาเลือกวันที่เริ่มต้น", true, "copyTgStart");
+    if (!newEnd)   return showToast("กรุณาเลือกวันที่สิ้นสุด", true, "copyTgEnd");
+    if (new Date(newEnd) < new Date(newStart))
+      return showToast("วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น", true, "copyTgEnd");
+
+    const btn = document.getElementById("copyTargetConfirmBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin" style="width:14px;height:14px;display:inline;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> กำลังบันทึก...`;
+
+    // สร้าง payload จากต้นฉบับ แต่เปลี่ยนชื่อ + วันที่
+    const payload = {
+      supplier_code:       copySourceData.supplier_code,
+      provider_contact_id: copySourceData.provider_contact_id || null,
+      target_name:         newName,
+      parent_target_ref:   copySourceData.parent_target_ref || null,
+      region:              copySourceData.region   || null,
+      province:            copySourceData.province || null,
+      branch:              copySourceData.branch   || null,
+      category:            copySourceData.category,
+      brand_code:          copySourceData.brand_code  || null,
+      brand_name:          copySourceData.brand_name  || copySourceData.brand || null,
+      group_code:          copySourceData.product_group_code || null,
+      group_name:          copySourceData.product_group      || copySourceData.group_name || null,
+      sub_group_code:      copySourceData.sub_group_code || null,
+      sub_group_name:      copySourceData.sub_group      || null,
+      color:               copySourceData.color     || null,
+      thickness:           copySourceData.thickness || null,
+      mold:                copySourceData.mold || "",
+      sku:                 copySourceData.sku  || "",
+      benefit_period:      copySourceData.benefit_period,
+      target_type:         copySourceData.target_type,
+      target_qty:          copySourceData.target_qty,
+      target_unit:         copySourceData.target_unit,
+      start_date:          newStart,
+      end_date:            newEnd
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/targets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+
+      closeCopyModal();
+
+      if (result.success) {
+        showToast("คัดลอกเป้าสินค้าสำเร็จ", false);
+        setTimeout(() => loadTargetTable(), 800);
+      } else {
+        showToast(result.message || "คัดลอกไม่สำเร็จ", true);
+      }
+    } catch (err) {
+      console.error("Copy Target Error:", err);
+      closeCopyModal();
+      showToast("เกิดข้อผิดพลาด กรุณาลองใหม่", true);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="bi bi-copy"></i> ยืนยันคัดลอก`;
+    }
+  });

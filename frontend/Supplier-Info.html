@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script>
-  window.API_BASE = "http://192.192.0.37:5847";
+  window.API_BASE = "http://localhost:5847";
   
   // Placeholder - will be replaced when supplier-deal.js module loads
   window.renderDealTable = function() {
@@ -14,6 +14,70 @@
       console.log("renderDealTable: waiting for module to load...");
     }
   };
+
+  // ===================================================
+  // PRODUCT COVERAGE — COLLAPSE / EXPAND
+  // define ใน <head> เพื่อให้พร้อมก่อน modules โหลด
+  // ===================================================
+  (function () {
+    const COLLAPSED_HEIGHT = 90; // px — แสดงแค่แถวแรก
+    let _expanded = false;
+
+    window.toggleProductCoverageExpand = function () {
+      _expanded = !_expanded;
+      _applyState();
+    };
+
+    function _applyState() {
+      const wrapper = document.getElementById("productCoverageWrapper");
+      const icon    = document.getElementById("productCoverageToggleIcon");
+      const text    = document.getElementById("productCoverageToggleText");
+      const fade    = document.getElementById("productCoverageFade");
+      if (!wrapper) return;
+
+      if (_expanded) {
+        wrapper.style.maxHeight = wrapper.scrollHeight + "px";
+        if (icon)  { icon.classList.remove("bi-chevron-down"); icon.classList.add("bi-chevron-up"); }
+        if (text)  text.textContent = "ย่อ";
+        if (fade)  fade.style.display = "none";
+      } else {
+        wrapper.style.maxHeight = COLLAPSED_HEIGHT + "px";
+        if (icon)  { icon.classList.remove("bi-chevron-up"); icon.classList.add("bi-chevron-down"); }
+        if (text)  text.textContent = "ดูทั้งหมด";
+        if (fade)  fade.style.display = "block";
+      }
+    }
+
+    // เรียกหลัง render เสร็จ — ตัดสินใจว่าต้องแสดงปุ่มหรือเปล่า
+    window.initProductCoverageCollapse = function () {
+      const wrapper   = document.getElementById("productCoverageWrapper");
+      const bar       = document.getElementById("productCoverageToggleBar");
+      const badge     = document.getElementById("productCoverageBadge");
+      const container = document.getElementById("productCoverageContainer");
+      if (!wrapper || !bar) return;
+
+      // อัปเดต badge จำนวนรายการ
+      if (badge && container) {
+        const count = container.querySelectorAll(".product-row").length;
+        badge.textContent = count + " รายการ";
+        badge.style.display = count > 0 ? "inline-block" : "none";
+      }
+
+      // ถ้า content สูงกว่า collapsed height → แสดงปุ่ม + fade
+      const realHeight = wrapper.scrollHeight;
+      if (realHeight > COLLAPSED_HEIGHT) {
+        bar.style.display = "block";
+        _expanded = false;
+        _applyState();
+      } else {
+        // content น้อย ไม่ต้องมีปุ่ม
+        wrapper.style.maxHeight = "none";
+        bar.style.display = "none";
+        const fade = document.getElementById("productCoverageFade");
+        if (fade) fade.style.display = "none";
+      }
+    };
+  })();
 </script>
 
 
@@ -88,7 +152,14 @@
       border-color: #86b7fe;
       box-shadow: 0 0 0 0.25rem rgba(13,110,253,.15);
     }
-    .form-text { font-size: 0.8rem; color: #6c757d; margin-top: 4px; }
+    /* placeholder สีเทาสำหรับ select ที่ยังไม่ได้เลือก */
+    select.form-select:has(option[value=""]:checked),
+    select.form-select[data-placeholder]:not([data-selected]) {
+      color: #9ca3af;
+    }
+    select.form-select option:not([value=""]) {
+      color: #212529;
+    }    .form-text { font-size: 0.8rem; color: #6c757d; margin-top: 4px; }
 
     /* Readonly & Status */
     .form-control[readonly] { background-color: #f8f9fa; color: #6c757d; font-weight: 600; }
@@ -287,6 +358,11 @@
 
 .animate-fade-out {
   animation: fadeOut 0.3s ease-out forwards;
+}
+
+/* Product Coverage collapse */
+#productCoverageWrapper {
+  transition: max-height 0.3s ease;
 }
 
   </style>
@@ -509,10 +585,11 @@
             <div class="card-body">
 
               <div class="flex justify-between items-center section-header first-section">
-  <div>
-    <i class="bi bi-box-seam"></i> 2. สินค้าที่บริษัทดูแล
+  <div class="flex items-center gap-2">
+    <i class="bi bi-box-seam"></i>
+    <span>2. สินค้าที่บริษัทดูแล</span>
+    <span id="productCoverageBadge" class="badge bg-primary" style="display:none; font-size:0.75rem;"></span>
   </div>
-  
   
   <div class="flex gap-2">
     <button
@@ -541,6 +618,8 @@
   </div>
 </div>
 
+              <!-- wrapper สำหรับ collapse -->
+              <div id="productCoverageWrapper" style="overflow:hidden; max-height:90px; position:relative; transition: max-height 0.3s ease;">
 
               <!-- container สำหรับหลายแถว -->
 <div id="productCoverageContainer" class="space-y-3">
@@ -638,6 +717,30 @@
 
   </div>
 </div>
+
+              <!-- fade overlay (แสดงตอน collapsed) — ต้องอยู่ใน wrapper -->
+              <div id="productCoverageFade" style="
+                position:absolute; bottom:0; left:0; right:0; height:40px;
+                background: linear-gradient(to bottom, transparent, #f8f9fa);
+                pointer-events:none; display:none;
+              "></div>
+
+              </div><!-- /productCoverageWrapper -->
+
+              <!-- ปุ่ม ดูทั้งหมด / ย่อ -->
+              <div id="productCoverageToggleBar" class="text-center mt-2" style="display:none;">
+                <button
+                  type="button"
+                  id="productCoverageToggleBtn"
+                  class="btn btn-sm"
+                  style="background:#f1f5f9; border:1px solid #dee2e6; color:#0d6efd; font-size:0.82rem; padding:4px 20px; border-radius:999px;"
+                  onclick="toggleProductCoverageExpand()"
+                >
+                  <i class="bi bi-chevron-down" id="productCoverageToggleIcon"></i>
+                  <span id="productCoverageToggleText">ดูทั้งหมด</span>
+                </button>
+              </div>
+
 </div>
 </div>
 </form>
@@ -1187,8 +1290,8 @@
 
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ประเภทสินค้า<span class="text-red-600">*</span></label>
-                  <select class="form-select" id="tgCat">
-                    <option value="">ทั้งหมด</option>
+                  <select class="form-select" id="tgCat" data-placeholder="เลือกประเภทสินค้า">
+                    <option value="" disabled selected style="color:#9ca3af;">เลือกประเภทสินค้า</option>
                     </select>
                 </div>
 
@@ -1198,7 +1301,7 @@
                   <div class="relative">
                     <div class="form-control flex justify-between items-center cursor-pointer"
                          onclick="toggleDropdown('brandDropdown')">
-                      <span id="brandText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <span id="brandText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis" style="color:#9ca3af;">เลือกแบรนด์</span>
                       <i class="bi bi-chevron-down ml-2"></i>
                     </div>
                     <div id="brandDropdown"
@@ -1213,7 +1316,7 @@
                   <div class="relative">
                     <div class="form-control flex justify-between items-center cursor-pointer"
                          onclick="toggleDropdown('groupDropdown')">
-                      <span id="groupText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis">ทั้งหมด</span>
+                      <span id="groupText" class="truncate w-full overflow-hidden whitespace-nowrap text-ellipsis" style="color:#9ca3af;">เลือกกลุ่มสินค้า</span>
                       <i class="bi bi-chevron-down ml-2"></i>
                     </div>
                     <div id="groupDropdown"
@@ -1308,9 +1411,9 @@
                 <div class="col-span-12 md:col-span-2">
                   <label class="form-label">ประเภทเป้า<span class="text-red-600">*</span></label>
                   <select class="form-select" id="tgType">
-                    <option value="รายเดือน">น้ำหนัก</option>
-                    <option value="รายไตรมาส">มูลค่ารวมในการซื้อ</option>
-                    <option value="รายปี">จำนวน</option>
+                    <option value="น้ำหนัก">น้ำหนัก</option>
+                    <option value="มูลค่ารวมในการซื้อ">มูลค่ารวมในการซื้อ</option>
+                    <option value="จำนวน">จำนวน</option>
                     <option value="เป้าพื้นที่">เป้าพื้นที่</option>
                   </select>
                 </div>
@@ -2269,6 +2372,68 @@
       <button id="cancelTargetYesBtn"
         class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
         ยืนยัน
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================
+     COPY TARGET MODAL
+============================================================ -->
+<div id="copyTargetModal" class="fixed inset-0 hidden items-center justify-center bg-black bg-opacity-40 z-50">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" style="overflow:hidden;">
+
+    <!-- Header -->
+    <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#f8fafc;display:flex;align-items:center;gap:10px;">
+      <div style="width:36px;height:36px;background:#0d6efd;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="bi bi-copy" style="color:#fff;font-size:16px;"></i>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:15px;">คัดลอกเป้าสินค้า</div>
+        <div style="font-size:12px;color:#6b7280;">กำหนดวันที่ใหม่สำหรับเป้าที่คัดลอก</div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+
+      <!-- ข้อมูลต้นฉบับ -->
+      <div id="copySourceSummary"></div>
+
+      <!-- ชื่อเป้าหมายใหม่ -->
+      <div>
+        <label class="form-label">ชื่อเป้าหมาย <span class="text-red-600">*</span></label>
+        <input type="text" id="copyTgName" class="form-control" placeholder="ระบุชื่อเป้าหมาย">
+      </div>
+
+      <!-- วันที่ -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label class="form-label">วันที่เริ่มต้น <span class="text-red-600">*</span></label>
+          <input type="date" id="copyTgStart" class="form-control" min="2016-01-01" max="2046-12-31">
+        </div>
+        <div>
+          <label class="form-label">วันที่สิ้นสุด <span class="text-red-600">*</span></label>
+          <input type="date" id="copyTgEnd" class="form-control" min="2016-01-01" max="2046-12-31">
+        </div>
+      </div>
+
+      <p class="text-xs text-gray-400" style="margin:0;">
+        <i class="bi bi-info-circle"></i>
+        ข้อมูลอื่นทั้งหมด (Scope, เป้าหมาย, หน่วย ฯลฯ) จะถูกคัดลอกมาจากต้นฉบับ
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:14px 20px;border-top:1px solid #e5e7eb;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
+      <button id="copyTargetCancelBtn"
+        class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100 text-sm">
+        ยกเลิก
+      </button>
+      <button id="copyTargetConfirmBtn"
+        style="padding:8px 20px;border:none;border-radius:6px;background:#0d6efd;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+        <i class="bi bi-copy"></i> ยืนยันคัดลอก
       </button>
     </div>
 

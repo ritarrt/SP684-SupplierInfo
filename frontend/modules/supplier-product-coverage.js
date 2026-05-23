@@ -839,6 +839,11 @@ async function renderCoverageItems(items) {
     const emptyRow = createEmptyRow(templateRow);
     container.appendChild(emptyRow);
   }
+
+  // เรียก collapse init หลัง render เสร็จ
+  if (typeof window.initProductCoverageCollapse === "function") {
+    window.initProductCoverageCollapse();
+  }
 }
 
 function createEmptyRow(templateRow) {

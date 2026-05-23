@@ -136,7 +136,11 @@ function populateCategory(selectId, dataArray) {
   const select = document.getElementById(selectId);
   if (!select) return;
 
-  select.innerHTML = `<option value="">ทั้งหมด</option>`;
+  // ตรวจสอบจาก data-placeholder attribute ที่ set ไว้ใน HTML
+  const placeholder = select.dataset.placeholder;
+  select.innerHTML = placeholder
+    ? `<option value="" disabled selected style="color:#9ca3af;">${placeholder}</option>`
+    : `<option value="">ทั้งหมด</option>`;
 
   // unique by category (English)
   const unique = [];
@@ -161,6 +165,15 @@ function populateCategory(selectId, dataArray) {
       </option>
     `;
   });
+
+  // sync สีเมื่อ value เปลี่ยน
+  const syncColor = () => {
+    select.style.color = select.value === "" ? "#9ca3af" : "#212529";
+  };
+  select.removeEventListener("change", select._colorSync);
+  select._colorSync = syncColor;
+  select.addEventListener("change", syncColor);
+  syncColor(); // ตั้งค่าเริ่มต้น
 }
 
 function populateSku(inputId, dataArray) {

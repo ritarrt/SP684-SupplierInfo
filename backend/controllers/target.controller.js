@@ -3,6 +3,39 @@
 import { getPool, sql } from "../config/db.js";
 
 /* ============================================================
+   GET SINGLE TARGET BY ID (สำหรับ copy)
+============================================================ */
+export const getSingleTarget = async (req, res) => {
+  try {
+    const pool = await getPool();
+    const id = req.params.id;
+
+    const result = await pool.request()
+      .input("id", sql.Int, id)
+      .query(`
+        SELECT
+          t.*,
+          CASE
+            WHEN t.brand IS NOT NULL AND t.brand <> '' THEN t.brand
+            ELSE NULL
+          END AS brand_name
+        FROM supplier_targets t
+        WHERE t.id = @id
+      `);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ error: "Target not found" });
+    }
+
+    res.json(result.recordset[0]);
+  } catch (err) {
+    console.error("❌ Get Single Target Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+/* ============================================================
    CREATE TARGET
 ============================================================ */
 export const createTarget = async (req, res) => {

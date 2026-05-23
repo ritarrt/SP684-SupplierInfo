@@ -739,25 +739,150 @@ function showConfirmModal({ icon = 'question-circle', iconColor = 'text-blue-600
 }
 
 // ============================================
-// IMPORT DATA VIEW
+// IMPORT DATA VIEW  (preview + modal)
 // ============================================
 
 let currentDataPage = 1;
 let searchTimer = null;
+let _dataModalOpen = false;
 
 function debounceSearch() {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => loadImportData(), 400);
 }
 
+// เปิด modal เต็มจอ
+function openDataModal() {
+  _dataModalOpen = true;
+  document.getElementById('dataModal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  loadImportData(1);
+}
+
+// ปิด modal
+function closeDataModal() {
+  _dataModalOpen = false;
+  document.getElementById('dataModal').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+// ปิด modal ด้วย Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && _dataModalOpen) closeDataModal();
+});
+
+// ============================================
+// buildDataRows — สร้าง HTML แถวข้อมูล (ใช้ร่วมกัน)
+// ============================================
+function buildDataRows(data) {
+  const fmt = v => v != null ? parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-';
+
+  const priceCell = (value, priceBefore = null) => {
+    const numVal = value != null ? parseFloat(value) : 0;
+    const hasDiscount = numVal > 0 && (priceBefore == null || numVal < parseFloat(priceBefore));
+    const display = hasDiscount ? fmt(value) : '<span class="text-gray-300">-</span>';
+    return `<td class="text-right px-1">${display}</td>`;
+  };
+
+  const calcPct = (priceBefore, priceAfter) => {
+    const before = parseFloat(priceBefore);
+    const after  = parseFloat(priceAfter);
+    if (!before || !after || after <= 0 || after >= before) return null;
+    const pct = ((before - after) / before) * 100;
+    if (pct < 0.01) return null;
+    return pct;
+  };
+
+  const pctCell = (storedPct, priceBefore, priceAfter) => {
+    let displayPct = null;
+    if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0) {
+      displayPct = storedPct * 100;
+    } else {
+      displayPct = calcPct(priceBefore, priceAfter);
+    }
+    const display = displayPct != null
+      ? `<span class="text-orange-600 font-medium">${displayPct.toFixed(1)}%</span>`
+      : '<span class="text-gray-300">-</span>';
+    return `<td class="text-right">${display}</td>`;
+  };
+
+  return data.map(row => {
+    const date = row.createdAt
+      ? new Date(row.createdAt).toLocaleDateString('th-TH', { dateStyle: 'short' })
+      : '-';
+
+    const hasNcPurchase = [row.nonCartonBasePrice, row.nonCartonReExVat]
+      .some(v => v != null && parseFloat(v) !== 0);
+
+    const ncPctCell = (storedPct, priceBefore, priceAfter) => {
+      let dp = null;
+      if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0)
+        dp = storedPct * 100;
+      else {
+        const b = parseFloat(priceBefore), a = parseFloat(priceAfter);
+        if (b && a && a > 0 && a < b) { const p = ((b-a)/b)*100; if (p >= 0.01) dp = p; }
+      }
+      const display = dp != null
+        ? `<span class="text-amber-600 font-medium">${dp.toFixed(1)}%</span>`
+        : '<span class="text-gray-300">-</span>';
+      return `<td class="text-right">${display}</td>`;
+    };
+
+    const cartonRow = `
+      <tr class="hover:bg-gray-50">
+        <td><span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${row.productType || '-'}</span></td>
+        <td class="font-mono text-xs">
+          ${row.sku || '-'}
+          ${row.isNew   ? '<span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">New</span>' : ''}
+          ${row.isStale ? '<span class="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-semibold">ราคาเก่า</span>' : ''}
+        </td>
+        <td>${row.productName || '-'}</td>
+        <td class="text-gray-600">${row.brand || '-'}</td>
+        <td><span class="font-medium">${row.branch || '-'}</span></td>
+        ${priceCell(row.basePrice)}
+        ${pctCell(row.discountPct1, row.basePrice,      row.discountPrice1)}
+        ${priceCell(row.discountPrice1, row.basePrice)}
+        ${pctCell(row.discountPct2, row.discountPrice1, row.discountPrice2)}
+        ${priceCell(row.discountPrice2, row.discountPrice1)}
+        ${pctCell(row.discountPct3, row.discountPrice2, row.discountPrice3)}
+        ${priceCell(row.discountPrice3, row.discountPrice2)}
+        <td class="text-gray-400 text-xs">${date}</td>
+      </tr>
+    `;
+
+    const ncRow = hasNcPurchase ? `
+      <tr class="hover:bg-gray-50">
+        <td></td>
+        <td class="font-mono text-xs text-gray-500">
+          ${row.sku || '-'}
+          <span class="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-semibold">ไม่ลงลัง</span>
+        </td>
+        <td class="text-gray-500 text-sm">${row.productName || '-'}</td>
+        <td class="text-gray-400 text-xs">${row.brand || '-'}</td>
+        <td><span class="font-medium text-gray-500">${row.branch || '-'}</span></td>
+        ${priceCell(row.nonCartonBasePrice)}
+        ${ncPctCell(row.nonCartonDiscountPct, row.nonCartonBasePrice, row.nonCartonReExVat)}
+        ${priceCell(row.nonCartonReExVat, row.nonCartonBasePrice)}
+        <td class="text-gray-200 text-right px-1">-</td>
+        <td class="text-gray-200 text-right px-1">-</td>
+        <td class="text-gray-200 text-right px-1">-</td>
+        <td class="text-gray-200 text-right px-1">-</td>
+        <td></td>
+      </tr>
+    ` : '';
+
+    return cartonRow + ncRow;
+  }).join('');
+}
+
 async function loadImportData(page = 1) {
   currentDataPage = page;
-  const tbody = document.getElementById("importDataBody");
-  const summary = document.getElementById("dataSummary");
-  const pagination = document.getElementById("dataPagination");
 
-  // scroll ไปที่ตารางข้อมูล ไม่ใช่ด้านล่างสุด
-  document.querySelector("main:last-of-type")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // ถ้า modal เปิดอยู่ → render ใน modal, ไม่งั้น → render preview 5 แถว
+  const isModal = _dataModalOpen;
+
+  const tbody      = document.getElementById(isModal ? "modalDataBody"   : "importDataBody");
+  const pagination = document.getElementById("dataPagination");
 
   tbody.innerHTML = `
     <tr><td colspan="13" class="text-center py-6 text-gray-400">
@@ -765,11 +890,13 @@ async function loadImportData(page = 1) {
     </td></tr>
   `;
 
+  // filter — ใช้ได้เฉพาะตอน modal เปิด (elements อยู่ใน modal)
   const productType = document.getElementById("filterProductType")?.value || "";
   const branch      = document.getElementById("filterBranch")?.value || "";
   const searchText  = document.getElementById("filterSku")?.value || "";
 
-  const params = new URLSearchParams({ page, limit: 50 });
+  const limit = isModal ? 50 : 5;
+  const params = new URLSearchParams({ page: isModal ? page : 1, limit });
   if (productType) params.append("productType", productType);
   if (branch)      params.append("branch", branch);
   if (searchText)  params.append("search", searchText);
@@ -784,142 +911,41 @@ async function loadImportData(page = 1) {
 
     const { data, total, totalPages } = await response.json();
 
-    summary.textContent = `พบ ${total.toLocaleString()} รายการ`;
+    // อัปเดต badge จำนวนรายการ (preview section)
+    const badge = document.getElementById('dataSummaryBadge');
+    if (badge) badge.textContent = `${total.toLocaleString()} รายการ`;
+
+    // อัปเดต summary ใน modal
+    const modalSummary = document.getElementById('modalDataSummary');
+    if (modalSummary) modalSummary.textContent = `พบ ${total.toLocaleString()} รายการ`;
 
     if (!data || data.length === 0) {
       tbody.innerHTML = `<tr><td colspan="13" class="text-center py-6 text-gray-400">ไม่มีข้อมูล</td></tr>`;
-      pagination.innerHTML = "";
+      if (isModal && pagination) pagination.innerHTML = "";
       return;
     }
 
-    tbody.innerHTML = data.map(row => {
-      const date = row.createdAt
-        ? new Date(row.createdAt).toLocaleDateString('th-TH', { dateStyle: 'short' })
-        : '-';
-      const fmt = v => v != null ? parseFloat(v).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-';
+    tbody.innerHTML = buildDataRows(data);
 
-      // Read-only price cell
-      const priceCell = (value, priceBefore = null) => {
-        const numVal = value != null ? parseFloat(value) : 0;
-        const hasDiscount = numVal > 0 && (priceBefore == null || numVal < parseFloat(priceBefore));
-        const display = hasDiscount ? fmt(value) : '<span class="text-gray-300">-</span>';
-        return `<td class="text-right px-1">${display}</td>`;
-      };
-
-      // คำนวณ % ส่วนลดย้อนกลับจากราคา
-      const calcPct = (priceBefore, priceAfter) => {
-        const before = parseFloat(priceBefore);
-        const after  = parseFloat(priceAfter);
-        if (!before || !after || after <= 0 || after >= before) return null;
-        const pct = ((before - after) / before) * 100;
-        if (pct < 0.01) return null;
-        return pct;
-      };
-
-      // Read-only pct cell
-      const pctCell = (storedPct, priceBefore, priceAfter) => {
-        let displayPct = null;
-        if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0) {
-          displayPct = storedPct * 100;
-        } else {
-          displayPct = calcPct(priceBefore, priceAfter);
-        }
-        const display = displayPct != null
-          ? `<span class="text-orange-600 font-medium">${displayPct.toFixed(1)}%</span>`
-          : '<span class="text-gray-300">-</span>';
-        return `<td class="text-right">${display}</td>`;
-      };
-
-      // ตรวจว่ามีราคาซื้อไม่ลงลัง
-      const hasNcPurchase = [row.nonCartonBasePrice, row.nonCartonReExVat]
-        .some(v => v != null && parseFloat(v) !== 0);
-
-      // cell helpers สำหรับ non-carton (ใช้สีเหลือง)
-      const ncPriceCell = (value, priceBefore = null) => {
-        const numVal = value != null ? parseFloat(value) : 0;
-        const ok = numVal > 0 && (priceBefore == null || numVal < parseFloat(priceBefore));
-        const display = ok ? fmt(value) : '<span class="text-gray-300">-</span>';
-        return `<td class="text-right px-1 text-amber-700">${display}</td>`;
-      };
-      const ncPctCell = (storedPct, priceBefore, priceAfter) => {
-        let dp = null;
-        if (storedPct != null && storedPct > 0 && parseFloat(priceAfter) > 0)
-          dp = storedPct * 100;
-        else {
-          const b = parseFloat(priceBefore), a = parseFloat(priceAfter);
-          if (b && a && a > 0 && a < b) { const p = ((b-a)/b)*100; if (p >= 0.01) dp = p; }
-        }
-        const display = dp != null
-          ? `<span class="text-amber-600 font-medium">${dp.toFixed(1)}%</span>`
-          : '<span class="text-gray-300">-</span>';
-        return `<td class="text-right">${display}</td>`;
-      };
-
-      // แถวลงลัง
-      const cartonRow = `
-        <tr class="hover:bg-gray-50">
-          <td><span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${row.productType || '-'}</span></td>
-          <td class="font-mono text-xs">
-            ${row.sku || '-'}
-            ${row.isNew   ? '<span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">New</span>' : ''}
-            ${row.isStale ? '<span class="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-semibold">ราคาเก่า</span>' : ''}
-          </td>
-          <td>${row.productName || '-'}</td>
-          <td class="text-gray-600">${row.brand || '-'}</td>
-          <td><span class="font-medium">${row.branch || '-'}</span></td>
-          ${priceCell(row.basePrice)}
-          ${pctCell(row.discountPct1, row.basePrice,      row.discountPrice1)}
-          ${priceCell(row.discountPrice1, row.basePrice)}
-          ${pctCell(row.discountPct2, row.discountPrice1, row.discountPrice2)}
-          ${priceCell(row.discountPrice2, row.discountPrice1)}
-          ${pctCell(row.discountPct3, row.discountPrice2, row.discountPrice3)}
-          ${priceCell(row.discountPrice3, row.discountPrice2)}
-          <td class="text-gray-400 text-xs">${date}</td>
-        </tr>
-      `;
-
-      // แถวไม่ลงลัง — แสดงเฉพาะเมื่อมีข้อมูล
-      const ncRow = hasNcPurchase ? `
-        <tr class="hover:bg-gray-50">
-          <td></td>
-          <td class="font-mono text-xs text-gray-500">
-            ${row.sku || '-'}
-            <span class="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-semibold">ไม่ลงลัง</span>
-          </td>
-          <td class="text-gray-500 text-sm">${row.productName || '-'}</td>
-          <td class="text-gray-400 text-xs">${row.brand || '-'}</td>
-          <td><span class="font-medium text-gray-500">${row.branch || '-'}</span></td>
-          ${priceCell(row.nonCartonBasePrice)}
-          ${pctCell(row.nonCartonDiscountPct, row.nonCartonBasePrice, row.nonCartonReExVat)}
-          ${priceCell(row.nonCartonReExVat, row.nonCartonBasePrice)}
-          <td class="text-gray-200 text-right px-1">-</td>
-          <td class="text-gray-200 text-right px-1">-</td>
-          <td class="text-gray-200 text-right px-1">-</td>
-          <td class="text-gray-200 text-right px-1">-</td>
-          <td></td>
-        </tr>
-      ` : '';
-
-      return cartonRow + ncRow;
-    }).join('');
-
-    // Pagination
-    if (totalPages > 1) {
-      const prevDisabled = page <= 1 ? 'opacity-40 pointer-events-none' : '';
-      const nextDisabled = page >= totalPages ? 'opacity-40 pointer-events-none' : '';
-      pagination.innerHTML = `
-        <span>หน้า ${page} / ${totalPages}</span>
-        <div class="flex gap-2">
-          <button onclick="loadImportData(${page - 1})" class="px-3 py-1 border rounded hover:bg-gray-100 ${prevDisabled}">
-            <i class="bi bi-chevron-left"></i>
-          </button>
-          <button onclick="loadImportData(${page + 1})" class="px-3 py-1 border rounded hover:bg-gray-100 ${nextDisabled}">
-            <i class="bi bi-chevron-right"></i>
-          </button>
-        </div>
-      `;
-    } else {
-      pagination.innerHTML = "";
+    // Pagination — แสดงเฉพาะใน modal
+    if (isModal && pagination) {
+      if (totalPages > 1) {
+        const prevDisabled = page <= 1 ? 'opacity-40 pointer-events-none' : '';
+        const nextDisabled = page >= totalPages ? 'opacity-40 pointer-events-none' : '';
+        pagination.innerHTML = `
+          <span>หน้า ${page} / ${totalPages}</span>
+          <div class="flex gap-2">
+            <button onclick="loadImportData(${page - 1})" class="px-3 py-1 border rounded hover:bg-gray-100 ${prevDisabled}">
+              <i class="bi bi-chevron-left"></i>
+            </button>
+            <button onclick="loadImportData(${page + 1})" class="px-3 py-1 border rounded hover:bg-gray-100 ${nextDisabled}">
+              <i class="bi bi-chevron-right"></i>
+            </button>
+          </div>
+        `;
+      } else {
+        pagination.innerHTML = "";
+      }
     }
 
   } catch (err) {

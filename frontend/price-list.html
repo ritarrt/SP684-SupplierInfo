@@ -16,6 +16,7 @@
     }
     .table-container {
       overflow-x: auto;
+      overflow-y: auto;
     }
     table {
       border-collapse: collapse;
@@ -25,7 +26,8 @@
       font-weight: 600;
       padding: 12px;
       text-align: left;
-      border-bottom: 2px solid #e2e8f0;
+      border-bottom: 2px solid #cbd5e1;
+      box-shadow: 0 1px 0 #cbd5e1;
     }
     td {
       padding: 12px;
@@ -193,39 +195,28 @@
     <div id="draftPagination" class="mt-4 flex items-center justify-between text-sm text-gray-600"></div>
   </div>
 
-  <!-- IMPORTED DATA -->
+  <!-- IMPORTED DATA PREVIEW -->
   <main class="w-full bg-white mt-6 rounded shadow p-6 mb-8">
 
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-      <h2 class="text-xl font-bold">ข้อมูลล่าสุดในระบบ</h2>
+      <div class="flex items-center gap-3">
+        <h2 class="text-xl font-bold">ข้อมูลล่าสุดในระบบ</h2>
+        <span id="dataSummaryBadge" class="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full font-medium"></span>
+      </div>
       <div class="flex gap-2 flex-wrap">
-        <!-- Filter: Product Type -->
-        <select id="filterProductType" onchange="loadImportData()" class="border rounded px-3 py-1.5 text-sm">
-          <option value="">ทุกประเภท</option>
-        </select>
-        <!-- Filter: Branch -->
-        <select id="filterBranch" onchange="loadImportData()" class="border rounded px-3 py-1.5 text-sm">
-          <option value="">ทุกสาขา</option>
-        </select>
-        <!-- Search SKU -->
-        <input id="filterSku" type="text" placeholder="ค้นหา SKU / ชื่อสินค้า..." 
-          class="border rounded px-3 py-1.5 text-sm w-48"
-          oninput="debounceSearch()" />
-        <button onclick="loadImportData()" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1">
-          <i class="bi bi-arrow-clockwise"></i> รีเฟรช
-        </button>
         <button onclick="exportSellingPriceExcel()" class="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-1.5">
           <i class="bi bi-file-earmark-arrow-down"></i> นำออกราคาขาย
+        </button>
+        <button onclick="openDataModal()" class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-1.5">
+          <i class="bi bi-table"></i> ดูทั้งหมด
         </button>
       </div>
     </div>
 
-    <!-- Summary -->
-    <div id="dataSummary" class="text-sm text-gray-500 mb-3"></div>
-
-    <div class="table-container border rounded">
+    <!-- Preview table (5 rows, no pagination, no filter) -->
+    <div class="table-container border rounded" style="overflow-x: auto;">
       <table class="w-full text-sm">
-        <thead>
+        <thead class="sticky top-0 z-10">
           <tr>
             <th>ประเภท</th>
             <th>SKU</th>
@@ -252,10 +243,85 @@
       </table>
     </div>
 
-    <!-- Pagination -->
-    <div id="dataPagination" class="mt-4 flex items-center justify-between text-sm text-gray-600"></div>
+    <!-- "ดูทั้งหมด" link -->
+    <div class="mt-3 text-center">
+      <button onclick="openDataModal()" class="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 mx-auto">
+        <i class="bi bi-chevron-down"></i>
+        ดูข้อมูลทั้งหมด
+      </button>
+    </div>
 
   </main>
+
+  <!-- ============================================================ -->
+  <!-- DATA MODAL (full view with filter / search / pagination)     -->
+  <!-- ============================================================ -->
+  <div id="dataModal" class="fixed inset-0 z-[200] hidden">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeDataModal()"></div>
+
+    <!-- Panel -->
+    <div class="absolute inset-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+        <div class="flex items-center gap-3 flex-wrap">
+          <h2 class="text-lg font-bold text-gray-800">ข้อมูลล่าสุดในระบบ</h2>
+          <span id="modalDataSummary" class="text-xs text-gray-500"></span>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <!-- Filter: Product Type -->
+          <select id="filterProductType" onchange="loadImportData()" class="border rounded px-3 py-1.5 text-sm">
+            <option value="">ทุกประเภท</option>
+          </select>
+          <!-- Filter: Branch -->
+          <select id="filterBranch" onchange="loadImportData()" class="border rounded px-3 py-1.5 text-sm">
+            <option value="">ทุกสาขา</option>
+          </select>
+          <!-- Search SKU -->
+          <input id="filterSku" type="text" placeholder="ค้นหา SKU / ชื่อสินค้า..."
+            class="border rounded px-3 py-1.5 text-sm w-48" oninput="debounceSearch()" />
+          <button onclick="loadImportData()" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
+          <button onclick="closeDataModal()" class="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 rounded flex items-center gap-1.5 text-gray-600">
+            <i class="bi bi-x-lg"></i> ปิด
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Body (scrollable table) -->
+      <!-- overflow-x บน wrapper, overflow-y บน modal body เพื่อให้ sticky thead ทำงานได้ -->
+      <div class="flex-1 overflow-y-auto overflow-x-auto px-6 py-4" id="modalScrollBody">
+        <table class="w-full text-sm border-collapse" style="min-width: 900px;">
+          <thead>
+            <tr>
+              <th class="sticky top-0 z-10 bg-slate-100 text-left px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">ประเภท</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-left px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">SKU</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-left px-3 py-3 font-semibold border-b-2 border-slate-300">ชื่อสินค้า</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-left px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">แบรนด์</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-left px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">สาขา</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-right px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">ราคาตั้งต้น</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-right px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">ส่วนลด 1</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-right px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">ราคาหลังลด 1</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-right px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">ส่วนลด 2</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-right px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">ราคาหลังลด 2</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-right px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">ส่วนลด 3</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-right px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">ราคาหลังลด 3</th>
+              <th class="sticky top-0 z-10 bg-slate-100 text-left px-3 py-3 font-semibold border-b-2 border-slate-300 whitespace-nowrap">วันที่นำเข้า</th>
+            </tr>
+          </thead>
+          <tbody id="modalDataBody">
+            <tr><td colspan="13" class="text-center py-6 text-gray-400">กำลังโหลด...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Modal Footer (pagination) -->
+      <div id="dataPagination" class="px-6 py-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600 shrink-0"></div>
+
+    </div>
+  </div>
 
   <script src="price-list.js"></script>
 

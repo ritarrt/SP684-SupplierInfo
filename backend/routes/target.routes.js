@@ -8,6 +8,7 @@ import {
   getThicknessByCategory,
   getBrandsBySupplier,
   getParentTargets,
+  getSingleTarget,
   testREDetail,
   debugGlassTargetArea,
   debugGlassTargetAreaByRef,
@@ -60,6 +61,7 @@ router.get("/master-data", getTargetMasterData);
 router.get("/thickness/:category", getThicknessByCategory);
 router.get("/brands/:supplierCode", getBrandsBySupplier);
 router.get("/parents/:supplierCode", getParentTargets);
+router.get("/single/:id", getSingleTarget);
 
 // สร้างใหม่ → OPEN
 router.post("/", createTarget);
