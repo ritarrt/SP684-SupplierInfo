@@ -174,13 +174,19 @@ export const getBranchesForFilter = async (req, res) => {
       ORDER BY branchCode
     `);
 
-    // ดึง branchCode ที่มีข้อมูลใน StockStatusFact
-    const ssResult = await pool.request().query(`
-      SELECT DISTINCT branchCode
-      FROM StockStatusFact
-      WHERE branchCode IS NOT NULL AND branchCode != ''
-    `);
-    const ssCodes = new Set(ssResult.recordset.map(r => r.branchCode));
+    // ดึง branchCode ที่มีข้อมูลใน StockStatusFact (optional — ถ้าตารางไม่มีก็ข้ามได้)
+    let ssCodes = new Set();
+    try {
+      const ssResult = await pool.request().query(`
+        SELECT DISTINCT branchCode
+        FROM StockStatusFact
+        WHERE branchCode IS NOT NULL AND branchCode != ''
+      `);
+      ssCodes = new Set(ssResult.recordset.map(r => r.branchCode));
+    } catch (ssErr) {
+      // StockStatusFact อาจไม่มีใน DB นี้ — ใช้แค่ BranchMaster
+      console.warn("getBranchesForFilter: StockStatusFact not available, using BranchMaster only");
+    }
 
     // รวม: ใช้ BranchMaster เป็นหลัก เพิ่ม code ที่ไม่มีใน BranchMaster จาก SS
     const bmMap = new Map(bmResult.recordset.map(r => [r.branchCode, r.branchName]));
@@ -195,7 +201,7 @@ export const getBranchesForFilter = async (req, res) => {
     res.json(combined);
   } catch (err) {
     console.error("getBranchesForFilter error:", err);
-    res.status(500).json({ error: "Failed to load branches" });
+    res.status(500).json({ error: "Failed to load branches", detail: err.message });
   }
 };
 

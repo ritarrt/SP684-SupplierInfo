@@ -248,6 +248,22 @@ function showSheetSelection(checkResult) {
       sheetSection.classList.remove("hidden");
       return;
     }
+  } else if (currentTab === "Aluminum") {
+    // Aluminum: แสดงเฉพาะชีทที่ขึ้นต้นด้วย "Aluminium_" หรือ "Aluminum_"
+    // ถ้าไม่มี → fallback แสดงชีทที่มีคำว่า alumin ทั้งหมด
+    sheetsToShow = currentWorkbook.SheetNames.filter(n => {
+      const lower = n.toLowerCase();
+      return lower.startsWith('aluminium_') || lower.startsWith('aluminum_');
+    });
+    if (sheetsToShow.length === 0) {
+      // fallback: แสดงชีทที่มีคำว่า alumin
+      sheetsToShow = currentWorkbook.SheetNames.filter(n => n.toLowerCase().includes('alumin'));
+    }
+    if (sheetsToShow.length === 0) {
+      sheetButtons.innerHTML = `<span class="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-1.5">ไม่พบชีทราคา (ต้องขึ้นต้นด้วย "Aluminium_" เช่น Aluminium_BKK)</span>`;
+      sheetSection.classList.remove("hidden");
+      return;
+    }
   } else if (checkResult) {
     // ใช้ผลจาก check-sheets — แสดงเฉพาะที่อ่านได้
     const readableSet = new Set(checkResult.filter(s => s.readable).map(s => s.sheetName));
@@ -324,7 +340,7 @@ function showDataPreview() {
   dataSection.classList.remove("hidden");
   
   // For Gypsum and Glass, show preview from backend
-  if (currentTab === "Gypsum" || currentTab === "Glass" || currentTab === "Accessories" || currentTab === "Sealant" || currentTab === "C-Line") {
+  if (currentTab === "Gypsum" || currentTab === "Glass" || currentTab === "Accessories" || currentTab === "Sealant" || currentTab === "C-Line" || currentTab === "Aluminum") {
     loadGypsumPreview();
     return;
   }

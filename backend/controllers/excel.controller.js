@@ -106,7 +106,7 @@ export async function importExcelData(req, res) {
                  sheetLower === 'float' || sheetLower === 'coated' ||
                  sheetLower === 't&l' || sheetLower === 'igu') {
         detectedType = 'Glass';
-      } else if (sheetLower.includes('aluminum') || sheetLower.includes('อลูมิเนียม')) {
+      } else if (sheetLower.includes('aluminum') || sheetLower.includes('aluminium') || sheetLower.includes('อลูมิเนียม')) {
         detectedType = 'Aluminum';
       } else if (sheetLower === 'acc' || sheetLower.includes('accessories') || sheetLower.includes('อุปกรณ์')) {
         detectedType = 'Accessories';
@@ -225,6 +225,10 @@ export async function importExcelData(req, res) {
       } else if (detectedType === "Accessories") {
         if (bufferData) {
           imported = await importAccessoriesData(pool, bufferData, sheetName, logId);
+        }
+      } else if (detectedType === "Aluminum") {
+        if (bufferData) {
+          imported = await importAluminumData(pool, bufferData, sheetName, logId);
         }
       } else if (detectedType === "Sealant") {
         if (bufferData) {
@@ -2339,6 +2343,8 @@ export async function previewExcelData(req, res) {
         detectedType = 'Glass';
       } else if (sheetLower === 'acc' || sheetLower.includes('accessories') || sheetLower.includes('อุปกรณ์')) {
         detectedType = 'Accessories';
+      } else if (sheetLower.includes('aluminum') || sheetLower.includes('aluminium') || sheetLower.includes('อลูมิเนียม')) {
+        detectedType = 'Aluminum';
       } else if (sheetLower.includes('sealant') || sheetLower.includes('ซีลแลนท์') || sheetLower.includes('ซีลแล้นท์') || sheetLower === 'price list') {
         detectedType = 'Sealant';
       } else if (sheetLower.includes('c-line') || sheetLower.includes('cline') || sheetLower.includes('ซีลาย') || sheetLower === 'c line') {
@@ -2360,6 +2366,9 @@ export async function previewExcelData(req, res) {
       } else if (detectedType === "Accessories") {
         const bufferData = Buffer.from(excelBuffer, 'base64');
         previewData = await previewAccessoriesData(bufferData, sheetName);
+      } else if (detectedType === "Aluminum") {
+        const bufferData = Buffer.from(excelBuffer, 'base64');
+        previewData = await previewAluminumData(bufferData, sheetName);
       } else if (detectedType === "Sealant") {
         const bufferData = Buffer.from(excelBuffer, 'base64');
         previewData = await previewSealantData(bufferData, sheetName);
@@ -4228,6 +4237,189 @@ async function previewCLineData(excelBuffer, sheetName) {
 
 /**
  * =====================================================
+ * Helper: Preview Aluminum Data (zone-based)
+ * =====================================================
+ * ใช้ sheetName ที่ user เลือก — parse zones จากชื่อชีทนั้น
+ * รองรับทั้ง "Aluminium_BKK" และ "Aluminium" (ไม่มี zone → ใช้ทุกสาขา)
+ */
+async function previewAluminumData(excelBuffer, sheetName) {
+  try {
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[sheetName] || workbook.Sheets[workbook.SheetNames[0]];
+    if (!worksheet) return { rows: [], allRows: [], totalSkus: 0, totalRows: 0, branches: [] };
+
+    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    // ===== DEBUG: dump 8 แถวแรก =====
+    console.log(`[Aluminum Preview] Sheet "${sheetName}" raw rows: ${rawData.length}`);
+    for (let di = 0; di < Math.min(8, rawData.length); di++) {
+      const row = rawData[di];
+      if (!row) continue;
+      const cells = row.map((v, ci) => `[${ci}]=${JSON.stringify(v)}`).filter(s => !s.includes('undefined') && s !== `[${s.split('=')[0].slice(1,-1)}]=null`).join(' | ');
+      console.log(`  row[${di}]: ${cells || '(empty)'}`);
+    }
+
+    // Parse zones จากชื่อ sheet
+    const parsed = parseAluminumSheetName(sheetName);
+
+    const { allBranchCodes, zoneToBranches } = await loadBranchMapping();
+
+    let targetBranches;
+    let zoneLabel;
+
+    if (parsed && parsed.zones.length > 0) {
+      // zone-based: กรองเฉพาะสาขาในภาคที่ระบุ
+      const zoneBranchSets = {};
+      for (const [zone, codes] of Object.entries(zoneToBranches)) {
+        zoneBranchSets[zone] = new Set(codes);
+      }
+      targetBranches = allBranchCodes.filter(b =>
+        parsed.zones.some(zone => zoneBranchSets[zone]?.has(b))
+      );
+      zoneLabel = [...parsed.zones].sort().join('-');
+    } else {
+      // ไม่มี zone ในชื่อ sheet → ใช้ทุกสาขา
+      targetBranches = allBranchCodes;
+      zoneLabel = 'ทุกสาขา';
+    }
+
+    console.log(`[Aluminum Preview] Sheet "${sheetName}" → zones: ${zoneLabel} → ${targetBranches.length} branches`);
+
+    // โหลด productName จาก StockStatusFact
+    const pool = await getPool();
+    const skuNameResult = await pool.request().query(`
+      SELECT DISTINCT skuNumber, productName
+      FROM StockStatusFact
+      WHERE category = 'Aluminum' AND skuNumber LIKE 'A%'
+    `);
+    const skuNameMap = {};
+    skuNameResult.recordset.forEach(r => {
+      if (r.skuNumber && r.productName) skuNameMap[r.skuNumber] = r.productName;
+    });
+
+    const fv = v => {
+      if (v === undefined || v === null || v === '' || v === '-') return 0;
+      const n = parseFloat(String(v).replace(/,/g, ''));
+      return isNaN(n) ? 0 : n;
+    };
+
+    // Auto-detect header row — ค้นหา row ที่มี cell = "SKU" (ไม่จำกัดแค่ col[0])
+    let dataStartRow = 1;
+    let skuColIdx = 0;   // column index ของ SKU
+    let brandColIdx = 1;
+    let colorColIdx = 2;
+    let descColIdx = 3;
+    let reExVatColIdx = 4;
+    let disc1ColIdx = 6;
+    let disc2ColIdx = 7;
+    let sdmColIdx = 8;
+    let w1ColIdx = 9;
+    let w2ColIdx = 10;
+    let r1ColIdx = 11;
+    let r2ColIdx = 12;
+
+    for (let i = 0; i < Math.min(rawData.length, 15); i++) {
+      const row = rawData[i];
+      if (!row) continue;
+      // หา index ของ cell ที่เป็น "SKU" (case-insensitive)
+      const skuIdx = row.findIndex(v => String(v ?? '').trim().toLowerCase() === 'sku');
+      if (skuIdx >= 0) {
+        dataStartRow = i + 1;
+        skuColIdx = skuIdx;
+        // map header ที่เหลือจาก row นั้น
+        row.forEach((v, ci) => {
+          const h = String(v ?? '').trim().toLowerCase();
+          if (h === 'brand')                                    brandColIdx = ci;
+          else if (h === 'color')                               colorColIdx = ci;
+          else if (h === 'description')                         descColIdx = ci;
+          else if (h === 're (ex vat)' || h === 're ex vat' || h === 're(ex vat)') reExVatColIdx = ci;
+          else if (h === 're-discount1' || h === 're discount1' || h === 'discount1') disc1ColIdx = ci;
+          else if (h === 're-discount2' || h === 're discount2' || h === 'discount2') disc2ColIdx = ci;
+          else if (h === 'sdm')                                 sdmColIdx = ci;
+          else if (h === 'w1')                                  w1ColIdx = ci;
+          else if (h === 'w2')                                  w2ColIdx = ci;
+          else if (h === 'r1')                                  r1ColIdx = ci;
+          else if (h === 'r2')                                  r2ColIdx = ci;
+        });
+        console.log(`[Aluminum Preview] Header row at index ${i}: SKU col=${skuColIdx}, RE(ExVAT) col=${reExVatColIdx}, W1 col=${w1ColIdx}, W2 col=${w2ColIdx}, R1 col=${r1ColIdx}, R2 col=${r2ColIdx}`);
+        break;
+      }
+    }
+    console.log(`[Aluminum Preview] dataStartRow=${dataStartRow}`);
+
+    // Parse rows
+    const skuMap = new Map();
+    for (let i = dataStartRow; i < rawData.length; i++) {
+      const row = rawData[i];
+      if (!row) continue;
+
+      const sku            = row[skuColIdx]    !== undefined ? String(row[skuColIdx]).trim()    : '';
+      const brand          = row[brandColIdx]  !== undefined ? String(row[brandColIdx]).trim()  : '';
+      const color          = row[colorColIdx]  !== undefined ? String(row[colorColIdx]).trim()  : '';
+      const descriptionRaw = row[descColIdx]   !== undefined ? String(row[descColIdx]).trim()   : '';
+      const basePrice      = fv(row[reExVatColIdx]);
+      const discount1      = fv(row[disc1ColIdx]);
+      const discount2      = fv(row[disc2ColIdx]);
+      const sdm            = fv(row[sdmColIdx]);
+      const w1             = fv(row[w1ColIdx]);
+      const w2             = fv(row[w2ColIdx]);
+      const r1             = fv(row[r1ColIdx]);
+      const r2             = fv(row[r2ColIdx]);
+
+      if (!sku) continue;
+      if (basePrice === 0 && w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && discount1 === 0) continue;
+
+      const productNameFromExcel = color ? `${descriptionRaw} ${color}`.trim() : descriptionRaw;
+      const productName = skuNameMap[sku] || productNameFromExcel || 'Aluminum';
+
+      skuMap.set(sku, { sku, brand, color, productName, basePrice, discount1, discount2, sdm, w1, w2, r1, r2 });
+    }
+
+    const previewRows = [];
+    const allRows = [];
+
+    for (const entry of skuMap.values()) {
+      const rowData = {
+        sku:               entry.sku,
+        productName:       entry.productName,
+        brand:             entry.brand,
+        unit:              entry.color || '',
+        branch:            `${zoneLabel} (${targetBranches.length})`,
+        totalBranches:     targetBranches.length,
+        base_price:        entry.basePrice,
+        discount_price_1:  entry.discount1,
+        discount_price_2:  entry.discount2,
+        discount_price_3:  0,
+        selling_price_sdm: entry.sdm,
+        selling_price_w1:  entry.w1,
+        selling_price_w2:  entry.w2,
+        selling_price_r1:  entry.r1,
+        selling_price_r2:  entry.r2,
+      };
+
+      if (previewRows.length < 20) previewRows.push(rowData);
+
+      // allRows: expand เป็น full SKU|branch เพื่อเปรียบเทียบกับ DB
+      for (const branchCode of targetBranches) {
+        allRows.push({ ...rowData, branch: branchCode });
+      }
+    }
+
+    const totalSkus = skuMap.size;
+    const totalRows = totalSkus * targetBranches.length;
+
+    console.log(`[Aluminum Preview] totalSkus=${totalSkus}, totalRows=${totalRows}`);
+
+    return { rows: previewRows, allRows, totalSkus, totalRows, branches: targetBranches };
+
+  } catch (err) {
+    console.error('[Aluminum Preview] Fatal error:', err);
+    return { rows: [], allRows: [], totalSkus: 0, totalRows: 0, branches: [] };
+  }
+}
+
+/**
+ * =====================================================
  * GET /api/excel/pending-draft?productType=
  * ตรวจสอบว่ามี draft ค้างอยู่ไหม (สำหรับ restore ตอนโหลดหน้า)
  * =====================================================
@@ -4475,5 +4667,383 @@ export async function debugExcelStructure(req, res) {
     res.json({ sheetNames: workbook.SheetNames, structure: result });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * =====================================================
+ * Helper: Parse ชื่อชีท Aluminum เพื่อดึง zones
+ *
+ * รูปแบบ: "Aluminium_<zone1>-<zone2>-..."
+ * เช่น:
+ *   "Aluminium_BKK"       → zones: ['BKK']
+ *   "Aluminium_N-NE"      → zones: ['N','NE']
+ *   "Aluminium_BKK-C-E"   → zones: ['BKK','C','E']
+ *
+ * รองรับทั้ง "Aluminium" และ "Aluminum" (สะกดต่างกัน)
+ * คืนค่า: { zones: string[] } หรือ null ถ้าไม่ใช่ชีท Aluminum
+ * =====================================================
+ */
+function parseAluminumSheetName(name) {
+  const lower = name.toLowerCase();
+  // รองรับ "aluminium_" และ "aluminum_"
+  const prefix = lower.startsWith('aluminium_') ? 'aluminium_'
+               : lower.startsWith('aluminum_')  ? 'aluminum_'
+               : null;
+  if (!prefix) return null;
+
+  // ตัด prefix ออก → "BKK" หรือ "BKK-C-E"
+  const rest = name.slice(prefix.length);
+
+  // zones = token uppercase ที่คั่นด้วย "-"
+  const zones = rest.match(/[A-Z]+/g) || [];
+  return { zones };
+}
+
+/**
+ * =====================================================
+ * Helper: Import Aluminum Data from Excel Buffer
+ * =====================================================
+ *
+ * โครงสร้างไฟล์ Aluminum:
+ *   Row 0 (index 0) = header row
+ *   Row 1+          = ข้อมูลสินค้า
+ *
+ * Column mapping (0-based index):
+ *   col 0  (A) = SKU
+ *   col 1  (B) = Brand
+ *   col 2  (C) = Color
+ *   col 3  (D) = Description       → product_name
+ *   col 4  (E) = RE (Ex VAT)       → base_price (ราคาตั้งต้น ไม่รวม VAT)
+ *   col 5  (F) = RE (Inc VAT)      → ไม่ใช้
+ *   col 6  (G) = RE-Discount1      → discount_price_1
+ *   col 7  (H) = RE-Discount2      → discount_price_2
+ *   col 8  (I) = SDM               → selling_price_sdm
+ *   col 9  (J) = W1                → selling_price_w1
+ *   col 10 (K) = W2                → selling_price_w2
+ *   col 11 (L) = R1                → selling_price_r1
+ *   col 12 (M) = R2                → selling_price_r2
+ *   col 13 (N) = AlternateName     → ไม่ใช้
+ *
+ * Zone-based: ราคาใช้เฉพาะสาขาในภาคที่ระบุในชื่อ sheet
+ *   เช่น "Aluminium_BKK" → เฉพาะสาขาใน BKK
+ *        "Aluminium_N-NE" → สาขาในภาคเหนือ + ภาคอีสาน
+ * ข้ามแถวที่: SKU ว่าง หรือ ไม่มีราคาใดเลย
+ * =====================================================
+ */
+async function importAluminumData(pool, excelBuffer, sheetName, logId = null) {
+  let imported = 0;
+
+  try {
+    console.log(`[Aluminum Parser] Starting import for sheet: ${sheetName}`);
+
+    const workbook = XLSX.read(excelBuffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[sheetName] || workbook.Sheets[workbook.SheetNames[0]];
+    if (!worksheet) {
+      console.error(`[Aluminum Parser] Sheet "${sheetName}" not found`);
+      return 0;
+    }
+
+    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    console.log(`[Aluminum Parser] Raw rows: ${rawData.length}`);
+
+    // DEBUG: dump 5 แถวแรกเพื่อตรวจ column layout
+    console.log('[Aluminum Parser] === COLUMN LAYOUT DEBUG ===');
+    for (let di = 0; di < Math.min(6, rawData.length); di++) {
+      const row = rawData[di];
+      if (!row) continue;
+      const cells = row
+        .map((v, ci) => `col[${ci}]=${JSON.stringify(v)}`)
+        .filter(s => !s.includes('undefined') && !s.includes('""'))
+        .join(' | ');
+      console.log(`  row[${di}]: ${cells}`);
+    }
+    console.log('[Aluminum Parser] === END DEBUG ===');
+
+    // ===== Parse zone จากชื่อ sheet =====
+    const parsed = parseAluminumSheetName(sheetName);
+    if (!parsed || parsed.zones.length === 0) {
+      console.error(`[Aluminum Parser] Cannot parse zones from sheet: "${sheetName}". Expected format: "Aluminium_BKK" or "Aluminium_N-NE"`);
+      return 0;
+    }
+    console.log(`[Aluminum Parser] Sheet "${sheetName}" → zones: [${parsed.zones.join(',')}]`);
+
+    // โหลด branch mapping และกรองเฉพาะสาขาในภาคที่ระบุ
+    const { allBranchCodes, zoneToBranches } = await loadBranchMapping();
+
+    // สร้าง zone → Set<branchCode> สำหรับ lookup
+    const zoneBranchSets = {};
+    for (const [zone, codes] of Object.entries(zoneToBranches)) {
+      zoneBranchSets[zone] = new Set(codes);
+    }
+
+    const targetBranches = allBranchCodes.filter(b =>
+      parsed.zones.some(zone => zoneBranchSets[zone]?.has(b))
+    );
+
+    if (targetBranches.length === 0) {
+      console.error(`[Aluminum Parser] No branches found for zones: [${parsed.zones.join(',')}]`);
+      return 0;
+    }
+    console.log(`[Aluminum Parser] Target branches: ${targetBranches.length} (zones: ${parsed.zones.join(',')}`);
+
+    // โหลด productName จาก StockStatusFact (ใช้ชื่อจาก DB ถ้ามี)
+    console.log('[Aluminum Parser] Loading productName from StockStatusFact...');
+    const skuNameResult = await pool.request().query(`
+      SELECT DISTINCT skuNumber, productName
+      FROM StockStatusFact
+      WHERE category = 'Aluminum' AND skuNumber LIKE 'A%'
+    `);
+    const skuNameMap = {};
+    skuNameResult.recordset.forEach(r => {
+      if (r.skuNumber && r.productName) skuNameMap[r.skuNumber] = r.productName;
+    });
+    console.log(`[Aluminum Parser] Loaded ${Object.keys(skuNameMap).length} SKU names from StockStatusFact`);
+
+    // ตรวจสอบ columns ที่มีใน DB
+    const colCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'excel_import_data'
+    `);
+    const dbCols = colCheck.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+    const hasSellingPrices   = dbCols.includes('selling_price_w1');
+    const hasSellingPriceSdm = dbCols.includes('selling_price_sdm');
+    const hasDiscPct1        = dbCols.includes('discount_pct_1');
+
+    const fv = v => {
+      if (v === undefined || v === null || v === '' || v === '-') return 0;
+      const n = parseFloat(String(v).replace(/,/g, ''));
+      return isNaN(n) ? 0 : n;
+    };
+
+    // ===== Auto-detect header row =====
+    // หา row ที่มี "SKU" ในทุก column (ไม่จำกัดแค่ col[0])
+    let dataStartRow = 1;
+    let skuColIdx = 0, brandColIdx = 1, colorColIdx = 2, descColIdx = 3;
+    let reExVatColIdx = 4, disc1ColIdx = 6, disc2ColIdx = 7;
+    let sdmColIdx = 8, w1ColIdx = 9, w2ColIdx = 10, r1ColIdx = 11, r2ColIdx = 12;
+
+    for (let i = 0; i < Math.min(rawData.length, 15); i++) {
+      const row = rawData[i];
+      if (!row) continue;
+      const skuIdx = row.findIndex(v => String(v ?? '').trim().toLowerCase() === 'sku');
+      if (skuIdx >= 0) {
+        dataStartRow = i + 1;
+        skuColIdx = skuIdx;
+        row.forEach((v, ci) => {
+          const h = String(v ?? '').trim().toLowerCase();
+          if (h === 'brand')                                                          brandColIdx = ci;
+          else if (h === 'color')                                                     colorColIdx = ci;
+          else if (h === 'description')                                               descColIdx = ci;
+          else if (h === 're (ex vat)' || h === 're ex vat' || h === 're(ex vat)')   reExVatColIdx = ci;
+          else if (h === 're-discount1' || h === 're discount1' || h === 'discount1') disc1ColIdx = ci;
+          else if (h === 're-discount2' || h === 're discount2' || h === 'discount2') disc2ColIdx = ci;
+          else if (h === 'sdm')                                                       sdmColIdx = ci;
+          else if (h === 'w1')                                                        w1ColIdx = ci;
+          else if (h === 'w2')                                                        w2ColIdx = ci;
+          else if (h === 'r1')                                                        r1ColIdx = ci;
+          else if (h === 'r2')                                                        r2ColIdx = ci;
+        });
+        console.log(`[Aluminum Parser] Header row at index ${i}: SKU col=${skuColIdx}, RE(ExVAT) col=${reExVatColIdx}, W1=${w1ColIdx}, W2=${w2ColIdx}, R1=${r1ColIdx}, R2=${r2ColIdx}`);
+        break;
+      }
+    }
+    console.log(`[Aluminum Parser] dataStartRow=${dataStartRow}`);
+
+    // Parse rows
+    const skuMap = new Map(); // sku → entry (ราคาเดียวต่อ SKU)
+
+    for (let i = dataStartRow; i < rawData.length; i++) {
+      const row = rawData[i];
+      if (!row) continue;
+
+      const sku            = row[skuColIdx]    !== undefined ? String(row[skuColIdx]).trim()    : '';
+      const brand          = row[brandColIdx]  !== undefined ? String(row[brandColIdx]).trim()  : '';
+      const color          = row[colorColIdx]  !== undefined ? String(row[colorColIdx]).trim()  : '';
+      const descriptionRaw = row[descColIdx]   !== undefined ? String(row[descColIdx]).trim()   : '';
+      const basePrice      = fv(row[reExVatColIdx]);
+      // col RE (Inc VAT) — ไม่ใช้
+      const discount1      = fv(row[disc1ColIdx]);
+      const discount2      = fv(row[disc2ColIdx]);
+      const sdm            = fv(row[sdmColIdx]);
+      const w1             = fv(row[w1ColIdx]);
+      const w2             = fv(row[w2ColIdx]);
+      const r1             = fv(row[r1ColIdx]);
+      const r2             = fv(row[r2ColIdx]);
+      const alternateName  = row[13] !== undefined ? String(row[13]).trim() : '';
+
+      // ข้ามแถวที่ไม่มี SKU หรือไม่มีราคาใดเลย
+      if (!sku) continue;
+      if (basePrice === 0 && w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && discount1 === 0) continue;
+
+      // ใช้ชื่อจาก DB ถ้ามี ไม่งั้นใช้จาก Excel
+      // รวม color เข้าไปในชื่อถ้ามี
+      const productNameFromExcel = color
+        ? `${descriptionRaw} ${color}`.trim()
+        : descriptionRaw;
+      const productName = skuNameMap[sku] || productNameFromExcel || 'Aluminum';
+
+      // ถ้า SKU ซ้ำ ให้ใช้ข้อมูลแถวล่าสุด (override)
+      skuMap.set(sku, {
+        sku, brand, color, productName,
+        basePrice, discount1, discount2,
+        sdm, w1, w2, r1, r2,
+        alternateName,
+      });
+    }
+
+    console.log(`[Aluminum Parser] Unique SKUs: ${skuMap.size}`);
+
+    if (skuMap.size === 0) {
+      console.warn('[Aluminum Parser] No valid rows found');
+      return 0;
+    }
+
+    // ===== Expand เฉพาะสาขาในภาคที่ระบุ =====
+    const insertRows = [];
+    for (const entry of skuMap.values()) {
+      for (const branchCode of targetBranches) {
+        insertRows.push({ branchCode, ...entry });
+      }
+    }
+
+    console.log(`[Aluminum Parser] Rows to insert: ${insertRows.length} (${skuMap.size} SKUs × ${targetBranches.length} branches)`);
+
+    // Build insert columns
+    let insertCols;
+    if (hasSellingPrices && hasSellingPriceSdm) {
+      insertCols = `branch, product_type, sku, product_name, brand, unit,
+        base_price, discount_price_1, discount_price_2, discount_price_3,
+        project_no, project_discount_1, project_discount_2, project_price,
+        carton_price, shipping_cost, free_item,
+        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2,
+        selling_price_sdm${hasDiscPct1 ? ', discount_pct_1' : ''}, import_log_id`;
+    } else if (hasSellingPrices) {
+      insertCols = `branch, product_type, sku, product_name, brand, unit,
+        base_price, discount_price_1, discount_price_2, discount_price_3,
+        project_no, project_discount_1, project_discount_2, project_price,
+        carton_price, shipping_cost, free_item,
+        selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2
+        ${hasDiscPct1 ? ', discount_pct_1' : ''}, import_log_id`;
+    } else {
+      insertCols = `branch, product_type, sku, product_name, brand, unit,
+        base_price, discount_price_1, discount_price_2, discount_price_3,
+        project_no, project_discount_1, project_discount_2, project_price,
+        carton_price, shipping_cost, free_item, import_log_id`;
+    }
+
+    // คำนวณ params ต่อ row เพื่อให้ BATCH_SIZE ไม่เกิน 2,100
+    const PARAMS_PER_ROW = 9
+      + (hasSellingPriceSdm ? 1 : 0)
+      + (hasDiscPct1        ? 1 : 0);
+    const BATCH_SIZE = Math.floor(2000 / PARAMS_PER_ROW);
+    console.log(`[Aluminum Parser] PARAMS_PER_ROW=${PARAMS_PER_ROW}, BATCH_SIZE=${BATCH_SIZE}`);
+
+    for (let batchStart = 0; batchStart < insertRows.length; batchStart += BATCH_SIZE) {
+      const batch = insertRows.slice(batchStart, batchStart + BATCH_SIZE);
+      const req = pool.request();
+      const valueParts = [];
+
+      batch.forEach((r, idx) => {
+        req.input(`branch${idx}`,      sql.NVarChar(100), r.branchCode);
+        req.input(`sku${idx}`,         sql.NVarChar(50),  r.sku);
+        req.input(`productName${idx}`, sql.NVarChar(255), r.productName);
+        req.input(`brand${idx}`,       sql.NVarChar(100), r.brand);
+        req.input(`unit${idx}`,        sql.NVarChar(50),  r.color || '');
+        req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
+        req.input(`disc1_${idx}`,      sql.Decimal(18,2), r.discount1);
+        req.input(`disc2_${idx}`,      sql.Decimal(18,2), r.discount2);
+        req.input(`w1_${idx}`,         sql.Decimal(18,2), r.w1);
+        req.input(`w2_${idx}`,         sql.Decimal(18,2), r.w2);
+        req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1);
+        req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2);
+        req.input(`logId${idx}`,       sql.Int,           logId);
+        if (hasSellingPriceSdm) req.input(`sdm${idx}`, sql.Decimal(18,2), r.sdm);
+        if (hasDiscPct1)        req.input(`discPct${idx}`, sql.Decimal(10,6), 0);
+
+        const discPct1Val = hasDiscPct1 ? `,@discPct${idx}` : '';
+
+        if (hasSellingPrices && hasSellingPriceSdm) {
+          valueParts.push(
+            `(@branch${idx},'Aluminum',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
+            `@basePrice${idx},@disc1_${idx},@disc2_${idx},0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@sdm${idx}${discPct1Val},@logId${idx})`
+          );
+        } else if (hasSellingPrices) {
+          valueParts.push(
+            `(@branch${idx},'Aluminum',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
+            `@basePrice${idx},@disc1_${idx},@disc2_${idx},0,'',0,0,0,0,0,'',` +
+            `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx}${discPct1Val},@logId${idx})`
+          );
+        } else {
+          valueParts.push(
+            `(@branch${idx},'Aluminum',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
+            `@basePrice${idx},@disc1_${idx},@disc2_${idx},0,'',0,0,0,0,0,'',@logId${idx})`
+          );
+        }
+      });
+
+      try {
+        await req.query(`INSERT INTO excel_import_data (${insertCols}) VALUES ${valueParts.join(',')}`);
+        imported += batch.length;
+        console.log(`[Aluminum Parser] Inserted ${imported}/${insertRows.length}`);
+      } catch (err) {
+        console.error(`[Aluminum Parser] Batch insert error at ${batchStart}:`, err.message);
+        // fallback: insert ทีละ row
+        for (const r of batch) {
+          try {
+            const singleReq = pool.request()
+              .input('branch',      sql.NVarChar(100), r.branchCode)
+              .input('sku',         sql.NVarChar(50),  r.sku)
+              .input('productName', sql.NVarChar(255), r.productName)
+              .input('brand',       sql.NVarChar(100), r.brand)
+              .input('unit',        sql.NVarChar(50),  r.color || '')
+              .input('basePrice',   sql.Decimal(18,2), r.basePrice)
+              .input('disc1',       sql.Decimal(18,2), r.discount1)
+              .input('disc2',       sql.Decimal(18,2), r.discount2)
+              .input('w1',          sql.Decimal(18,2), r.w1)
+              .input('w2',          sql.Decimal(18,2), r.w2)
+              .input('r1',          sql.Decimal(18,2), r.r1)
+              .input('r2',          sql.Decimal(18,2), r.r2)
+              .input('logId',       sql.Int,           logId);
+            if (hasSellingPriceSdm) singleReq.input('sdm',     sql.Decimal(18,2), r.sdm);
+            if (hasDiscPct1)        singleReq.input('discPct', sql.Decimal(10,6), 0);
+
+            const discPct1Single = hasDiscPct1 ? ',@discPct' : '';
+
+            if (hasSellingPrices && hasSellingPriceSdm) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Aluminum',@sku,@productName,@brand,@unit,
+                  @basePrice,@disc1,@disc2,0,'',0,0,0,0,0,'',
+                  @w1,@w2,@r1,@r2,@sdm${discPct1Single},@logId)
+              `);
+            } else if (hasSellingPrices) {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Aluminum',@sku,@productName,@brand,@unit,
+                  @basePrice,@disc1,@disc2,0,'',0,0,0,0,0,'',
+                  @w1,@w2,@r1,@r2${discPct1Single},@logId)
+              `);
+            } else {
+              await singleReq.query(`
+                INSERT INTO excel_import_data (${insertCols})
+                VALUES (@branch,'Aluminum',@sku,@productName,@brand,@unit,
+                  @basePrice,@disc1,@disc2,0,'',0,0,0,0,0,'',@logId)
+              `);
+            }
+            imported++;
+          } catch (e2) {
+            console.error(`[Aluminum Parser] Row insert error (${r.branchCode}/${r.sku}):`, e2.message);
+          }
+        }
+      }
+    }
+
+    console.log(`[Aluminum Parser] Done: ${imported} rows inserted`);
+    return imported;
+
+  } catch (err) {
+    console.error('[Aluminum Parser] Fatal error:', err);
+    return 0;
   }
 }

@@ -167,9 +167,9 @@ function renderSupplierName(supplier) {
   const codeEl = document.getElementById("supplierCode");
   if (codeEl) codeEl.value = supplier.supplierNo || "";
 
-  // เลขประจำตัวผู้เสียภาษี
+// เลขประจำตัวผู้เสียภาษี
   document.getElementById("taxId").value =
-  supplier.vatRegistrationNo || "";
+    supplier.vatRegistrationNo || "";
 
   // ที่อยู่จดทะเบียน
   const addrEl = document.getElementById("registeredAddress");

@@ -2461,8 +2461,8 @@
   const codeEl   = document.getElementById("userCode");
   const avatarEl = document.getElementById("userAvatar");
   if (nameEl)   nameEl.textContent   = user.empname ?? "-";
-  if (codeEl)   codeEl.textContent   = user.empname ?? "-";
-  if (avatarEl) avatarEl.textContent = (user.empname ?? user.empname ?? "U")[0].toUpperCase();
+  if (codeEl)   codeEl.textContent   = user.username ?? "-";
+  if (avatarEl) avatarEl.textContent = (user.empname ?? user.username ?? "U")[0].toUpperCase();
   document.getElementById("btnLogout")?.addEventListener("click", logout);
 
   window.__allowedCategories = getUserCategories(user);
