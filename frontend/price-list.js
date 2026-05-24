@@ -795,8 +795,9 @@ function buildDataRows(data) {
 
   const priceCell = (value, priceBefore = null) => {
     const numVal = value != null ? parseFloat(value) : 0;
-    const hasDiscount = numVal > 0 && (priceBefore == null || numVal < parseFloat(priceBefore));
-    const display = hasDiscount ? fmt(value) : '<span class="text-gray-300">-</span>';
+    // แสดงค่าถ้ามีค่า > 0 (ไม่บังคับให้ต้องน้อยกว่า priceBefore เพราะบางประเภทสินค้า
+    // เช่น Aluminum ราคาหลังลดอาจสูงกว่า RE (Ex VAT) เพราะคำนวณจาก Inc VAT)
+    const display = numVal > 0 ? fmt(value) : '<span class="text-gray-300">-</span>';
     return `<td class="text-right px-1">${display}</td>`;
   };
 

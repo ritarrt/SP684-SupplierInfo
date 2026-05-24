@@ -4311,7 +4311,7 @@ async function previewAluminumData(excelBuffer, sheetName) {
     let descColIdx = 3;
     let reExVatColIdx = 4;
     let disc1ColIdx = 6;
-    let disc2ColIdx = 7;
+    let disc2ColIdx = -1; // -1 = ไม่มีใน Excel นี้ (จะ reset ตอน detect header)
     let sdmColIdx = 8;
     let w1ColIdx = 9;
     let w2ColIdx = 10;
@@ -4326,6 +4326,8 @@ async function previewAluminumData(excelBuffer, sheetName) {
       if (skuIdx >= 0) {
         dataStartRow = i + 1;
         skuColIdx = skuIdx;
+        // reset disc2 ก่อน แล้วค่อย detect จาก header จริง
+        disc2ColIdx = -1;
         // map header ที่เหลือจาก row นั้น
         row.forEach((v, ci) => {
           const h = String(v ?? '').trim().toLowerCase();
@@ -4333,15 +4335,15 @@ async function previewAluminumData(excelBuffer, sheetName) {
           else if (h === 'color')                               colorColIdx = ci;
           else if (h === 'description')                         descColIdx = ci;
           else if (h === 're (ex vat)' || h === 're ex vat' || h === 're(ex vat)') reExVatColIdx = ci;
-          else if (h === 're-discount1' || h === 're discount1' || h === 'discount1') disc1ColIdx = ci;
-          else if (h === 're-discount2' || h === 're discount2' || h === 'discount2') disc2ColIdx = ci;
+          else if (h === 're-discount1' || h === 're discount1' || h === 'discount1' || h === 're-discount 1' || h === 're discount 1') disc1ColIdx = ci;
+          else if (h === 're-discount2' || h === 're discount2' || h === 'discount2' || h === 're-discount 2' || h === 're discount 2') disc2ColIdx = ci;
           else if (h === 'sdm')                                 sdmColIdx = ci;
           else if (h === 'w1')                                  w1ColIdx = ci;
           else if (h === 'w2')                                  w2ColIdx = ci;
           else if (h === 'r1')                                  r1ColIdx = ci;
           else if (h === 'r2')                                  r2ColIdx = ci;
         });
-        console.log(`[Aluminum Preview] Header row at index ${i}: SKU col=${skuColIdx}, RE(ExVAT) col=${reExVatColIdx}, W1 col=${w1ColIdx}, W2 col=${w2ColIdx}, R1 col=${r1ColIdx}, R2 col=${r2ColIdx}`);
+        console.log(`[Aluminum Preview] Header row at index ${i}: SKU col=${skuColIdx}, RE(ExVAT) col=${reExVatColIdx}, Disc1 col=${disc1ColIdx}, Disc2 col=${disc2ColIdx === -1 ? 'N/A' : disc2ColIdx}, SDM col=${sdmColIdx}, W1 col=${w1ColIdx}, W2 col=${w2ColIdx}, R1 col=${r1ColIdx}, R2 col=${r2ColIdx}`);
         break;
       }
     }
@@ -4359,7 +4361,7 @@ async function previewAluminumData(excelBuffer, sheetName) {
       const descriptionRaw = row[descColIdx]   !== undefined ? String(row[descColIdx]).trim()   : '';
       const basePrice      = fv(row[reExVatColIdx]);
       const discount1      = fv(row[disc1ColIdx]);
-      const discount2      = fv(row[disc2ColIdx]);
+      const discount2      = disc2ColIdx >= 0 ? fv(row[disc2ColIdx]) : 0;  // ไม่มี RE-Discount2 → 0
       const sdm            = fv(row[sdmColIdx]);
       const w1             = fv(row[w1ColIdx]);
       const w2             = fv(row[w2ColIdx]);
@@ -4819,7 +4821,7 @@ async function importAluminumData(pool, excelBuffer, sheetName, logId = null) {
     // หา row ที่มี "SKU" ในทุก column (ไม่จำกัดแค่ col[0])
     let dataStartRow = 1;
     let skuColIdx = 0, brandColIdx = 1, colorColIdx = 2, descColIdx = 3;
-    let reExVatColIdx = 4, disc1ColIdx = 6, disc2ColIdx = 7;
+    let reExVatColIdx = 4, disc1ColIdx = 6, disc2ColIdx = -1; // disc2 = -1 หมายถึงไม่มีใน Excel นี้
     let sdmColIdx = 8, w1ColIdx = 9, w2ColIdx = 10, r1ColIdx = 11, r2ColIdx = 12;
 
     for (let i = 0; i < Math.min(rawData.length, 15); i++) {
@@ -4829,21 +4831,23 @@ async function importAluminumData(pool, excelBuffer, sheetName, logId = null) {
       if (skuIdx >= 0) {
         dataStartRow = i + 1;
         skuColIdx = skuIdx;
+        // reset ทุก index ก่อน แล้วค่อย detect จาก header จริง
+        disc2ColIdx = -1;
         row.forEach((v, ci) => {
           const h = String(v ?? '').trim().toLowerCase();
           if (h === 'brand')                                                          brandColIdx = ci;
           else if (h === 'color')                                                     colorColIdx = ci;
           else if (h === 'description')                                               descColIdx = ci;
           else if (h === 're (ex vat)' || h === 're ex vat' || h === 're(ex vat)')   reExVatColIdx = ci;
-          else if (h === 're-discount1' || h === 're discount1' || h === 'discount1') disc1ColIdx = ci;
-          else if (h === 're-discount2' || h === 're discount2' || h === 'discount2') disc2ColIdx = ci;
+          else if (h === 're-discount1' || h === 're discount1' || h === 'discount1' || h === 're-discount 1' || h === 're discount 1') disc1ColIdx = ci;
+          else if (h === 're-discount2' || h === 're discount2' || h === 'discount2' || h === 're-discount 2' || h === 're discount 2') disc2ColIdx = ci;
           else if (h === 'sdm')                                                       sdmColIdx = ci;
           else if (h === 'w1')                                                        w1ColIdx = ci;
           else if (h === 'w2')                                                        w2ColIdx = ci;
           else if (h === 'r1')                                                        r1ColIdx = ci;
           else if (h === 'r2')                                                        r2ColIdx = ci;
         });
-        console.log(`[Aluminum Parser] Header row at index ${i}: SKU col=${skuColIdx}, RE(ExVAT) col=${reExVatColIdx}, W1=${w1ColIdx}, W2=${w2ColIdx}, R1=${r1ColIdx}, R2=${r2ColIdx}`);
+        console.log(`[Aluminum Parser] Header row at index ${i}: SKU col=${skuColIdx}, RE(ExVAT) col=${reExVatColIdx}, Disc1 col=${disc1ColIdx}, Disc2 col=${disc2ColIdx === -1 ? 'N/A' : disc2ColIdx}, SDM col=${sdmColIdx}, W1=${w1ColIdx}, W2=${w2ColIdx}, R1=${r1ColIdx}, R2=${r2ColIdx}`);
         break;
       }
     }
@@ -4863,7 +4867,7 @@ async function importAluminumData(pool, excelBuffer, sheetName, logId = null) {
       const basePrice      = fv(row[reExVatColIdx]);
       // col RE (Inc VAT) — ไม่ใช้
       const discount1      = fv(row[disc1ColIdx]);
-      const discount2      = fv(row[disc2ColIdx]);
+      const discount2      = disc2ColIdx >= 0 ? fv(row[disc2ColIdx]) : 0;  // ไม่มี RE-Discount2 ใน Excel นี้ → 0
       const sdm            = fv(row[sdmColIdx]);
       const w1             = fv(row[w1ColIdx]);
       const w2             = fv(row[w2ColIdx]);
@@ -4932,7 +4936,10 @@ async function importAluminumData(pool, excelBuffer, sheetName, logId = null) {
     }
 
     // คำนวณ params ต่อ row เพื่อให้ BATCH_SIZE ไม่เกิน 2,100
-    const PARAMS_PER_ROW = 9
+    // params จริงต่อ row: branch, sku, productName, brand, unit,
+    //   basePrice, disc1, disc2, w1, w2, r1, r2, logId = 13
+    //   + sdm (ถ้ามี) + discPct (ถ้ามี)
+    const PARAMS_PER_ROW = 13
       + (hasSellingPriceSdm ? 1 : 0)
       + (hasDiscPct1        ? 1 : 0);
     const BATCH_SIZE = Math.floor(2000 / PARAMS_PER_ROW);

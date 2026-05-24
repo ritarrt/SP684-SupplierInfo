@@ -1,5 +1,8 @@
 console.log("supplier-excel-handler.js loaded");
 
+// Maximum number of steps per request to avoid parameter limit errors
+const MAX_STEPS_PER_REQUEST = 100;
+
 // ===================================================
 // DEAL: EXPORT TO EXCEL (ExcelJS — รองรับ styling)
 // ===================================================
@@ -387,18 +390,11 @@ async function processImportedDealRows(rows, header, supplierNo) {
     }
   }
 
-  // ===== Step 2: ส่ง API ทีละ deal group =====
-  let successCount = 0;
-  let insertedCount = 0;
-  let updatedCount = 0;
-  let skippedCount = 0;
-  let errorCount = 0;
-  const errors = [];
-  const logItems = [];
-
+// ===== Step 2: ส่ง API ทีละ deal group =====
   for (const [key, group] of dealGroups) {
     try {
-      const payload = {
+      // เตรียมข้อมูลพื้นฐานของดีล (ไม่รวม steps)
+      const basePayload = {
         sku:               group.sku,
         branch:            group.branch,
         base_price:        group.base_price,
@@ -416,29 +412,63 @@ async function processImportedDealRows(rows, header, supplierNo) {
         supplier_delivery: group.supplier_delivery
       };
 
-      // เรียง steps ตาม tier ก่อนส่ง
+      // ถ้าเป็นดีลแบบขั้นบันไดและมี steps มากเกินไป ให้แบ่งส่งเป็นหลายๆ ครั้ง
       if (group.condition_mode === "stepped" && group.steps.length > 0) {
-        payload.steps = group.steps.sort((a, b) => a.tier - b.tier);
-      }
+        // เรียง steps ตาม tier ก่อน
+        const sortedSteps = group.steps.sort((a, b) => a.tier - b.tier);
+        
+        // แบ่ง steps เป็นชุดๆ ตาม MAX_STEPS_PER_REQUEST
+        for (let i = 0; i < sortedSteps.length; i += MAX_STEPS_PER_REQUEST) {
+          const stepChunk = sortedSteps.slice(i, i + MAX_STEPS_PER_REQUEST);
+          
+          const payload = {
+            ...basePayload,
+            steps: stepChunk
+          };
 
-      const res = await fetch(
-        `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-simple`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
-      );
+          const res = await fetch(
+            `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-simple`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+          );
 
-      if (res.ok) {
-        const data = await res.json();
-        successCount++;
-        if (data.action === "updated")      updatedCount++;
-        else if (data.action === "skipped") skippedCount++;
-        else insertedCount++;
-        logItems.push({ deal_id: data.deal_id, sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: data.action || "inserted" });
+          if (res.ok) {
+            const data = await res.json();
+            successCount++;
+            if (data.action === "updated")      updatedCount++;
+            else if (data.action === "skipped") skippedCount++;
+            else insertedCount++;
+            logItems.push({ deal_id: data.deal_id, sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: data.action || "inserted" });
+          } else {
+            const errText = await res.text();
+            errorCount++;
+            errors.push(`SKU ${group.sku} (${group.branch}): ${errText}`);
+            logItems.push({ sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: "error", error_msg: errText });
+            console.error("Import row error:", errText, payload);
+          }
+        }
       } else {
-        const errText = await res.text();
-        errorCount++;
-        errors.push(`SKU ${group.sku} (${group.branch}): ${errText}`);
-        logItems.push({ sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: "error", error_msg: errText });
-        console.error("Import row error:", errText, payload);
+        // สำหรับดีลปกติหรือขั้นบันไดที่ไม่มี steps ให้ส่งตามปกติ
+        const payload = basePayload;
+
+        const res = await fetch(
+          `${window.API_BASE}/api/suppliers/${encodeURIComponent(supplierNo)}/deals-simple`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          successCount++;
+          if (data.action === "updated")      updatedCount++;
+          else if (data.action === "skipped") skippedCount++;
+          else insertedCount++;
+          logItems.push({ deal_id: data.deal_id, sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: data.action || "inserted" });
+        } else {
+          const errText = await res.text();
+          errorCount++;
+          errors.push(`SKU ${group.sku} (${group.branch}): ${errText}`);
+          logItems.push({ sku: group.sku, branch: group.branch, deal_name: group.deal_name, action: "error", error_msg: errText });
+          console.error("Import row error:", errText, payload);
+        }
       }
     } catch (err) {
       errorCount++;
