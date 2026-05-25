@@ -845,7 +845,11 @@ function buildDataRows(data) {
       return `<td class="text-right">${display}</td>`;
     };
 
-    const cartonRow = `
+    const hasCarton = [row.basePrice, row.discountPrice1, row.discountPrice2, row.discountPrice3,
+      row.sellingPriceW1, row.sellingPriceW2, row.sellingPriceR1, row.sellingPriceR2]
+      .some(v => v != null && parseFloat(v) !== 0);
+
+    const cartonRow = hasCarton ? `
       <tr class="hover:bg-gray-50">
         <td><span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${row.productType || '-'}</span></td>
         <td class="font-mono text-xs">
@@ -865,25 +869,24 @@ function buildDataRows(data) {
         ${priceCell(row.discountPrice3, row.discountPrice2)}
         <td class="text-gray-400 text-xs">${date}</td>
       </tr>
-    `;
+    ` : '';
 
     const ncRow = hasNcPurchase ? `
       <tr class="hover:bg-gray-50">
-        <td></td>
+        <td><span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-semibold">ไม่ลงลัง</span></td>
         <td class="font-mono text-xs text-gray-500">
           ${row.sku || '-'}
-          <span class="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-semibold">ไม่ลงลัง</span>
         </td>
-        <td class="text-gray-500 text-sm">${row.productName || '-'}</td>
+        <td class="text-gray-600 text-sm">${row.productName || '-'}</td>
         <td class="text-gray-400 text-xs">${row.brand || '-'}</td>
-        <td><span class="font-medium text-gray-500">${row.branch || '-'}</span></td>
+        <td><span class="text-gray-500">${row.branch || '-'}</span></td>
         ${priceCell(row.nonCartonBasePrice)}
         ${ncPctCell(row.nonCartonDiscountPct, row.nonCartonBasePrice, row.nonCartonReExVat)}
         ${priceCell(row.nonCartonReExVat, row.nonCartonBasePrice)}
-        <td class="text-gray-200 text-right px-1">-</td>
-        <td class="text-gray-200 text-right px-1">-</td>
-        <td class="text-gray-200 text-right px-1">-</td>
-        <td class="text-gray-200 text-right px-1">-</td>
+        <td class="text-gray-300 text-right px-1 text-xs">-</td>
+        <td class="text-gray-300 text-right px-1 text-xs">-</td>
+        <td class="text-gray-300 text-right px-1 text-xs">-</td>
+        <td class="text-gray-300 text-right px-1 text-xs">-</td>
         <td></td>
       </tr>
     ` : '';
