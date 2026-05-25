@@ -582,18 +582,10 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
 
         if (skuLookup[productName] && skuLookup[productName].length > 0) {
           skuLookup[productName].forEach(sku => {
-            // เฉพาะ SKU ที่มีใน StockStatusFact เท่านั้น
-            if (skuNameMap[sku]) {
-              skusInBlock.set(sku, productName);
-            }
+            // ใช้ชื่อจาก StockStatusFact ถ้ามี ไม่งั้น fallback ไป productName จาก Excel
+            skusInBlock.set(sku, skuNameMap[sku] || productName);
           });
-          if (skusInBlock.size > 0) {
-            console.log(`[Gypsum Parser] "${productName}" → ${skusInBlock.size} SKUs from Sheet1 (filtered by StockStatusFact)`);
-          } else {
-            console.warn(`[Gypsum Parser] "${productName}" has SKUs in Sheet1 but none found in StockStatusFact, skipping`);
-            i++;
-            continue;
-          }
+          console.log(`[Gypsum Parser] "${productName}" → ${skusInBlock.size} SKUs from Sheet1 (${Object.keys(skuNameMap).length > 0 ? 'with StockStatusFact names where available' : 'using Excel names'})`);
         } else {
           console.warn(`[Gypsum Parser] "${productName}" not in Sheet1 lookup yet, skipping`);
           i++;
@@ -1357,26 +1349,45 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
       const productNameRaw = row[2]  !== undefined ? String(row[2]).trim()  : '';
       // col[4] = unit/carton label: "ไม่ลงลัง", "20ปีกลัง", "100กิโลลัง", "ชิ้น" ฯลฯ
       const unit           = row[4]  !== undefined ? String(row[4]).trim()  : '';
+      // Layout ใหม่ (16-5-69):
+      //   col[6]  = G: ราคาตั้งรวมVAT  (ข้าม)
+      //   col[7]  = H: ราคาตั้งไม่รวมVAT → base_price
+      //   col[8]  = I: ส่วนลด1 %
+      //   col[9]  = J: REก่อนVAT1 (ส่วนลดชั้น 1) → discount_price_1
+      //   col[10] = K: ส่วนลด2 %
+      //   col[11] = L: REก่อนVAT2 (ส่วนลดชั้น 2) → discount_price_2 / reExVat
+      //   col[12] = M: SDM
+      //   col[13] = N: W1
+      //   col[14] = O: W2
+      //   col[15] = P: R1
+      //   col[16] = Q: R2
       const basePrice      = fv(row[7]);   // H: ราคาตั้งไม่รวมVAT
-      const discountPct    = fv(row[8]);   // I: ส่วนลด % (0-100 หรือ 0-1)
-      const reExVat        = fv(row[9]);   // J: REก่อนVAT → discount_price_1
-      const sdm            = fv(row[10]);  // K: SDM
-      const w1             = fv(row[11]);  // L: W1
-      const w2             = fv(row[12]);  // M: W2
-      const r1             = fv(row[13]);  // N: R1
-      const r2             = fv(row[14]);  // O: R2
+      const discountPct    = fv(row[8]);   // I: ส่วนลด1 %
+      const discPrice1     = fv(row[9]);   // J: REก่อนVAT1 → discount_price_1
+      const discountPct2   = fv(row[10]);  // K: ส่วนลด2 %
+      const reExVat        = fv(row[11]);  // L: REก่อนVAT2 → discount_price_2 / reExVat
+      const sdm            = fv(row[12]);  // M: SDM
+      const w1             = fv(row[13]);  // N: W1
+      const w2             = fv(row[14]);  // O: W2
+      const r1             = fv(row[15]);  // P: R1
+      const r2             = fv(row[16]);  // Q: R2
 
       if (!sku) continue;
-      if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && reExVat === 0) continue;
 
-      const productName = skuNameMap[sku] || productNameRaw;
       // "ไม่ลงลัง" อยู่ใน col[4] (unit column) — ตรวจจาก unit โดยตรง
       const isNonCarton = unit.includes('ไม่ลงลัง');
 
+      // skip เฉพาะแถวที่ไม่มีราคาใดเลยจริงๆ
+      // non-carton row อาจไม่มี sdm/discPrice1/reExVat แต่มี w1/w2/r1/r2 ก็ยังต้อง import
+      if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && reExVat === 0 && discPrice1 === 0 && basePrice === 0) continue;
+
+      const productName = skuNameMap[sku] || productNameRaw;
+
       if (!skuMap.has(sku)) {
+        // สร้าง entry เปล่าก่อน แล้วค่อยเติมข้อมูลตาม isNonCarton ด้านล่าง
         skuMap.set(sku, {
           sku, brand, productName, unit,
-          basePrice, discountPct, reExVat, sdm,
+          basePrice: 0, discountPct: 0, discPrice1: 0, discountPct2: 0, reExVat: 0, sdm: 0,
           w1: 0, w2: 0, r1: 0, r2: 0,
           ncBasePrice: 0, ncDiscountPct: 0, ncReExVat: 0,
           ncW1: 0, ncW2: 0, ncR1: 0, ncR2: 0, ncSdm: 0,
@@ -1393,12 +1404,14 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         entry.ncSdm = sdm;
       } else {
         // ราคาลงลัง (ปกติ)
-        entry.brand       = brand;
-        entry.unit        = unit;
-        entry.basePrice   = basePrice;
-        entry.discountPct = discountPct;
-        entry.reExVat     = reExVat;
-        entry.sdm         = sdm;
+        entry.brand        = brand;
+        entry.unit         = unit;
+        entry.basePrice    = basePrice;
+        entry.discountPct  = discountPct;
+        entry.discPrice1   = discPrice1;   // REก่อนVAT1 (ส่วนลดชั้น 1)
+        entry.discountPct2 = discountPct2;
+        entry.reExVat      = reExVat;      // REก่อนVAT2 (ส่วนลดชั้น 2)
+        entry.sdm          = sdm;
         entry.w1 = w1; entry.w2 = w2; entry.r1 = r1; entry.r2 = r2;
       }
     }
@@ -1406,12 +1419,27 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     console.log(`[ACC Parser] Unique SKUs: ${skuMap.size}`);
 
     // Pass 2: expand ทุกสาขา
+    // แยก carton row และ non-carton row — insert เฉพาะที่มีราคาจริง
     const insertRows = [];
     for (const entry of skuMap.values()) {
+      const hasCarton    = entry.w1 > 0 || entry.w2 > 0 || entry.r1 > 0 || entry.r2 > 0 || entry.sdm > 0 || entry.discPrice1 > 0 || entry.reExVat > 0;
+      const hasNonCarton = entry.ncW1 > 0 || entry.ncW2 > 0 || entry.ncR1 > 0 || entry.ncR2 > 0 || entry.ncSdm > 0 || entry.ncReExVat > 0;
+
       for (const branchCode of allBranchCodes) {
-        insertRows.push({ branchCode, ...entry });
+        // carton row — insert เฉพาะที่มีราคาลงลังจริง
+        if (hasCarton) {
+          insertRows.push({ branchCode, isNonCartonRow: false, ...entry });
+        }
+        // non-carton row — insert เฉพาะที่มีราคาไม่ลงลังจริง
+        if (hasNonCarton) {
+          insertRows.push({ branchCode, isNonCartonRow: true, ...entry });
+        }
       }
     }
+
+    const cartonCount    = insertRows.filter(r => !r.isNonCartonRow).length / (allBranchCodes.length || 1);
+    const nonCartonCount = insertRows.filter(r =>  r.isNonCartonRow).length / (allBranchCodes.length || 1);
+    console.log(`[ACC Parser] SKUs with carton: ${cartonCount}, non-carton only: ${nonCartonCount}`);
 
     console.log(`[ACC Parser] Rows to insert: ${insertRows.length} (${skuMap.size} SKUs × ${allBranchCodes.length} branches)`);
 
@@ -1475,7 +1503,8 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
     }
 
     // คำนวณ params ต่อ row จริง เพื่อให้ BATCH_SIZE ไม่เกิน 2,100 เสมอ
-    const PARAMS_PER_ROW = 8 + 4
+    // +1 สำหรับ discPrice1 (REก่อนVAT1) ที่เพิ่มมาใหม่
+    const PARAMS_PER_ROW = 9 + 4
       + (hasSellingPriceSdm       ? 1 : 0)
       + (hasNonCarton             ? 4 : 0)
       + (hasNonCartonSdm          ? 1 : 0)
@@ -1490,33 +1519,48 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
       const valueParts = [];
 
       batch.forEach((r, idx) => {
+        // ถ้าเป็น non-carton row → ใช้ nc* values เป็นราคาหลัก, carton fields = 0
+        const isNC       = r.isNonCartonRow;
+        const useBase    = isNC ? (r.ncBasePrice  || 0) : (r.basePrice   || 0);
+        const useDisc1   = isNC ? (r.ncReExVat    || 0) : (r.discPrice1  ?? r.reExVat ?? 0);
+        const useReExVat = isNC ? 0                     : (r.reExVat     || 0);
+        const useW1      = isNC ? (r.ncW1  || 0)        : (r.w1  || 0);
+        const useW2      = isNC ? (r.ncW2  || 0)        : (r.w2  || 0);
+        const useR1      = isNC ? (r.ncR1  || 0)        : (r.r1  || 0);
+        const useR2      = isNC ? (r.ncR2  || 0)        : (r.r2  || 0);
+        const useSdm     = isNC ? (r.ncSdm || 0)        : (r.sdm || 0);
+        const useUnit    = isNC ? 'ไม่ลงลัง'            : (r.unit || '');
+        const useDiscPct = isNC ? (r.ncDiscountPct || 0) : (r.discountPct || 0);
+
         req.input(`branch${idx}`,      sql.NVarChar(100), r.branchCode);
         req.input(`sku${idx}`,         sql.NVarChar(50),  r.sku);
         req.input(`productName${idx}`, sql.NVarChar(255), r.productName);
         req.input(`brand${idx}`,       sql.NVarChar(100), r.brand);
-        req.input(`unit${idx}`,        sql.NVarChar(50),  r.unit);
-        req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice);
-        req.input(`reExVat${idx}`,     sql.Decimal(18,2), r.reExVat);
-        req.input(`w1_${idx}`,         sql.Decimal(18,2), r.w1);
-        req.input(`w2_${idx}`,         sql.Decimal(18,2), r.w2);
-        req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1);
-        req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2);
+        req.input(`unit${idx}`,        sql.NVarChar(50),  useUnit);
+        req.input(`basePrice${idx}`,   sql.Decimal(18,2), useBase);
+        req.input(`discPrice1_${idx}`, sql.Decimal(18,2), useDisc1);
+        req.input(`reExVat${idx}`,     sql.Decimal(18,2), useReExVat);
+        req.input(`w1_${idx}`,         sql.Decimal(18,2), useW1);
+        req.input(`w2_${idx}`,         sql.Decimal(18,2), useW2);
+        req.input(`r1_${idx}`,         sql.Decimal(18,2), useR1);
+        req.input(`r2_${idx}`,         sql.Decimal(18,2), useR2);
         req.input(`logId${idx}`,       sql.Int,           logId);
-        if (hasSellingPriceSdm) req.input(`sdm${idx}`, sql.Decimal(18,2), r.sdm);
+        if (hasSellingPriceSdm) req.input(`sdm${idx}`, sql.Decimal(18,2), useSdm);
         if (hasDiscPct1) req.input(`discPct${idx}`, sql.Decimal(10,6),
-          r.discountPct > 1 ? r.discountPct / 100 : r.discountPct);
+          useDiscPct > 1 ? useDiscPct / 100 : useDiscPct);
         if (hasNonCarton) {
-          req.input(`ncW1_${idx}`, sql.Decimal(18,2), r.ncW1);
-          req.input(`ncW2_${idx}`, sql.Decimal(18,2), r.ncW2);
-          req.input(`ncR1_${idx}`, sql.Decimal(18,2), r.ncR1);
-          req.input(`ncR2_${idx}`, sql.Decimal(18,2), r.ncR2);
-          if (hasNonCartonSdm)          req.input(`ncSdm_${idx}`,      sql.Decimal(18,2), r.ncSdm);
+          // non-carton row: nc* fields = 0 (ราคาถูก flatten ขึ้นมาเป็น main fields แล้ว)
+          req.input(`ncW1_${idx}`, sql.Decimal(18,2), 0);
+          req.input(`ncW2_${idx}`, sql.Decimal(18,2), 0);
+          req.input(`ncR1_${idx}`, sql.Decimal(18,2), 0);
+          req.input(`ncR2_${idx}`, sql.Decimal(18,2), 0);
+          if (hasNonCartonSdm)          req.input(`ncSdm_${idx}`,      sql.Decimal(18,2), 0);
           if (hasNonCartonPurchasePrice) {
-            req.input(`ncBasePrice_${idx}`, sql.Decimal(18,2), r.ncBasePrice);
-            req.input(`ncReExVat_${idx}`,   sql.Decimal(18,2), r.ncReExVat);
+            // non-carton row: nc* fields = 0 (ราคาถูก flatten ขึ้นมาเป็น main fields แล้ว)
+            req.input(`ncBasePrice_${idx}`, sql.Decimal(18,2), 0);
+            req.input(`ncReExVat_${idx}`,   sql.Decimal(18,2), 0);
           }
-          if (hasNonCartonDiscPct) req.input(`ncDiscPct_${idx}`, sql.Decimal(10,6),
-            r.ncDiscountPct > 1 ? r.ncDiscountPct / 100 : r.ncDiscountPct);
+          if (hasNonCartonDiscPct) req.input(`ncDiscPct_${idx}`, sql.Decimal(10,6), 0);
         }
 
         // suffix สำหรับ VALUES
@@ -1529,7 +1573,7 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         if (hasSellingPrices && hasSellingPriceSdm && hasNonCarton && hasNonCartonSdm) {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',` +
+            `@basePrice${idx},@discPrice1_${idx},@reExVat${idx},0,'',0,0,0,0,0,'',` +
             `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@sdm${idx},` +
             `@ncW1_${idx},@ncW2_${idx},@ncR1_${idx},@ncR2_${idx},@ncSdm_${idx}` +
             `${ncPurchaseVals}${ncDiscPctVals}${discPct1Val},@logId${idx})`
@@ -1537,7 +1581,7 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         } else if (hasSellingPrices && hasSellingPriceSdm && hasNonCarton) {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',` +
+            `@basePrice${idx},@discPrice1_${idx},@reExVat${idx},0,'',0,0,0,0,0,'',` +
             `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@sdm${idx},` +
             `@ncW1_${idx},@ncW2_${idx},@ncR1_${idx},@ncR2_${idx}` +
             `${ncPurchaseVals}${ncDiscPctVals}${discPct1Val},@logId${idx})`
@@ -1545,19 +1589,19 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         } else if (hasSellingPrices && hasSellingPriceSdm) {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',` +
+            `@basePrice${idx},@discPrice1_${idx},@reExVat${idx},0,'',0,0,0,0,0,'',` +
             `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@sdm${idx}${discPct1Val},@logId${idx})`
           );
         } else if (hasSellingPrices) {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',` +
+            `@basePrice${idx},@discPrice1_${idx},@reExVat${idx},0,'',0,0,0,0,0,'',` +
             `@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@logId${idx})`
           );
         } else {
           valueParts.push(
             `(@branch${idx},'Accessories',@sku${idx},@productName${idx},@brand${idx},@unit${idx},` +
-            `@basePrice${idx},@reExVat${idx},0,0,'',0,0,0,0,0,'',@logId${idx})`
+            `@basePrice${idx},@discPrice1_${idx},@reExVat${idx},0,'',0,0,0,0,0,'',@logId${idx})`
           );
         }
       });
@@ -1571,34 +1615,46 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         // fallback: insert ทีละ row
         for (const r of batch) {
           try {
+            const isNC       = r.isNonCartonRow;
+            const useBase    = isNC ? (r.ncBasePrice  || 0) : (r.basePrice   || 0);
+            const useDisc1   = isNC ? (r.ncReExVat    || 0) : (r.discPrice1  ?? r.reExVat ?? 0);
+            const useReExVat = isNC ? 0                     : (r.reExVat     || 0);
+            const useW1      = isNC ? (r.ncW1  || 0)        : (r.w1  || 0);
+            const useW2      = isNC ? (r.ncW2  || 0)        : (r.w2  || 0);
+            const useR1      = isNC ? (r.ncR1  || 0)        : (r.r1  || 0);
+            const useR2      = isNC ? (r.ncR2  || 0)        : (r.r2  || 0);
+            const useSdm     = isNC ? (r.ncSdm || 0)        : (r.sdm || 0);
+            const useUnit    = isNC ? 'ไม่ลงลัง'            : (r.unit || '');
+            const useDiscPct = isNC ? (r.ncDiscountPct || 0) : (r.discountPct || 0);
+
             const singleReq = pool.request()
               .input('branch',      sql.NVarChar(100), r.branchCode)
               .input('sku',         sql.NVarChar(50),  r.sku)
               .input('productName', sql.NVarChar(255), r.productName)
               .input('brand',       sql.NVarChar(100), r.brand)
-              .input('unit',        sql.NVarChar(50),  r.unit)
-              .input('basePrice',   sql.Decimal(18,2), r.basePrice)
-              .input('reExVat',     sql.Decimal(18,2), r.reExVat)
-              .input('w1',          sql.Decimal(18,2), r.w1)
-              .input('w2',          sql.Decimal(18,2), r.w2)
-              .input('r1',          sql.Decimal(18,2), r.r1)
-              .input('r2',          sql.Decimal(18,2), r.r2)
+              .input('unit',        sql.NVarChar(50),  useUnit)
+              .input('basePrice',   sql.Decimal(18,2), useBase)
+              .input('discPrice1',  sql.Decimal(18,2), useDisc1)
+              .input('reExVat',     sql.Decimal(18,2), useReExVat)
+              .input('w1',          sql.Decimal(18,2), useW1)
+              .input('w2',          sql.Decimal(18,2), useW2)
+              .input('r1',          sql.Decimal(18,2), useR1)
+              .input('r2',          sql.Decimal(18,2), useR2)
               .input('logId',       sql.Int,           logId);
-            if (hasSellingPriceSdm) singleReq.input('sdm',  sql.Decimal(18,2), r.sdm);
+            if (hasSellingPriceSdm) singleReq.input('sdm',  sql.Decimal(18,2), useSdm);
             if (hasDiscPct1) singleReq.input('discPct', sql.Decimal(10,6),
-              r.discountPct > 1 ? r.discountPct / 100 : r.discountPct);
+              useDiscPct > 1 ? useDiscPct / 100 : useDiscPct);
             if (hasNonCarton) {
-              singleReq.input('ncW1', sql.Decimal(18,2), r.ncW1)
-                       .input('ncW2', sql.Decimal(18,2), r.ncW2)
-                       .input('ncR1', sql.Decimal(18,2), r.ncR1)
-                       .input('ncR2', sql.Decimal(18,2), r.ncR2);
-              if (hasNonCartonSdm)          singleReq.input('ncSdm',      sql.Decimal(18,2), r.ncSdm);
+              singleReq.input('ncW1', sql.Decimal(18,2), 0)
+                       .input('ncW2', sql.Decimal(18,2), 0)
+                       .input('ncR1', sql.Decimal(18,2), 0)
+                       .input('ncR2', sql.Decimal(18,2), 0);
+              if (hasNonCartonSdm)          singleReq.input('ncSdm',      sql.Decimal(18,2), 0);
               if (hasNonCartonPurchasePrice) {
-                singleReq.input('ncBasePrice', sql.Decimal(18,2), r.ncBasePrice);
-                singleReq.input('ncReExVat',   sql.Decimal(18,2), r.ncReExVat);
+                singleReq.input('ncBasePrice', sql.Decimal(18,2), 0);
+                singleReq.input('ncReExVat',   sql.Decimal(18,2), 0);
               }
-              if (hasNonCartonDiscPct) singleReq.input('ncDiscPct', sql.Decimal(10,6),
-                r.ncDiscountPct > 1 ? r.ncDiscountPct / 100 : r.ncDiscountPct);
+              if (hasNonCartonDiscPct) singleReq.input('ncDiscPct', sql.Decimal(10,6), 0);
             }
 
             const ncPurchaseSingle  = (hasNonCarton && hasNonCartonPurchasePrice)
@@ -1611,35 +1667,35 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',
+                        @basePrice,@discPrice1,@reExVat,0,'',0,0,0,0,0,'',
                         @w1,@w2,@r1,@r2,@sdm,@ncW1,@ncW2,@ncR1,@ncR2,@ncSdm${ncPurchaseSingle}${ncDiscPctSingle}${discPct1Single},@logId)
               `);
             } else if (hasSellingPrices && hasSellingPriceSdm && hasNonCarton) {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',
+                        @basePrice,@discPrice1,@reExVat,0,'',0,0,0,0,0,'',
                         @w1,@w2,@r1,@r2,@sdm,@ncW1,@ncW2,@ncR1,@ncR2${ncPurchaseSingle}${ncDiscPctSingle}${discPct1Single},@logId)
               `);
             } else if (hasSellingPrices && hasSellingPriceSdm) {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',
+                        @basePrice,@discPrice1,@reExVat,0,'',0,0,0,0,0,'',
                         @w1,@w2,@r1,@r2,@sdm${discPct1Single},@logId)
               `);
             } else if (hasSellingPrices) {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',
+                        @basePrice,@discPrice1,@reExVat,0,'',0,0,0,0,0,'',
                         @w1,@w2,@r1,@r2${discPct1Single},@logId)
               `);
             } else {
               await singleReq.query(`
                 INSERT INTO excel_import_data (${insertCols})
                 VALUES (@branch,'Accessories',@sku,@productName,@brand,@unit,
-                        @basePrice,@reExVat,0,0,'',0,0,0,0,0,'',@logId)
+                        @basePrice,@discPrice1,@reExVat,0,'',0,0,0,0,0,'',@logId)
               `);
             }
             imported++;
@@ -1705,16 +1761,18 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
       const productNameRaw = row[2]  !== undefined ? String(row[2]).trim()  : '';
       // col[4] = unit/carton label: "ไม่ลงลัง", "20ปีกลัง", "100กิโลลัง", "ชิ้น" ฯลฯ
       const unit           = row[4]  !== undefined ? String(row[4]).trim()  : '';
+      // Layout ใหม่ (16-5-69): col[7]=basePrice, [8]=disc1%, [9]=REก่อนVAT1, [10]=disc2%, [11]=REก่อนVAT2, [12]=SDM, [13]=W1, [14]=W2, [15]=R1, [16]=R2
       const basePrice      = fv(row[7]);
-      const reExVat        = fv(row[9]);
-      const sdm            = fv(row[10]);
-      const w1             = fv(row[11]);
-      const w2             = fv(row[12]);
-      const r1             = fv(row[13]);
-      const r2             = fv(row[14]);
+      const discPrice1     = fv(row[9]);   // REก่อนVAT1 → discount_price_1
+      const reExVat        = fv(row[11]);  // REก่อนVAT2 → discount_price_2
+      const sdm            = fv(row[12]);
+      const w1             = fv(row[13]);
+      const w2             = fv(row[14]);
+      const r1             = fv(row[15]);
+      const r2             = fv(row[16]);
 
       if (!sku) continue;
-      if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && reExVat === 0) continue;
+      if (w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0 && sdm === 0 && reExVat === 0 && discPrice1 === 0 && basePrice === 0) continue;
 
       // ใช้ชื่อจาก StockStatusFact ถ้ามี ไม่งั้น fallback ไปชื่อจาก Excel
       const productName = skuNameMap[sku] || productNameRaw;
@@ -1722,72 +1780,123 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
       const isNonCarton = unit.includes('ไม่ลงลัง');
 
       if (!skuPreviewMap.has(sku)) {
+        // สร้าง entry เปล่าก่อน แล้วค่อยเติมตาม isNonCarton
         skuPreviewMap.set(sku, {
-          sku, brand, productName, unit,
-          basePrice, reExVat, sdm,
+          sku, brand, productName, unit: '',
+          basePrice: 0, discPrice1: 0, reExVat: 0, sdm: 0,
           w1: 0, w2: 0, r1: 0, r2: 0,
+          ncBasePrice: 0, ncDiscPrice1: 0, ncReExVat: 0, ncSdm: 0,
           ncW1: 0, ncW2: 0, ncR1: 0, ncR2: 0,
         });
       }
       const entry = skuPreviewMap.get(sku);
       if (isNonCarton) {
         entry.ncBasePrice = basePrice;
+        entry.ncDiscPrice1 = discPrice1;
         entry.ncReExVat   = reExVat;
+        entry.ncSdm = sdm;
         entry.ncW1 = w1; entry.ncW2 = w2; entry.ncR1 = r1; entry.ncR2 = r2;
       } else {
         entry.brand = brand; entry.unit = unit;
-        entry.basePrice = basePrice; entry.reExVat = reExVat; entry.sdm = sdm;
+        entry.basePrice = basePrice; entry.discPrice1 = discPrice1; entry.reExVat = reExVat; entry.sdm = sdm;
         entry.w1 = w1; entry.w2 = w2; entry.r1 = r1; entry.r2 = r2;
       }
     }
 
     for (const entry of skuPreviewMap.values()) {
-      // preview row (1 แถวต่อ SKU)
-      previewRows.push({
-        sku:               entry.sku,
-        productName:       entry.productName,
-        brand:             entry.brand,
-        branch:            `ทุกสาขา (${allBranchCodes.length})`,
-        totalBranches:     allBranchCodes.length,
-        unit:              entry.unit,
-        base_price:        entry.basePrice,
-        discount_price_1:  entry.reExVat,
-        selling_price_sdm: entry.sdm,
-        selling_price_w1:  entry.w1,
-        selling_price_w2:  entry.w2,
-        selling_price_r1:  entry.r1,
-        selling_price_r2:  entry.r2,
-        non_carton_w1:     entry.ncW1,
-        non_carton_w2:     entry.ncW2,
-        non_carton_r1:     entry.ncR1,
-        non_carton_r2:     entry.ncR2,
-        discount_pct_1: 0,
-        discount_pct_2: 0,
-        discount_pct_3: 0,
-      });
+      const hasCarton    = entry.w1 > 0 || entry.w2 > 0 || entry.r1 > 0 || entry.r2 > 0 || entry.sdm > 0 || entry.discPrice1 > 0 || entry.reExVat > 0;
+      const hasNonCarton = entry.ncW1 > 0 || entry.ncW2 > 0 || entry.ncR1 > 0 || entry.ncR2 > 0 || entry.ncSdm > 0 || entry.ncReExVat > 0;
+
+      // carton row — แสดงเฉพาะที่มีราคาลงลังจริง
+      if (hasCarton) {
+        previewRows.push({
+          sku:               entry.sku,
+          productName:       entry.productName,
+          brand:             entry.brand,
+          branch:            `ทุกสาขา (${allBranchCodes.length})`,
+          totalBranches:     allBranchCodes.length,
+          unit:              entry.unit,
+          base_price:        entry.basePrice,
+          discount_price_1:  entry.discPrice1,
+          discount_price_2:  entry.reExVat,
+          selling_price_sdm: entry.sdm,
+          selling_price_w1:  entry.w1,
+          selling_price_w2:  entry.w2,
+          selling_price_r1:  entry.r1,
+          selling_price_r2:  entry.r2,
+          non_carton_w1: 0, non_carton_w2: 0, non_carton_r1: 0, non_carton_r2: 0,
+          discount_pct_1: 0, discount_pct_2: 0, discount_pct_3: 0,
+          isNonCartonRow: false,
+        });
+      }
+
+      // non-carton row — แสดงเฉพาะที่มีราคาไม่ลงลังจริง
+      if (hasNonCarton) {
+        previewRows.push({
+          sku:               entry.sku,
+          productName:       entry.productName,
+          brand:             entry.brand,
+          branch:            `ทุกสาขา (${allBranchCodes.length})`,
+          totalBranches:     allBranchCodes.length,
+          unit:              'ไม่ลงลัง',
+          base_price:        entry.ncBasePrice,
+          discount_price_1:  entry.ncReExVat,
+          discount_price_2:  0,
+          selling_price_sdm: entry.ncSdm,
+          selling_price_w1:  entry.ncW1,
+          selling_price_w2:  entry.ncW2,
+          selling_price_r1:  entry.ncR1,
+          selling_price_r2:  entry.ncR2,
+          non_carton_w1: 0, non_carton_w2: 0, non_carton_r1: 0, non_carton_r2: 0,
+          discount_pct_1: 0, discount_pct_2: 0, discount_pct_3: 0,
+          isNonCartonRow: true,
+        });
+      }
 
       // allRows: expand เป็น full SKU|branch เพื่อเปรียบเทียบกับ DB
       for (const branchCode of allBranchCodes) {
-        allRows.push({
-          sku:              entry.sku,
-          branch:           branchCode,
-          productName:      entry.productName,
-          brand:            entry.brand,
-          base_price:       entry.basePrice,
-          discount_price_1: entry.reExVat,
-          selling_price_w1: entry.w1,
-          selling_price_w2: entry.w2,
-          selling_price_r1: entry.r1,
-          selling_price_r2: entry.r2,
-        });
+        if (hasCarton) {
+          allRows.push({
+            sku:              entry.sku,
+            branch:           branchCode,
+            productName:      entry.productName,
+            brand:            entry.brand,
+            unit:             entry.unit,
+            base_price:       entry.basePrice,
+            discount_price_1: entry.discPrice1,
+            discount_price_2: entry.reExVat,
+            selling_price_w1: entry.w1,
+            selling_price_w2: entry.w2,
+            selling_price_r1: entry.r1,
+            selling_price_r2: entry.r2,
+            isNonCartonRow:   false,
+          });
+        }
+        if (hasNonCarton) {
+          allRows.push({
+            sku:              entry.sku,
+            branch:           branchCode,
+            productName:      entry.productName,
+            brand:            entry.brand,
+            unit:             'ไม่ลงลัง',
+            base_price:       entry.ncBasePrice,
+            discount_price_1: entry.ncReExVat,
+            discount_price_2: 0,
+            selling_price_w1: entry.ncW1,
+            selling_price_w2: entry.ncW2,
+            selling_price_r1: entry.ncR1,
+            selling_price_r2: entry.ncR2,
+            isNonCartonRow:   true,
+          });
+        }
       }
     }
 
     return {
       rows:      previewRows,
       allRows,
-      totalSkus: previewRows.length,
-      totalRows: previewRows.length * allBranchCodes.length,
+      totalSkus: skuPreviewMap.size,
+      totalRows: allRows.length,
       branches:  allBranchCodes,
     };
 
@@ -1874,7 +1983,7 @@ export async function getImportData(req, res) {
         FROM (
           SELECT d.*,
             ROW_NUMBER() OVER (
-              PARTITION BY d.sku, d.branch, d.product_type
+              PARTITION BY d.sku, d.branch, d.product_type, d.unit
               ORDER BY l.imported_at DESC
             ) AS rn
           FROM [excel_import_data] d
@@ -1885,11 +1994,11 @@ export async function getImportData(req, res) {
         ) d WHERE d.rn = 1
       `;
     } else {
-      // fallback: ล่าสุดต่อ sku+branch
+      // fallback: ล่าสุดต่อ sku+branch+unit
       fromClause = `
         FROM (
           SELECT *, ROW_NUMBER() OVER (
-            PARTITION BY [sku], [branch], [product_name]
+            PARTITION BY [sku], [branch], [product_type], [unit]
             ORDER BY [created_at] DESC
           ) AS rn
           FROM [excel_import_data]
@@ -2220,12 +2329,12 @@ export async function getExportData(req, res) {
     if (search)      whereParts.push("(d.[sku] LIKE @search OR d.[product_name] LIKE @search)");
     const whereStr = whereParts.length > 0 ? `AND ${whereParts.join(' AND ')}` : '';
 
-    // FROM: ดึงเฉพาะ row ล่าสุดต่อ sku+branch+product_type จาก published logs
+    // FROM: ดึงเฉพาะ row ล่าสุดต่อ sku+branch+product_type+unit จาก published logs
     const fromClause = hasLogId ? `
       FROM (
         SELECT d.*,
           ROW_NUMBER() OVER (
-            PARTITION BY d.sku, d.branch, d.product_type
+            PARTITION BY d.sku, d.branch, d.product_type, d.unit
             ORDER BY l.imported_at DESC
           ) AS rn
         FROM [excel_import_data] d
@@ -2237,7 +2346,7 @@ export async function getExportData(req, res) {
     ` : `
       FROM (
         SELECT *, ROW_NUMBER() OVER (
-          PARTITION BY [sku], [branch], [product_type]
+          PARTITION BY [sku], [branch], [product_type], [unit]
           ORDER BY [created_at] DESC
         ) AS rn
         FROM [excel_import_data]
@@ -2429,7 +2538,7 @@ export async function previewExcelData(req, res) {
                    d.discount_price_1, d.discount_price_2, d.discount_price_3,
                    d.selling_price_w1, d.selling_price_w2, d.selling_price_r1, d.selling_price_r2,
                    d.selling_price_sdm,
-                   ROW_NUMBER() OVER (PARTITION BY d.sku, d.branch ORDER BY l.imported_at DESC) AS rn
+                   ROW_NUMBER() OVER (PARTITION BY d.sku, d.branch, d.unit ORDER BY l.imported_at DESC) AS rn
             FROM excel_import_data d
             JOIN excel_import_logs l ON l.id = d.import_log_id
             WHERE d.product_type = @pt
@@ -3475,12 +3584,11 @@ async function importSealantData(pool, excelBuffer, sheetName, logId = null) {
       }
 
       for (const sku of pr.skus) {
-        // ข้าม SKU ที่ไม่มีใน StockStatusFact
+        // ใช้ชื่อจาก StockStatusFact ถ้ามี ไม่งั้น fallback ไปชื่อจาก Excel (pr.productName)
+        const productName = skuNameMap[sku] || pr.productName || sku;
         if (!skuNameMap[sku]) {
-          console.warn(`[Sealant Parser] SKU "${sku}" not found in StockStatusFact, skipping`);
-          continue;
+          console.warn(`[Sealant Parser] SKU "${sku}" not found in StockStatusFact, using Excel name: "${productName}"`);
         }
-        const productName = skuNameMap[sku];
         // map brand จาก BRAND_Sealant โดยใช้ sku.substring(1,3) เป็น BRAND_NO
         const brandNo   = sku.substring(1, 3);
         const brandName = brandMap[brandNo] || '';
