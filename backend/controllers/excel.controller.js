@@ -1396,10 +1396,12 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
 
       const entry = skuMap.get(sku);
       if (isNonCarton) {
-        // ราคาไม่ลงลัง — เก็บราคาซื้อ ส่วนลด และราคาขายแยกต่างหาก
-        entry.ncBasePrice   = basePrice;
-        entry.ncDiscountPct = discountPct;
-        entry.ncReExVat     = reExVat;
+        // ราคาไม่ลงลัง — เก็บใน nc* fields (ใน 1 แถวเดียวกับลงลัง)
+        entry.ncBasePrice    = basePrice;
+        entry.ncDiscountPct  = discountPct;
+        entry.ncDiscPrice1   = discPrice1;   // REก่อนVAT1 ของไม่ลงลัง
+        entry.ncDiscountPct2 = discountPct2;
+        entry.ncReExVat      = reExVat;      // REก่อนVAT2 ของไม่ลงลัง
         entry.ncW1 = w1; entry.ncW2 = w2; entry.ncR1 = r1; entry.ncR2 = r2;
         entry.ncSdm = sdm;
       } else {
@@ -1408,9 +1410,9 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         entry.unit         = unit;
         entry.basePrice    = basePrice;
         entry.discountPct  = discountPct;
-        entry.discPrice1   = discPrice1;   // REก่อนVAT1 (ส่วนลดชั้น 1)
+        entry.discPrice1   = discPrice1;
         entry.discountPct2 = discountPct2;
-        entry.reExVat      = reExVat;      // REก่อนVAT2 (ส่วนลดชั้น 2)
+        entry.reExVat      = reExVat;
         entry.sdm          = sdm;
         entry.w1 = w1; entry.w2 = w2; entry.r1 = r1; entry.r2 = r2;
       }
@@ -1418,28 +1420,15 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
 
     console.log(`[ACC Parser] Unique SKUs: ${skuMap.size}`);
 
-    // Pass 2: expand ทุกสาขา
-    // แยก carton row และ non-carton row — insert เฉพาะที่มีราคาจริง
+    // Pass 2: expand ทุกสาขา — 1 แถวต่อ SKU|branch (รวม carton + non-carton ใน columns แยก)
     const insertRows = [];
     for (const entry of skuMap.values()) {
-      const hasCarton    = entry.w1 > 0 || entry.w2 > 0 || entry.r1 > 0 || entry.r2 > 0 || entry.sdm > 0 || entry.discPrice1 > 0 || entry.reExVat > 0;
-      const hasNonCarton = entry.ncW1 > 0 || entry.ncW2 > 0 || entry.ncR1 > 0 || entry.ncR2 > 0 || entry.ncSdm > 0 || entry.ncReExVat > 0;
-
       for (const branchCode of allBranchCodes) {
-        // carton row — insert เฉพาะที่มีราคาลงลังจริง
-        if (hasCarton) {
-          insertRows.push({ branchCode, isNonCartonRow: false, ...entry });
-        }
-        // non-carton row — insert เฉพาะที่มีราคาไม่ลงลังจริง
-        if (hasNonCarton) {
-          insertRows.push({ branchCode, isNonCartonRow: true, ...entry });
-        }
+        insertRows.push({ branchCode, ...entry });
       }
     }
 
-    const cartonCount    = insertRows.filter(r => !r.isNonCartonRow).length / (allBranchCodes.length || 1);
-    const nonCartonCount = insertRows.filter(r =>  r.isNonCartonRow).length / (allBranchCodes.length || 1);
-    console.log(`[ACC Parser] SKUs with carton: ${cartonCount}, non-carton only: ${nonCartonCount}`);
+    console.log(`[ACC Parser] Rows to insert: ${insertRows.length} (${skuMap.size} SKUs × ${allBranchCodes.length} branches)`);
 
     console.log(`[ACC Parser] Rows to insert: ${insertRows.length} (${skuMap.size} SKUs × ${allBranchCodes.length} branches)`);
 
@@ -1519,48 +1508,34 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
       const valueParts = [];
 
       batch.forEach((r, idx) => {
-        // ถ้าเป็น non-carton row → ใช้ nc* values เป็นราคาหลัก, carton fields = 0
-        const isNC       = r.isNonCartonRow;
-        const useBase    = isNC ? (r.ncBasePrice  || 0) : (r.basePrice   || 0);
-        const useDisc1   = isNC ? (r.ncReExVat    || 0) : (r.discPrice1  ?? r.reExVat ?? 0);
-        const useReExVat = isNC ? 0                     : (r.reExVat     || 0);
-        const useW1      = isNC ? (r.ncW1  || 0)        : (r.w1  || 0);
-        const useW2      = isNC ? (r.ncW2  || 0)        : (r.w2  || 0);
-        const useR1      = isNC ? (r.ncR1  || 0)        : (r.r1  || 0);
-        const useR2      = isNC ? (r.ncR2  || 0)        : (r.r2  || 0);
-        const useSdm     = isNC ? (r.ncSdm || 0)        : (r.sdm || 0);
-        const useUnit    = isNC ? 'ไม่ลงลัง'            : (r.unit || '');
-        const useDiscPct = isNC ? (r.ncDiscountPct || 0) : (r.discountPct || 0);
-
         req.input(`branch${idx}`,      sql.NVarChar(100), r.branchCode);
         req.input(`sku${idx}`,         sql.NVarChar(50),  r.sku);
         req.input(`productName${idx}`, sql.NVarChar(255), r.productName);
         req.input(`brand${idx}`,       sql.NVarChar(100), r.brand);
-        req.input(`unit${idx}`,        sql.NVarChar(50),  useUnit);
-        req.input(`basePrice${idx}`,   sql.Decimal(18,2), useBase);
-        req.input(`discPrice1_${idx}`, sql.Decimal(18,2), useDisc1);
-        req.input(`reExVat${idx}`,     sql.Decimal(18,2), useReExVat);
-        req.input(`w1_${idx}`,         sql.Decimal(18,2), useW1);
-        req.input(`w2_${idx}`,         sql.Decimal(18,2), useW2);
-        req.input(`r1_${idx}`,         sql.Decimal(18,2), useR1);
-        req.input(`r2_${idx}`,         sql.Decimal(18,2), useR2);
+        req.input(`unit${idx}`,        sql.NVarChar(50),  r.unit || '');
+        req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice   || 0);
+        req.input(`discPrice1_${idx}`, sql.Decimal(18,2), r.discPrice1  || 0);
+        req.input(`reExVat${idx}`,     sql.Decimal(18,2), r.reExVat     || 0);
+        req.input(`w1_${idx}`,         sql.Decimal(18,2), r.w1  || 0);
+        req.input(`w2_${idx}`,         sql.Decimal(18,2), r.w2  || 0);
+        req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1  || 0);
+        req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2  || 0);
         req.input(`logId${idx}`,       sql.Int,           logId);
-        if (hasSellingPriceSdm) req.input(`sdm${idx}`, sql.Decimal(18,2), useSdm);
+        if (hasSellingPriceSdm) req.input(`sdm${idx}`, sql.Decimal(18,2), r.sdm || 0);
         if (hasDiscPct1) req.input(`discPct${idx}`, sql.Decimal(10,6),
-          useDiscPct > 1 ? useDiscPct / 100 : useDiscPct);
+          (r.discountPct || 0) > 1 ? (r.discountPct / 100) : (r.discountPct || 0));
         if (hasNonCarton) {
-          // non-carton row: nc* fields = 0 (ราคาถูก flatten ขึ้นมาเป็น main fields แล้ว)
-          req.input(`ncW1_${idx}`, sql.Decimal(18,2), 0);
-          req.input(`ncW2_${idx}`, sql.Decimal(18,2), 0);
-          req.input(`ncR1_${idx}`, sql.Decimal(18,2), 0);
-          req.input(`ncR2_${idx}`, sql.Decimal(18,2), 0);
-          if (hasNonCartonSdm)          req.input(`ncSdm_${idx}`,      sql.Decimal(18,2), 0);
+          req.input(`ncW1_${idx}`, sql.Decimal(18,2), r.ncW1 || 0);
+          req.input(`ncW2_${idx}`, sql.Decimal(18,2), r.ncW2 || 0);
+          req.input(`ncR1_${idx}`, sql.Decimal(18,2), r.ncR1 || 0);
+          req.input(`ncR2_${idx}`, sql.Decimal(18,2), r.ncR2 || 0);
+          if (hasNonCartonSdm) req.input(`ncSdm_${idx}`, sql.Decimal(18,2), r.ncSdm || 0);
           if (hasNonCartonPurchasePrice) {
-            // non-carton row: nc* fields = 0 (ราคาถูก flatten ขึ้นมาเป็น main fields แล้ว)
-            req.input(`ncBasePrice_${idx}`, sql.Decimal(18,2), 0);
-            req.input(`ncReExVat_${idx}`,   sql.Decimal(18,2), 0);
+            req.input(`ncBasePrice_${idx}`, sql.Decimal(18,2), r.ncBasePrice  || 0);
+            req.input(`ncReExVat_${idx}`,   sql.Decimal(18,2), r.ncDiscPrice1 || r.ncReExVat || 0);
           }
-          if (hasNonCartonDiscPct) req.input(`ncDiscPct_${idx}`, sql.Decimal(10,6), 0);
+          if (hasNonCartonDiscPct) req.input(`ncDiscPct_${idx}`, sql.Decimal(10,6),
+            (r.ncDiscountPct || 0) > 1 ? (r.ncDiscountPct / 100) : (r.ncDiscountPct || 0));
         }
 
         // suffix สำหรับ VALUES
@@ -1615,46 +1590,35 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         // fallback: insert ทีละ row
         for (const r of batch) {
           try {
-            const isNC       = r.isNonCartonRow;
-            const useBase    = isNC ? (r.ncBasePrice  || 0) : (r.basePrice   || 0);
-            const useDisc1   = isNC ? (r.ncReExVat    || 0) : (r.discPrice1  ?? r.reExVat ?? 0);
-            const useReExVat = isNC ? 0                     : (r.reExVat     || 0);
-            const useW1      = isNC ? (r.ncW1  || 0)        : (r.w1  || 0);
-            const useW2      = isNC ? (r.ncW2  || 0)        : (r.w2  || 0);
-            const useR1      = isNC ? (r.ncR1  || 0)        : (r.r1  || 0);
-            const useR2      = isNC ? (r.ncR2  || 0)        : (r.r2  || 0);
-            const useSdm     = isNC ? (r.ncSdm || 0)        : (r.sdm || 0);
-            const useUnit    = isNC ? 'ไม่ลงลัง'            : (r.unit || '');
-            const useDiscPct = isNC ? (r.ncDiscountPct || 0) : (r.discountPct || 0);
-
             const singleReq = pool.request()
               .input('branch',      sql.NVarChar(100), r.branchCode)
               .input('sku',         sql.NVarChar(50),  r.sku)
               .input('productName', sql.NVarChar(255), r.productName)
               .input('brand',       sql.NVarChar(100), r.brand)
-              .input('unit',        sql.NVarChar(50),  useUnit)
-              .input('basePrice',   sql.Decimal(18,2), useBase)
-              .input('discPrice1',  sql.Decimal(18,2), useDisc1)
-              .input('reExVat',     sql.Decimal(18,2), useReExVat)
-              .input('w1',          sql.Decimal(18,2), useW1)
-              .input('w2',          sql.Decimal(18,2), useW2)
-              .input('r1',          sql.Decimal(18,2), useR1)
-              .input('r2',          sql.Decimal(18,2), useR2)
+              .input('unit',        sql.NVarChar(50),  r.unit || '')
+              .input('basePrice',   sql.Decimal(18,2), r.basePrice   || 0)
+              .input('discPrice1',  sql.Decimal(18,2), r.discPrice1  || 0)
+              .input('reExVat',     sql.Decimal(18,2), r.reExVat     || 0)
+              .input('w1',          sql.Decimal(18,2), r.w1  || 0)
+              .input('w2',          sql.Decimal(18,2), r.w2  || 0)
+              .input('r1',          sql.Decimal(18,2), r.r1  || 0)
+              .input('r2',          sql.Decimal(18,2), r.r2  || 0)
               .input('logId',       sql.Int,           logId);
-            if (hasSellingPriceSdm) singleReq.input('sdm',  sql.Decimal(18,2), useSdm);
+            if (hasSellingPriceSdm) singleReq.input('sdm', sql.Decimal(18,2), r.sdm || 0);
             if (hasDiscPct1) singleReq.input('discPct', sql.Decimal(10,6),
-              useDiscPct > 1 ? useDiscPct / 100 : useDiscPct);
+              (r.discountPct || 0) > 1 ? (r.discountPct / 100) : (r.discountPct || 0));
             if (hasNonCarton) {
-              singleReq.input('ncW1', sql.Decimal(18,2), 0)
-                       .input('ncW2', sql.Decimal(18,2), 0)
-                       .input('ncR1', sql.Decimal(18,2), 0)
-                       .input('ncR2', sql.Decimal(18,2), 0);
-              if (hasNonCartonSdm)          singleReq.input('ncSdm',      sql.Decimal(18,2), 0);
+              singleReq.input('ncW1', sql.Decimal(18,2), r.ncW1 || 0)
+                       .input('ncW2', sql.Decimal(18,2), r.ncW2 || 0)
+                       .input('ncR1', sql.Decimal(18,2), r.ncR1 || 0)
+                       .input('ncR2', sql.Decimal(18,2), r.ncR2 || 0);
+              if (hasNonCartonSdm) singleReq.input('ncSdm', sql.Decimal(18,2), r.ncSdm || 0);
               if (hasNonCartonPurchasePrice) {
-                singleReq.input('ncBasePrice', sql.Decimal(18,2), 0);
-                singleReq.input('ncReExVat',   sql.Decimal(18,2), 0);
+                singleReq.input('ncBasePrice', sql.Decimal(18,2), r.ncBasePrice  || 0);
+                singleReq.input('ncReExVat',   sql.Decimal(18,2), r.ncDiscPrice1 || r.ncReExVat || 0);
               }
-              if (hasNonCartonDiscPct) singleReq.input('ncDiscPct', sql.Decimal(10,6), 0);
+              if (hasNonCartonDiscPct) singleReq.input('ncDiscPct', sql.Decimal(10,6),
+                (r.ncDiscountPct || 0) > 1 ? (r.ncDiscountPct / 100) : (r.ncDiscountPct || 0));
             }
 
             const ncPurchaseSingle  = (hasNonCarton && hasNonCartonPurchasePrice)
@@ -1805,90 +1769,56 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
 
     for (const entry of skuPreviewMap.values()) {
       const hasCarton    = entry.w1 > 0 || entry.w2 > 0 || entry.r1 > 0 || entry.r2 > 0 || entry.sdm > 0 || entry.discPrice1 > 0 || entry.reExVat > 0;
-      const hasNonCarton = entry.ncW1 > 0 || entry.ncW2 > 0 || entry.ncR1 > 0 || entry.ncR2 > 0 || entry.ncSdm > 0 || entry.ncReExVat > 0;
+      const hasNonCarton = entry.ncW1 > 0 || entry.ncW2 > 0 || entry.ncR1 > 0 || entry.ncR2 > 0 || entry.ncSdm > 0 || entry.ncReExVat > 0 || (entry.ncDiscPrice1 || 0) > 0;
 
-      // carton row — แสดงเฉพาะที่มีราคาลงลังจริง
-      if (hasCarton) {
-        previewRows.push({
-          sku:               entry.sku,
-          productName:       entry.productName,
-          brand:             entry.brand,
-          branch:            `ทุกสาขา (${allBranchCodes.length})`,
-          totalBranches:     allBranchCodes.length,
-          unit:              entry.unit,
-          base_price:        entry.basePrice,
-          discount_price_1:  entry.discPrice1,
-          discount_price_2:  entry.reExVat,
-          selling_price_sdm: entry.sdm,
-          selling_price_w1:  entry.w1,
-          selling_price_w2:  entry.w2,
-          selling_price_r1:  entry.r1,
-          selling_price_r2:  entry.r2,
-          non_carton_w1: 0, non_carton_w2: 0, non_carton_r1: 0, non_carton_r2: 0,
-          discount_pct_1: 0, discount_pct_2: 0, discount_pct_3: 0,
-          isNonCartonRow: false,
-        });
-      }
+      if (!hasCarton && !hasNonCarton) continue;
 
-      // non-carton row — แสดงเฉพาะที่มีราคาไม่ลงลังจริง
-      if (hasNonCarton) {
-        previewRows.push({
-          sku:               entry.sku,
-          productName:       entry.productName,
-          brand:             entry.brand,
-          branch:            `ทุกสาขา (${allBranchCodes.length})`,
-          totalBranches:     allBranchCodes.length,
-          unit:              'ไม่ลงลัง',
-          base_price:        entry.ncBasePrice,
-          discount_price_1:  entry.ncReExVat,
-          discount_price_2:  0,
-          selling_price_sdm: entry.ncSdm,
-          selling_price_w1:  entry.ncW1,
-          selling_price_w2:  entry.ncW2,
-          selling_price_r1:  entry.ncR1,
-          selling_price_r2:  entry.ncR2,
-          non_carton_w1: 0, non_carton_w2: 0, non_carton_r1: 0, non_carton_r2: 0,
-          discount_pct_1: 0, discount_pct_2: 0, discount_pct_3: 0,
-          isNonCartonRow: true,
-        });
-      }
+      // 1 แถวต่อ SKU รวม carton + non-carton ใน columns แยก
+      previewRows.push({
+        sku:               entry.sku,
+        productName:       entry.productName,
+        brand:             entry.brand,
+        branch:            `ทุกสาขา (${allBranchCodes.length})`,
+        totalBranches:     allBranchCodes.length,
+        unit:              entry.unit,
+        base_price:        entry.basePrice,
+        discount_price_1:  entry.discPrice1,
+        discount_price_2:  entry.reExVat,
+        selling_price_sdm: entry.sdm,
+        selling_price_w1:  entry.w1,
+        selling_price_w2:  entry.w2,
+        selling_price_r1:  entry.r1,
+        selling_price_r2:  entry.r2,
+        non_carton_w1:        entry.ncW1,
+        non_carton_w2:        entry.ncW2,
+        non_carton_r1:        entry.ncR1,
+        non_carton_r2:        entry.ncR2,
+        nonCartonBasePrice:   entry.ncBasePrice,
+        nonCartonReExVat:     entry.ncDiscPrice1 || entry.ncReExVat,
+        nonCartonDiscountPct: entry.ncDiscountPct,
+        discount_pct_1: 0, discount_pct_2: 0, discount_pct_3: 0,
+      });
 
-      // allRows: expand เป็น full SKU|branch เพื่อเปรียบเทียบกับ DB
+      // allRows: expand เป็น full SKU|branch
       for (const branchCode of allBranchCodes) {
-        if (hasCarton) {
-          allRows.push({
-            sku:              entry.sku,
-            branch:           branchCode,
-            productName:      entry.productName,
-            brand:            entry.brand,
-            unit:             entry.unit,
-            base_price:       entry.basePrice,
-            discount_price_1: entry.discPrice1,
-            discount_price_2: entry.reExVat,
-            selling_price_w1: entry.w1,
-            selling_price_w2: entry.w2,
-            selling_price_r1: entry.r1,
-            selling_price_r2: entry.r2,
-            isNonCartonRow:   false,
-          });
-        }
-        if (hasNonCarton) {
-          allRows.push({
-            sku:              entry.sku,
-            branch:           branchCode,
-            productName:      entry.productName,
-            brand:            entry.brand,
-            unit:             'ไม่ลงลัง',
-            base_price:       entry.ncBasePrice,
-            discount_price_1: entry.ncReExVat,
-            discount_price_2: 0,
-            selling_price_w1: entry.ncW1,
-            selling_price_w2: entry.ncW2,
-            selling_price_r1: entry.ncR1,
-            selling_price_r2: entry.ncR2,
-            isNonCartonRow:   true,
-          });
-        }
+        allRows.push({
+          sku:              entry.sku,
+          branch:           branchCode,
+          productName:      entry.productName,
+          brand:            entry.brand,
+          unit:             entry.unit,
+          base_price:       entry.basePrice,
+          discount_price_1: entry.discPrice1,
+          discount_price_2: entry.reExVat,
+          selling_price_w1: entry.w1,
+          selling_price_w2: entry.w2,
+          selling_price_r1: entry.r1,
+          selling_price_r2: entry.r2,
+          non_carton_w1:    entry.ncW1,
+          non_carton_w2:    entry.ncW2,
+          non_carton_r1:    entry.ncR1,
+          non_carton_r2:    entry.ncR2,
+        });
       }
     }
 
@@ -1896,7 +1826,7 @@ async function previewAccessoriesData(excelBuffer, sheetName) {
       rows:      previewRows,
       allRows,
       totalSkus: skuPreviewMap.size,
-      totalRows: allRows.length,
+      totalRows: skuPreviewMap.size * allBranchCodes.length,
       branches:  allBranchCodes,
     };
 
@@ -1983,7 +1913,7 @@ export async function getImportData(req, res) {
         FROM (
           SELECT d.*,
             ROW_NUMBER() OVER (
-              PARTITION BY d.sku, d.branch, d.product_type, d.unit
+              PARTITION BY d.sku, d.branch, d.product_type
               ORDER BY l.imported_at DESC
             ) AS rn
           FROM [excel_import_data] d
@@ -2329,12 +2259,12 @@ export async function getExportData(req, res) {
     if (search)      whereParts.push("(d.[sku] LIKE @search OR d.[product_name] LIKE @search)");
     const whereStr = whereParts.length > 0 ? `AND ${whereParts.join(' AND ')}` : '';
 
-    // FROM: ดึงเฉพาะ row ล่าสุดต่อ sku+branch+product_type+unit จาก published logs
+    // FROM: ดึงเฉพาะ row ล่าสุดต่อ sku+branch+product_type จาก published logs
     const fromClause = hasLogId ? `
       FROM (
         SELECT d.*,
           ROW_NUMBER() OVER (
-            PARTITION BY d.sku, d.branch, d.product_type, d.unit
+            PARTITION BY d.sku, d.branch, d.product_type
             ORDER BY l.imported_at DESC
           ) AS rn
         FROM [excel_import_data] d
@@ -2346,7 +2276,7 @@ export async function getExportData(req, res) {
     ` : `
       FROM (
         SELECT *, ROW_NUMBER() OVER (
-          PARTITION BY [sku], [branch], [product_type], [unit]
+          PARTITION BY [sku], [branch], [product_type]
           ORDER BY [created_at] DESC
         ) AS rn
         FROM [excel_import_data]
@@ -2538,7 +2468,7 @@ export async function previewExcelData(req, res) {
                    d.discount_price_1, d.discount_price_2, d.discount_price_3,
                    d.selling_price_w1, d.selling_price_w2, d.selling_price_r1, d.selling_price_r2,
                    d.selling_price_sdm,
-                   ROW_NUMBER() OVER (PARTITION BY d.sku, d.branch, d.unit ORDER BY l.imported_at DESC) AS rn
+                   ROW_NUMBER() OVER (PARTITION BY d.sku, d.branch ORDER BY l.imported_at DESC) AS rn
             FROM excel_import_data d
             JOIN excel_import_logs l ON l.id = d.import_log_id
             WHERE d.product_type = @pt
