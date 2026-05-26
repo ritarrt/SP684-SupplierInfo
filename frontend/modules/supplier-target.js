@@ -250,6 +250,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ตั้งค่าเริ่มต้นให้ตรงกัน
     syncUnitByType(tgTypeSelect.value);
   }
+
+  // ============================================================
+  // 🔢 FORMAT tgQty — แสดง comma ขณะพิมพ์
+  // ============================================================
+  const tgQtyInput = document.getElementById("tgQty");
+  if (tgQtyInput) {
+    tgQtyInput.addEventListener("input", () => {
+      // เก็บตำแหน่ง cursor
+      const raw = tgQtyInput.value.replace(/,/g, "").replace(/[^0-9.]/g, "");
+      if (raw === "" || raw === ".") {
+        tgQtyInput.value = raw;
+        return;
+      }
+      const parts = raw.split(".");
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      tgQtyInput.value = parts.join(".");
+    });
+
+    tgQtyInput.addEventListener("keydown", (e) => {
+      // อนุญาตเฉพาะตัวเลข, จุดทศนิยม, backspace, delete, arrow, tab
+      const allowed = ["Backspace","Delete","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Tab","Home","End"];
+      if (allowed.includes(e.key)) return;
+      if (e.ctrlKey || e.metaKey) return; // copy/paste/select all
+      if (!/^[0-9.]$/.test(e.key)) e.preventDefault();
+    });
+  }
+
   // ============================================================
   // 3️⃣ Radio Filter
   // ============================================================
@@ -287,7 +314,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const benefitPeriod = document.getElementById("tgBenefit")?.value?.trim();
       const targetType = document.getElementById("tgType")?.value?.trim();
-      const targetQty = document.getElementById("tgQty")?.value?.trim();
+      const targetQty = (document.getElementById("tgQty")?.value || "").replace(/,/g, "").trim();
       const targetUnit = document.getElementById("tgUnit")?.value?.trim();
       const startDate = document.getElementById("tgStart")?.value?.trim();
       const endDate = document.getElementById("tgEnd")?.value?.trim();
