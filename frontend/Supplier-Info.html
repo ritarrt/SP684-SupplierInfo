@@ -2401,6 +2401,16 @@
       <!-- ข้อมูลต้นฉบับ -->
       <div id="copySourceSummary"></div>
 
+      <!-- Parent selector (แสดงเฉพาะเมื่อ copy เป้ารอง) -->
+      <div id="copyParentRow" style="display:none;">
+        <label class="form-label">
+          <i class="bi bi-link-45deg"></i> เป้าหลัก (Parent)
+          <span style="font-size:11px;color:#6b7280;font-weight:400;margin-left:4px;">— สามารถเปลี่ยนได้</span>
+        </label>
+        <select id="copyTgParent" class="form-select"></select>
+        <small class="text-muted text-xs">เป้ารองที่คัดลอกจะผูกกับเป้าหลักที่เลือก</small>
+      </div>
+
       <!-- ชื่อเป้าหมายใหม่ -->
       <div>
         <label class="form-label">ชื่อเป้าหมาย <span class="text-red-600">*</span></label>

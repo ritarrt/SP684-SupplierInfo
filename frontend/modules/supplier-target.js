@@ -1594,10 +1594,23 @@ window.openCopyTargetModal = function(targetId) {
       document.getElementById("copyTgEnd").value = "";
       document.getElementById("copyTgName").value = `${item.target_name || ""} (คัดลอก)`;
 
+      const isSubTarget = !!item.parent_target_ref;
+
       // แสดง summary ของต้นฉบับ
       document.getElementById("copySourceSummary").innerHTML = `
         <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-size:13px;">
-          <div style="font-weight:600;margin-bottom:6px;color:#374151;">ต้นฉบับ: ${item.target_ref || "-"}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="font-weight:600;color:#374151;">ต้นฉบับ: ${item.target_ref || "-"}</span>
+            ${isSubTarget
+              ? `<span style="background:#6c757d;color:#fff;padding:1px 7px;border-radius:8px;font-size:11px;">เป้ารอง</span>`
+              : `<span style="background:#0d6efd;color:#fff;padding:1px 7px;border-radius:8px;font-size:11px;">เป้าหลัก</span>`
+            }
+          </div>
+          ${isSubTarget ? `
+            <div style="color:#f59e0b;font-size:12px;margin-bottom:6px;">
+              <i class="bi bi-link-45deg"></i> ผูกกับเป้าหลัก: <strong>${item.parent_target_ref}</strong>
+            </div>
+          ` : ""}
           <div style="color:#6b7280;">
             <span>${item.category || "-"}</span> /
             <span>${item.brand_name || item.brand || "-"}</span> /
@@ -1611,6 +1624,31 @@ window.openCopyTargetModal = function(targetId) {
           </div>
         </div>
       `;
+
+      // แสดง/ซ่อน parent selector
+      const parentRow = document.getElementById("copyParentRow");
+      if (parentRow) {
+        if (isSubTarget) {
+          parentRow.style.display = "block";
+          // โหลด parent dropdown
+          const sel = document.getElementById("copyTgParent");
+          if (sel) {
+            sel.innerHTML = `<option value="${item.parent_target_ref}">${item.parent_target_ref} (เดิม)</option>`;
+            // โหลดตัวเลือกเพิ่มเติมจาก parentTargetsData
+            parentTargetsData.forEach(p => {
+              if (p.target_ref !== item.parent_target_ref) {
+                const opt = document.createElement("option");
+                opt.value = p.target_ref;
+                opt.textContent = `${p.target_ref} - ${p.target_name}`;
+                sel.appendChild(opt);
+              }
+            });
+            sel.value = item.parent_target_ref;
+          }
+        } else {
+          parentRow.style.display = "none";
+        }
+      }
 
       const modal = document.getElementById("copyTargetModal");
       modal.classList.remove("hidden");
@@ -1650,12 +1688,17 @@ document.getElementById("copyTargetConfirmBtn")
     btn.disabled = true;
     btn.innerHTML = `<svg class="animate-spin" style="width:14px;height:14px;display:inline;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> กำลังบันทึก...`;
 
-    // สร้าง payload จากต้นฉบับ แต่เปลี่ยนชื่อ + วันที่
+    // สร้าง payload จากต้นฉบับ แต่เปลี่ยนชื่อ + วันที่ + parent (ถ้าเป้ารอง)
+    const isSubTarget = !!copySourceData.parent_target_ref;
+    const selectedParent = isSubTarget
+      ? (document.getElementById("copyTgParent")?.value || copySourceData.parent_target_ref)
+      : null;
+
     const payload = {
       supplier_code:       copySourceData.supplier_code,
       provider_contact_id: copySourceData.provider_contact_id || null,
       target_name:         newName,
-      parent_target_ref:   copySourceData.parent_target_ref || null,
+      parent_target_ref:   selectedParent,
       region:              copySourceData.region   || null,
       province:            copySourceData.province || null,
       branch:              copySourceData.branch   || null,

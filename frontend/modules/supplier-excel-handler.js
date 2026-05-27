@@ -391,6 +391,14 @@ async function processImportedDealRows(rows, header, supplierNo) {
   }
 
 // ===== Step 2: ส่ง API ทีละ deal group =====
+  let successCount  = 0;
+  let insertedCount = 0;
+  let updatedCount  = 0;
+  let skippedCount  = 0;
+  let errorCount    = 0;
+  const errors      = [];
+  const logItems    = [];
+
   for (const [key, group] of dealGroups) {
     try {
       // เตรียมข้อมูลพื้นฐานของดีล (ไม่รวม steps)
