@@ -168,7 +168,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     tgStart.value = today.toISOString().split("T")[0];
   }
   
-  // โหลดสี + ความหนา ตามประเภทสินค้า
+  // โหลดสี + ความหนา ตามประเภทสินค้า (register ครั้งเดียว)
   const catSelect = document.getElementById("tgCat");
   if (catSelect) {
     catSelect.addEventListener("change", (e) => {
@@ -204,18 +204,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ============================================================
   // Reload GROUP/SUB/COLOR/THICK when Category changes
+  // (ลบออก — register แล้วด้านบน ไม่ต้องซ้ำ)
   // ============================================================
-  const catSelect2 = document.getElementById("tgCat");
-
-  if (catSelect2) {
-    catSelect2.addEventListener("change", () => {
-      const cat = catSelect2.value;
-      loadGroups(cat, "groupDropdown");
-      loadSubGroups(cat, "subDropdown");
-      loadColors(cat, "colorDropdown");
-      loadThickness(cat, "thickDropdown");
-    });
-  }
 
   // ============================================================
   // 2️⃣ Prevent form reload
@@ -1191,20 +1181,42 @@ async function setScopeValuesWithCategory(scope) {
       catSelect.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }
-  
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
+
+  // รอให้ coverage data โหลดเสร็จก่อน (max 3 วินาที)
+  await waitForBrandCheckboxes(scope.category, 3000);
+
   if (scope.category) {
     loadGroups(scope.category, "groupDropdown");
     loadSubGroups(scope.category, "subDropdown");
     loadColors(scope.category, "colorDropdown");
     loadThickness(scope.category, "thickDropdown");
   }
-  
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
+
+  // รอให้ checkbox render เสร็จ
+  await new Promise(resolve => setTimeout(resolve, 100));
+
   setScopeFieldValues(scope);
   handleRegionProvinceBranch(scope);
+}
+
+// รอให้ brandDropdown มี checkbox items (หมายความว่า coverage data โหลดแล้ว)
+function waitForBrandCheckboxes(category, timeoutMs = 3000) {
+  return new Promise(resolve => {
+    const start = Date.now();
+    const check = () => {
+      const container = document.getElementById("brandDropdown");
+      const items = container?.querySelectorAll(".item-checkbox") || [];
+      if (items.length > 0) {
+        resolve();
+      } else if (Date.now() - start > timeoutMs) {
+        console.warn("⚠️ waitForBrandCheckboxes timeout");
+        resolve();
+      } else {
+        setTimeout(check, 50);
+      }
+    };
+    check();
+  });
 }
 
 function setScopeFieldValues(scope) {

@@ -214,17 +214,17 @@ CASE
   WHEN CONVERT(DATE, GETDATE()) < t.start_date
     THEN N'ยังไม่เริ่ม'
   WHEN CONVERT(DATE, GETDATE()) > t.end_date
-       AND v.actual_value >= ISNULL(t.target_qty,0)
+       AND ISNULL(sub_agg.sub_actual_value, v.actual_value) >= ISNULL(t.target_qty,0)
     THEN N'บรรลุแล้ว (หมดอายุ)'
   WHEN CONVERT(DATE, GETDATE()) > t.end_date
-       AND v.actual_value < ISNULL(t.target_qty,0)
+       AND ISNULL(sub_agg.sub_actual_value, v.actual_value) < ISNULL(t.target_qty,0)
     THEN N'ไม่ถึงเป้า (หมดอายุ)'
-  WHEN v.actual_value >= ISNULL(t.target_qty,0)
+  WHEN ISNULL(sub_agg.sub_actual_value, v.actual_value) >= ISNULL(t.target_qty,0)
     THEN N'บรรลุเป้า'
   ELSE N'ยังไม่ถึงเป้า'
 END AS target_state,
 CASE
-  WHEN v.actual_value >= ISNULL(t.target_qty,0)
+  WHEN ISNULL(sub_agg.sub_actual_value, v.actual_value) >= ISNULL(t.target_qty,0)
        AND ISNULL(t.target_qty,0) > 0
   THEN 1
   ELSE 0
@@ -775,6 +775,7 @@ export const getParentTargets = async (req, res) => {
           target_name, 
           category, 
           brand,
+          brand_code,
           region,
           province,
           branch,
