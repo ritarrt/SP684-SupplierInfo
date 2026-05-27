@@ -544,6 +544,8 @@ document.addEventListener("change", (e) => {
     if (selectAll && items.length > 0) {
       selectAll.checked = [...items].every(cb => cb.checked);
     }
+    // reload project no datalist ตาม branch ที่เลือก
+    loadDealLimitProjectOptions();
   }
 });
 
@@ -579,6 +581,39 @@ async function loadDealLimitProviderOptions(supplierNo) {
     });
   } catch (err) {
     console.error("❌ Load contacts error:", err);
+  }
+}
+
+async function loadDealLimitProjectOptions() {
+  const datalist = document.getElementById("dealLimitProjectNoList");
+  if (!datalist) return;
+
+  try {
+    const selectedBranches = getSelectedValues("dealLimitBranchDropdown");
+    // ใช้ branch แรกที่เลือก ถ้าไม่มีใช้ 00TR
+    const branch = selectedBranches.length > 0 ? selectedBranches[0] : "00TR";
+
+    const res = await fetch(`${window.API_BASE}/api/suppliers/project-prices?branch=${encodeURIComponent(branch)}`);
+    if (!res.ok) return;
+
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return;
+
+    datalist.innerHTML = "";
+    const seen = new Set();
+    data.forEach(item => {
+      const no = item.project_code || item.project_no || item.ProjectNo;
+      if (!no || seen.has(no)) return;
+      seen.add(no);
+      const opt = document.createElement("option");
+      opt.value = no;
+      opt.label = item.project_name ? `${no} — ${item.project_name}` : no;
+      datalist.appendChild(opt);
+    });
+
+    console.log(`✅ Loaded ${seen.size} project nos for branch: ${branch}`);
+  } catch (err) {
+    console.error("loadDealLimitProjectOptions error:", err);
   }
 }
 
@@ -732,6 +767,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderDealLimitRegionDropdown();
   loadDealLimitProviderOptions(supplierNo);
   loadDealLimitList(supplierNo);
+  loadDealLimitProjectOptions();
 
   const saveBtn = document.getElementById("submitDealLimitBtn");
   if (saveBtn) {
