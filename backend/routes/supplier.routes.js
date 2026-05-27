@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+import fs from "fs";
 
 /**
  * ==============================
@@ -87,11 +88,21 @@ import {
  * ==============================
  */
 const storage = multer.diskStorage({
-  destination: "uploads/supplier_docs/",
+  destination: (req, file, cb) => {
+    const supplierNo = req.params.supplierNo || "unknown";
+    const dir = `uploads/supplier_docs/${supplierNo}`;
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = file.originalname.split(".").pop();
-    cb(null, file.fieldname + "-" + uniqueSuffix + "." + ext);
+    // decode ชื่อไฟล์ภาษาไทยจาก latin1 → utf8
+    const originalName = Buffer.from(file.originalname, "latin1").toString("utf8");
+    const ext = originalName.split(".").pop();
+    const baseName = originalName.slice(0, -(ext.length + 1));
+    // sanitize: ลบ / \ : * ? " < > | แต่คงภาษาไทยและ space ไว้
+    const safeName = baseName.replace(/[/\\:*?"<>|]/g, "_");
+    const timestamp = Date.now();
+    cb(null, `${safeName}-${timestamp}.${ext}`);
   },
 });
 

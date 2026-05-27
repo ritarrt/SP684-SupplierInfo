@@ -57,12 +57,15 @@ function updateSelectedText(containerId, textId) {
     .map(i => i.parentElement.textContent.trim())
     .filter(t => t !== "ทั้งหมด");
 
-  document.getElementById(textId).innerText =
-    values.length ? values.join(", ") : "ทั้งหมด";
+  const textEl = document.getElementById(textId);
+  if (!textEl) return;
+
+  textEl.innerText = values.length ? values.join(", ") : "ทั้งหมด";
+  textEl.style.color = "";
 }
 
 function getBranchName(code) {
-  if (!code) return "-";
+  if (!code) return "ทั้งหมด";
   const data = branchData || [];
   const codes = code.split(',').map(c => c.trim());
   const names = codes.map(c => {
@@ -79,9 +82,15 @@ function getCategoryName(code) {
 }
 
 function getBrandName(code) {
+  if (!code) return "ทั้งหมด";
   const data = window.COVERAGE_DATA || [];
-  const item = data.find(d => d.brand === code);
-  return item?.brand_name || code;
+  // brand เก็บเป็น comma-separated brand_no
+  const codes = code.split(',').map(c => c.trim());
+  const names = codes.map(c => {
+    const item = data.find(d => String(d.brand_no) === c);
+    return item?.brand_name || c;
+  });
+  return names.join(', ');
 }
 
 function formatThaiDate(dateStr) {
@@ -248,9 +257,9 @@ function renderDealLimitTable() {
         <div class="small text-muted">${r.contact_person || '-'}</div>
       </td>
       <td class="small">
-        <div><strong>${r.region || '-'} / ${r.province || '-'} / ${getBranchName(r.branch) || '-'}</strong></div>
-        <div>${getCategoryName(r.category) || '-'} / ${getBrandName(r.brand) || '-'}</div>
-        <div>${r.color || '-'} / ${r.thickness || '-'}</div>
+        <div><strong>${r.region || 'ทั้งหมด'} / ${r.province || 'ทั้งหมด'} / ${getBranchName(r.branch) || 'ทั้งหมด'}</strong></div>
+        <div>${getCategoryName(r.category) || '-'} / ${getBrandName(r.brand) || 'ทั้งหมด'}</div>
+        <div>${r.color || 'ทั้งหมด'} / ${r.thickness || 'ทั้งหมด'}</div>
       </td>
       <td class="text-center">
         <div class="fw-bold text-primary">${limitQty.toLocaleString()} ${limitUnit}</div>
@@ -330,14 +339,38 @@ function openEditDealLimitModal(dealId) {
   document.getElementById("dealLimitRequirePallet").checked = deal.require_pallet !== false;
 
   if (deal.category) document.getElementById("dealLimitCat").value = deal.category;
-  if (deal.brand) document.getElementById("dealLimitBrand").value = deal.brand;
-  
+
+  // restore brand/group/sub checkboxes
   setTimeout(() => {
-    if (deal.product_group) document.getElementById("dealLimitGroup").value = deal.product_group;
+    if (deal.brand) {
+      const vals = deal.brand.split(',').map(v => v.trim());
+      document.querySelectorAll('#dealLimitBrandDropdown input.item-checkbox').forEach(cb => {
+        cb.checked = vals.includes(cb.value);
+      });
+      updateSelectedText('dealLimitBrandDropdown', 'dealLimitBrandText');
+      const textEl = document.getElementById("dealLimitBrandText");
+      if (textEl) textEl.style.color = vals.length ? "" : "#9ca3af";
+    }
   }, 100);
-  
+
   setTimeout(() => {
-    if (deal.sub_group) document.getElementById("dealLimitSub").value = deal.sub_group;
+    if (deal.product_group) {
+      const vals = deal.product_group.split(',').map(v => v.trim());
+      document.querySelectorAll('#dealLimitGroupDropdown input.item-checkbox').forEach(cb => {
+        cb.checked = vals.includes(cb.value);
+      });
+      updateSelectedText('dealLimitGroupDropdown', 'dealLimitGroupText');
+    }
+  }, 150);
+
+  setTimeout(() => {
+    if (deal.sub_group) {
+      const vals = deal.sub_group.split(',').map(v => v.trim());
+      document.querySelectorAll('#dealLimitSubDropdown input.item-checkbox').forEach(cb => {
+        cb.checked = vals.includes(cb.value);
+      });
+      updateSelectedText('dealLimitSubDropdown', 'dealLimitSubText');
+    }
   }, 200);
   
   if (deal.color) document.getElementById("dealLimitColor").value = deal.color;
@@ -389,9 +422,24 @@ function cancelDealLimitEdit() {
   if (form) form.reset();
   
   document.getElementById("dealLimitRegionText").textContent = "ทั้งหมด";
+  document.getElementById("dealLimitRegionText").style.color = "";
   document.getElementById("dealLimitProvinceText").textContent = "ทั้งหมด";
+  document.getElementById("dealLimitProvinceText").style.color = "";
   document.getElementById("dealLimitBranchText").textContent = "ทั้งหมด";
-  document.getElementById("dealLimitDiscountDisplay").textContent = "-";
+  document.getElementById("dealLimitBranchText").style.color = "";
+
+  // reset brand/group/sub checkboxes
+  ["dealLimitBrandDropdown","dealLimitGroupDropdown","dealLimitSubDropdown"].forEach(id => {
+    document.querySelectorAll(`#${id} input`).forEach(cb => cb.checked = false);
+  });
+  const brandTextEl = document.getElementById("dealLimitBrandText");
+  if (brandTextEl) { brandTextEl.textContent = "กรุณาเลือกแบรนด์"; brandTextEl.style.color = "#9ca3af"; }
+  const groupTextEl = document.getElementById("dealLimitGroupText");
+  if (groupTextEl) { groupTextEl.textContent = "ทั้งหมด"; groupTextEl.style.color = ""; }
+  const subTextEl = document.getElementById("dealLimitSubText");
+  if (subTextEl) { subTextEl.textContent = "ทั้งหมด"; subTextEl.style.color = ""; }
+  const discountDisplay = document.getElementById("dealLimitDiscountDisplay");
+  if (discountDisplay) discountDisplay.textContent = "-";
   document.getElementById("dealLimitRequirePallet").checked = true;
   
   editingDealLimitId = null;
@@ -500,7 +548,10 @@ document.addEventListener("change", (e) => {
 });
 
 document.addEventListener("click", (e) => {
-  const dropdowns = ["dealLimitRegionDropdown", "dealLimitProvinceDropdown", "dealLimitBranchDropdown"];
+  const dropdowns = [
+    "dealLimitRegionDropdown", "dealLimitProvinceDropdown", "dealLimitBranchDropdown",
+    "dealLimitBrandDropdown", "dealLimitGroupDropdown", "dealLimitSubDropdown"
+  ];
   dropdowns.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -544,33 +595,137 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (window.supplierNo) {
-    await loadCoverageToForm(window.supplierNo, {
-      category: "dealLimitCat",
-      brand: "dealLimitBrand",
-      group: "dealLimitGroup",
-      sub: "dealLimitSub",
-      color: "dealLimitColor",
-      thickness: "dealLimitThick",
-      sku: "dealLimitSku"
-    });
-  }
+    // โหลด coverage data โดยตรง
+    let coverageData = [];
+    try {
+      const res = await fetch(`${window.API_BASE}/api/suppliers/${window.supplierNo}/coverage`);
+      if (res.ok) {
+        coverageData = await res.json();
+        window.COVERAGE_DATA = coverageData;
+      }
+    } catch (err) {
+      console.error("❌ Load coverage error:", err);
+    }
 
-  const catSelect = document.getElementById("dealLimitCat");
-  const brandSelect = document.getElementById("dealLimitBrand");
+    // populate category
+    const catSelect = document.getElementById("dealLimitCat");
+    if (catSelect) {
+      catSelect.innerHTML = '<option value="" disabled selected style="color:#9ca3af;">กรุณาเลือกประเภทสินค้า</option>';
+      const seenCat = new Set();
+      coverageData.forEach(d => {
+        if (!d.category || seenCat.has(d.category)) return;
+        seenCat.add(d.category);
+        const opt = document.createElement("option");
+        opt.value = d.category;
+        opt.textContent = d.category_name || d.category;
+        catSelect.appendChild(opt);
+      });
+    }
 
-  if (catSelect) {
-    catSelect.addEventListener("change", () => {
-      loadGroups(catSelect.value, "dealLimitGroup");
-      loadColors(catSelect.value, "dealLimitColor");
-      loadThickness(catSelect.value, "dealLimitThick");
-    });
-    loadGroups(catSelect.value, "dealLimitGroup");
-  }
+    function getBrandItems(cat) {
+      const seen = new Set();
+      return coverageData
+        .filter(d => !cat || d.category === cat)
+        .filter(d => { if (!d.brand_no || seen.has(d.brand_no)) return false; seen.add(d.brand_no); return true; })
+        .map(d => ({ value: d.brand_no, label: d.brand_name }));
+    }
 
-  const groupSelect = document.getElementById("dealLimitGroup");
-  if (groupSelect) {
-    groupSelect.addEventListener("change", () => {
-      loadSubGroups(catSelect.value, "dealLimitSub");
+    function getGroupItems(cat) {
+      const seen = new Set();
+      return coverageData
+        .filter(d => !cat || d.category === cat)
+        .filter(d => { if (!d.group_code || seen.has(d.group_code)) return false; seen.add(d.group_code); return true; })
+        .map(d => ({ value: d.group_code, label: d.group_name }));
+    }
+
+    function getSubItems(cat) {
+      const seen = new Set();
+      return coverageData
+        .filter(d => !cat || d.category === cat)
+        .filter(d => { if (!d.subGroup || seen.has(d.subGroup)) return false; seen.add(d.subGroup); return true; })
+        .map(d => ({ value: d.subGroup, label: d.sub_group_name }));
+    }
+
+    async function loadColorSelect(cat) {
+      const el = document.getElementById("dealLimitColor");
+      if (!el) return;
+      el.innerHTML = '<option value="">ทั้งหมด</option>';
+      if (!cat) return;
+      try {
+        const res = await fetch(`${window.API_BASE}/api/master/colors/${cat}`);
+        if (!res.ok) return;
+        const colors = await res.json();
+        colors.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = String(c.COLOR_NO);
+          opt.textContent = c.COLOR_NAME;
+          el.appendChild(opt);
+        });
+      } catch (err) { console.error("loadColorSelect error:", err); }
+    }
+
+    async function loadThickSelect(cat) {
+      const el = document.getElementById("dealLimitThick");
+      if (!el) return;
+      el.innerHTML = '<option value="">ทั้งหมด</option>';
+      if (!cat) return;
+      try {
+        const res = await fetch(`${window.API_BASE}/api/master/thickness/${cat}`);
+        if (!res.ok) return;
+        const list = await res.json();
+        list.forEach(t => {
+          const opt = document.createElement("option");
+          opt.value = String(t.THICKNESS_NO).padStart(2, "0");
+          opt.textContent = t.THICKNESS_NAME;
+          el.appendChild(opt);
+        });
+      } catch (err) { console.error("loadThickSelect error:", err); }
+    }
+
+    function resetDropdownText(id, text, color = "") {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = text; el.style.color = color; }
+    }
+
+    // initial populate
+    const initCat = catSelect?.value || "";
+    renderCheckboxList("dealLimitBrandDropdown", getBrandItems(initCat));
+    renderCheckboxList("dealLimitGroupDropdown", getGroupItems(initCat));
+    renderCheckboxList("dealLimitSubDropdown",   getSubItems(initCat));
+    loadColorSelect(initCat);
+    loadThickSelect(initCat);
+
+    // category เปลี่ยน → reload ทุก dropdown
+    if (catSelect) {
+      catSelect.addEventListener("change", () => {
+        const cat = catSelect.value;
+        renderCheckboxList("dealLimitBrandDropdown", getBrandItems(cat));
+        renderCheckboxList("dealLimitGroupDropdown", getGroupItems(cat));
+        renderCheckboxList("dealLimitSubDropdown",   getSubItems(cat));
+        resetDropdownText("dealLimitBrandText", "กรุณาเลือกแบรนด์", "#9ca3af");
+        resetDropdownText("dealLimitGroupText", "ทั้งหมด");
+        resetDropdownText("dealLimitSubText",   "ทั้งหมด");
+        loadColorSelect(cat);
+        loadThickSelect(cat);
+      });
+    }
+
+    // brand/group/sub checkbox change handlers
+    document.addEventListener("change", (e) => {
+      if (e.target.matches("#dealLimitBrandDropdown input")) {
+        updateSelectedText("dealLimitBrandDropdown", "dealLimitBrandText");
+        const textEl = document.getElementById("dealLimitBrandText");
+        if (textEl) textEl.style.color = getSelectedValues("dealLimitBrandDropdown").length ? "" : "#9ca3af";
+      }
+      if (e.target.matches("#dealLimitGroupDropdown input")) {
+        updateSelectedText("dealLimitGroupDropdown", "dealLimitGroupText");
+        // reload sub เมื่อ group เปลี่ยน
+        renderCheckboxList("dealLimitSubDropdown", getSubItems(catSelect?.value || ""));
+        resetDropdownText("dealLimitSubText", "ทั้งหมด");
+      }
+      if (e.target.matches("#dealLimitSubDropdown input")) {
+        updateSelectedText("dealLimitSubDropdown", "dealLimitSubText");
+      }
     });
   }
 
@@ -586,8 +741,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const province = getSelectedValues("dealLimitProvinceDropdown").join(",");
       const branch = getSelectedValues("dealLimitBranchDropdown").join(",");
       const category = document.getElementById("dealLimitCat")?.value;
-      const brand = document.getElementById("dealLimitBrand")?.value;
-      const productGroup = document.getElementById("dealLimitGroup")?.value;
+      const brand = getSelectedValues("dealLimitBrandDropdown").join(",");
+      const productGroup = getSelectedValues("dealLimitGroupDropdown").join(",");
       const dealType = document.getElementById("dealLimitType")?.value;
       const limitedQty = parseFloat(document.getElementById("dealLimitQty")?.value);
       const limitedUnit = document.getElementById("dealLimitUnit")?.value;
@@ -601,9 +756,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // --- Validation ---
       if (!dealName) { window.showSaveMessage("กรุณากรอกชื่อดีลจำกัดราคา", true); return; }
-      if (!region) { window.showSaveMessage("กรุณาเลือกภาค", true); return; }
-      if (!province) { window.showSaveMessage("กรุณาเลือกจังหวัด", true); return; }
-      if (!branch) { window.showSaveMessage("กรุณาเลือกสาขา", true); return; }
       if (!category) { window.showSaveMessage("กรุณาเลือกประเภทสินค้า", true); return; }
       if (!brand) { window.showSaveMessage("กรุณาเลือกแบรนด์", true); return; }
       if (!productGroup || productGroup === "-") { window.showSaveMessage("กรุณาเลือกกลุ่มสินค้า", true); return; }
@@ -621,9 +773,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         province: province || null,
         branch: branch || null,
         category: category,
-        brand: brand,
-        product_group: productGroup,
-        sub_group: document.getElementById("dealLimitSub")?.value || null,
+        brand: brand || null,
+        product_group: productGroup || null,
+        sub_group: getSelectedValues("dealLimitSubDropdown").join(",") || null,
         color: document.getElementById("dealLimitColor")?.value || null,
         thickness: document.getElementById("dealLimitThick")?.value || null,
         mold: document.getElementById("dealLimitMold")?.value || null,
@@ -642,6 +794,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       };
 
       // --- แสดง Confirm Modal ---
+      // helper ดึง label จาก checkbox dropdown
+      function getCheckedLabels(dropdownId) {
+        const labels = [...document.querySelectorAll(`#${dropdownId} input.item-checkbox:checked`)]
+          .map(cb => cb.dataset.label || cb.value);
+        return labels.length ? labels.join(", ") : "ทั้งหมด";
+      }
+
       showDealLimitConfirmModal({
         payload,
         supplierNo,
@@ -655,11 +814,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           province: province || "ทั้งหมด",
           branch: branch || "ทั้งหมด",
           category,
-          brand,
-          productGroup,
-          subGroup: document.getElementById("dealLimitSub")?.value || "-",
-          color: document.getElementById("dealLimitColor")?.value || "-",
-          thickness: document.getElementById("dealLimitThick")?.value || "-",
+          brand:        getCheckedLabels("dealLimitBrandDropdown"),
+          productGroup: getCheckedLabels("dealLimitGroupDropdown"),
+          subGroup:     getCheckedLabels("dealLimitSubDropdown"),
+          color: document.getElementById("dealLimitColor")?.value || "ทั้งหมด",
+          thickness: document.getElementById("dealLimitThick")?.value || "ทั้งหมด",
           mold: document.getElementById("dealLimitMold")?.value || "-",
           sku: document.getElementById("dealLimitSku")?.value || "-",
           dealType,

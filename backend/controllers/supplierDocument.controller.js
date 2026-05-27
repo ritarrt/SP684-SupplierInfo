@@ -15,15 +15,18 @@ export async function uploadSupplierDocument(req, res) {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
+    // fix Thai filename encoding (multer reads as latin1, decode back to utf-8)
+    const originalName = Buffer.from(file.originalname, "latin1").toString("utf8");
+
     // 🔥 สร้าง path ให้เปิดผ่าน browser ได้
-    const publicPath = `uploads/supplier_docs/${file.filename}`;
+    const publicPath = `uploads/supplier_docs/${supplierNo}/${file.filename}`;
 
 
     await pool.request()
       .input("supplier_no", sql.NVarChar(20), supplierNo)
-      .input("file_name", sql.NVarChar(255), file.originalname)
+      .input("file_name", sql.NVarChar(255), originalName)
       .input("file_path", sql.NVarChar(500), publicPath)
-      .input("file_type", sql.NVarChar(100), file.mimetype)
+      .input("file_type", sql.NVarChar(255), file.mimetype)
       .input("file_size", sql.Int, file.size)
       .input("description", sql.NVarChar(255), description || null)
       .input("source", sql.NVarChar(50), source || "basic")
@@ -94,7 +97,7 @@ export async function getSupplierDocuments(req, res) {
 
   } catch (err) {
     console.error("❌ getSupplierDocuments error:", err);
-    res.status(500).json({ error: "server error" });
+    res.status(500).json({ error: "server error", detail: err.message });
   }
 }
 

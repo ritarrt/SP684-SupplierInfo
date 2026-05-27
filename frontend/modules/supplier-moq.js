@@ -519,8 +519,8 @@ function renderMoqTable() {
       <td>${r.moq_name || "-"}</td>
 
       <td class="small">
-        ${r.region || "-"} / ${r.branch || "-"}<br>
-        ${r.category || "-"} / ${r.brand || "-"} / ${r.product_group || "-"}
+        ${r.region || "ทั้งหมด"} / ${r.branch || "ทั้งหมด"}<br>
+        ${r.category || "ทั้งหมด"} / ${r.brand || "ทั้งหมด"} / ${r.product_group || "ทั้งหมด"}
       </td>
 
       <td><b>${r.moq_qty ?? "-"} ${r.moq_unit ?? ""}</b></td>
@@ -746,12 +746,12 @@ function showMoqConfirmModal({ payload, supplierNo }) {
             row("ภาค", payload.region || "ทั้งหมด"),
             row("สาขา", payload.branch || "ทั้งหมด"),
             row("สาขาที่ส่ง", payload.delivery_branch || "ทั้งหมด"),
-            row("ประเภทสินค้า", payload.category || "-"),
-            row("แบรนด์", payload.brand || "-"),
-            row("กลุ่มสินค้า", payload.product_group || "-"),
-            row("กลุ่มย่อย", payload.sub_group || "-"),
-            row("สีสินค้า", payload.color || "-"),
-            row("ความหนา", payload.thickness || "-"),
+            row("ประเภทสินค้า", payload.category || "ทั้งหมด"),
+            row("แบรนด์", payload.brand || "ทั้งหมด"),
+            row("กลุ่มสินค้า", payload.product_group || "ทั้งหมด"),
+            row("กลุ่มย่อย", payload.sub_group || "ทั้งหมด"),
+            row("สีสินค้า", payload.color || "ทั้งหมด"),
+            row("ความหนา", payload.thickness || "ทั้งหมด"),
             row("รหัสแม่พิมพ์", payload.mold || "-"),
             row("SKU", payload.sku || "-")
           ].join(""))}

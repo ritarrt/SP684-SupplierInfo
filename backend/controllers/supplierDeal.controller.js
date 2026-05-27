@@ -683,9 +683,6 @@ export const saveSupplierDeal = async (req, res) => {
     // Validate required fields
     const requiredFields = {
       deal_name: 'ชื่อดีลราคา',
-      region: 'ภาค',
-      province: 'จังหวัด',
-      branch: 'สาขา',
       category: 'ประเภทสินค้า',
       brand: 'แบรนด์',
       product_group: 'กลุ่มสินค้า',
@@ -1114,9 +1111,6 @@ export const updateSupplierDeal = async (req, res) => {
     // Validate required fields
     const requiredFields = {
       deal_name: 'ชื่อดีลราคา',
-      region: 'ภาค',
-      province: 'จังหวัด',
-      branch: 'สาขา',
       category: 'ประเภทสินค้า',
       brand: 'แบรนด์',
       product_group: 'กลุ่มสินค้า',

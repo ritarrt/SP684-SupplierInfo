@@ -801,10 +801,10 @@ const filtered = data.filter(item => {
 </td>
 
           <td class="small">
-            <div>${item.region || "-"} / ${item.province || "-"} / ${item.branch || "-"}</div>
-            <div>${item.category || "-"} / ${item.brand_name || "-"}</div>
-            <div>กลุ่ม: ${item.group_name || item.product_group || item.product_group_code || "-"} / ย่อย: ${item.sub_group || item.sub_group_code || "-"}</div>
-            <div>สี: ${item.color || "-"} / หนา: ${item.thickness || "-"}</div>
+            <div>${item.region || "ทั้งหมด"} / ${item.province || "ทั้งหมด"} / ${item.branch || "ทั้งหมด"}</div>
+            <div>${item.category || "-"} / ${item.brand_name || "ทั้งหมด"}</div>
+            <div>กลุ่ม: ${item.group_name || item.product_group || item.product_group_code || "ทั้งหมด"} / ย่อย: ${item.sub_group || item.sub_group_code || "ทั้งหมด"}</div>
+            <div>สี: ${item.color || "ทั้งหมด"} / หนา: ${item.thickness || "ทั้งหมด"}</div>
             <div>Mold: ${item.mold || "-"} / SKU: ${item.sku || "-"}</div>
           </td>
 
@@ -1594,6 +1594,12 @@ window.openCopyTargetModal = function(targetId) {
       document.getElementById("copyTgEnd").value = "";
       document.getElementById("copyTgName").value = `${item.target_name || ""} (คัดลอก)`;
 
+      // ตั้งค่า qty และแสดงหน่วยจากต้นฉบับ (lock หน่วย)
+      const copyQtyEl = document.getElementById("copyTgQty");
+      const copyUnitEl = document.getElementById("copyTgUnitDisplay");
+      if (copyQtyEl) copyQtyEl.value = item.target_qty || "";
+      if (copyUnitEl) copyUnitEl.textContent = item.target_unit || "";
+
       const isSubTarget = !!item.parent_target_ref;
 
       // แสดง summary ของต้นฉบับ
@@ -1677,10 +1683,13 @@ document.getElementById("copyTargetConfirmBtn")
     const newName  = document.getElementById("copyTgName")?.value?.trim();
     const newStart = document.getElementById("copyTgStart")?.value;
     const newEnd   = document.getElementById("copyTgEnd")?.value;
+    const newQty   = document.getElementById("copyTgQty")?.value?.trim();
 
     if (!newName)  return showToast("กรุณากรอกชื่อเป้าหมาย", true, "copyTgName");
     if (!newStart) return showToast("กรุณาเลือกวันที่เริ่มต้น", true, "copyTgStart");
     if (!newEnd)   return showToast("กรุณาเลือกวันที่สิ้นสุด", true, "copyTgEnd");
+    if (!newQty || isNaN(newQty) || Number(newQty) <= 0)
+      return showToast("กรุณากรอกตัวเลขเป้าหมายที่ถูกต้อง", true, "copyTgQty");
     if (new Date(newEnd) < new Date(newStart))
       return showToast("วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น", true, "copyTgEnd");
 
@@ -1715,7 +1724,7 @@ document.getElementById("copyTargetConfirmBtn")
       sku:                 copySourceData.sku  || "",
       benefit_period:      copySourceData.benefit_period,
       target_type:         copySourceData.target_type,
-      target_qty:          copySourceData.target_qty,
+      target_qty:          newQty,
       target_unit:         copySourceData.target_unit,
       start_date:          newStart,
       end_date:            newEnd
