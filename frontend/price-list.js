@@ -828,7 +828,8 @@ function buildDataRows(data) {
       ? new Date(row.createdAt).toLocaleDateString('th-TH', { dateStyle: 'short' })
       : '-';
 
-    const hasNcPurchase = [row.nonCartonBasePrice, row.nonCartonReExVat]
+    const hasNcPurchase = [row.nonCartonBasePrice, row.nonCartonReExVat,
+      row.nonCartonW1, row.nonCartonW2, row.nonCartonR1, row.nonCartonR2, row.nonCartonSdm]
       .some(v => v != null && parseFloat(v) !== 0);
 
     const ncPctCell = (storedPct, priceBefore, priceAfter) => {
@@ -1263,7 +1264,9 @@ async function loadDraftData(page = 1) {
   const summary = document.getElementById('draftSummary');
   const pagination = document.getElementById('draftPagination');
   const branch = document.getElementById('draftFilterBranch')?.value || '';
-  const search = document.getElementById('draftFilterSku')?.value || '';
+  // sanitize: เอาเฉพาะ token แรก (ก่อน tab/space) และ truncate 50 ตัว ป้องกัน paste Excel row
+  const rawSearch = document.getElementById('draftFilterSku')?.value || '';
+  const search = rawSearch.split(/[\t\n\r]/)[0].trim().substring(0, 50);
 
   tbody.innerHTML = `<tr><td colspan="11" class="text-center py-4 text-gray-400 text-sm">กำลังโหลด...</td></tr>`;
 

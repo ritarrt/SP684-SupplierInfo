@@ -1361,16 +1361,20 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
       //   col[14] = O: W2
       //   col[15] = P: R1
       //   col[16] = Q: R2
-      const basePrice      = fv(row[7]);   // H: ราคาตั้งไม่รวมVAT
+      const basePriceRaw   = fv(row[7]);   // H: ราคาตั้งไม่รวมVAT
       const discountPct    = fv(row[8]);   // I: ส่วนลด1 %
-      const discPrice1     = fv(row[9]);   // J: REก่อนVAT1 → discount_price_1
+      const discPrice1Raw  = fv(row[9]);   // J: REก่อนVAT1 → discount_price_1
       const discountPct2   = fv(row[10]);  // K: ส่วนลด2 %
-      const reExVat        = fv(row[11]);  // L: REก่อนVAT2 → discount_price_2 / reExVat
+      const reExVat        = fv(row[11]);  // L: REก่อนVAT2 → discount_price_2
       const sdm            = fv(row[12]);  // M: SDM
       const w1             = fv(row[13]);  // N: W1
       const w2             = fv(row[14]);  // O: W2
       const r1             = fv(row[15]);  // P: R1
       const r2             = fv(row[16]);  // Q: R2
+      // ถ้า REก่อนVAT1 (col J) ว่าง → ใช้ REก่อนVAT2 (col L) เป็น discount_price_1
+      const discPrice1     = discPrice1Raw || reExVat;
+      // ถ้าไม่มีราคาตั้งต้น (col H ว่าง) → ใช้ discPrice1 (ราคาหลังลดที่มี)
+      const basePrice      = basePriceRaw || discPrice1;
 
       if (!sku) continue;
 
@@ -1515,7 +1519,8 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
         req.input(`unit${idx}`,        sql.NVarChar(50),  r.unit || '');
         req.input(`basePrice${idx}`,   sql.Decimal(18,2), r.basePrice   || 0);
         req.input(`discPrice1_${idx}`, sql.Decimal(18,2), r.discPrice1  || 0);
-        req.input(`reExVat${idx}`,     sql.Decimal(18,2), r.reExVat     || 0);
+        // discount_price_2 = reExVat (REก่อนVAT2) ถ้าว่าง fallback เป็น discPrice1 (ราคาสุดท้ายที่มี)
+        req.input(`reExVat${idx}`,     sql.Decimal(18,2), r.reExVat || r.discPrice1 || 0);
         req.input(`w1_${idx}`,         sql.Decimal(18,2), r.w1  || 0);
         req.input(`w2_${idx}`,         sql.Decimal(18,2), r.w2  || 0);
         req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1  || 0);
@@ -1598,7 +1603,8 @@ async function importAccessoriesData(pool, excelBuffer, sheetName, logId = null)
               .input('unit',        sql.NVarChar(50),  r.unit || '')
               .input('basePrice',   sql.Decimal(18,2), r.basePrice   || 0)
               .input('discPrice1',  sql.Decimal(18,2), r.discPrice1  || 0)
-              .input('reExVat',     sql.Decimal(18,2), r.reExVat     || 0)
+              // discount_price_2 = reExVat ถ้าว่าง fallback เป็น discPrice1
+              .input('reExVat',     sql.Decimal(18,2), r.reExVat || r.discPrice1 || 0)
               .input('w1',          sql.Decimal(18,2), r.w1  || 0)
               .input('w2',          sql.Decimal(18,2), r.w2  || 0)
               .input('r1',          sql.Decimal(18,2), r.r1  || 0)
@@ -3064,7 +3070,9 @@ async function previewGlassData(excelBuffer, sheetName) {
 export async function getDraftData(req, res) {
   try {
     const { logId } = req.params;
-    const { page = 1, limit = 50, branch, search } = req.query;
+    const { page = 1, limit = 50, branch } = req.query;
+    // trim และ truncate search ไม่เกิน 100 ตัว ป้องกัน paste Excel row ทั้งแถว
+    const search = req.query.search ? String(req.query.search).trim().substring(0, 100) : '';
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const pool = await getPool();
 
