@@ -1,9 +1,6 @@
 // supplier-deal-limit.js - Module for Deal Limit Tab
 console.log("supplier-deal-limit.js loaded");
 
-import { loadColors, loadThickness } from "./master-helper.js";
-import { loadCoverageToForm, loadGroups, loadSubGroups } from "./coverage-helper.js";
-
 let dealLimitData = [];
 let branchData = [];
 let editingDealLimitId = null;
@@ -178,7 +175,7 @@ function renderDealLimitTable() {
   if (!tbody) return;
   hideLoadingIndicator("dealLimitTableBody");
 
-  const filterValue = document.querySelector("input[name='dealLimitFilter']:checked")?.value;
+  const filterValue = document.querySelector("input[name='dealLimitFilter']:checked")?.value || "active";
 
   let rows = [...dealLimitData];
 
@@ -326,19 +323,27 @@ function openEditDealLimitModal(dealId) {
   document.getElementById("dealLimitName").value = deal.deal_name || '';
   document.getElementById("dealLimitProvider").value = deal.contact_person || '';
   document.getElementById("dealLimitProjectNo").value = deal.project_no || '';
-  document.getElementById("dealLimitType").value = deal.deal_type || '';
+  document.getElementById("dealLimitType").value = deal.deal_type || 'Discount';
   document.getElementById("dealLimitQty").value = deal.limited_qty || '';
   document.getElementById("dealLimitUnit").value = deal.limited_unit || 'ชิ้น';
-  document.getElementById("dealLimitType").value = deal.deal_type || 'Discount';
-  document.getElementById("dealLimitDiscountType").value = deal.limited_type || 'amount';
+  const discountTypeEl = document.getElementById("dealLimitDiscountType");
+  if (discountTypeEl) discountTypeEl.value = deal.limited_type || 'amount';
   document.getElementById("dealLimitDiscount").value = deal.limited_discount_value || '';
   document.getElementById("dealLimitDiscountUnit").value = deal.limited_discount_unit || 'บาท';
   document.getElementById("dealLimitStart").value = convertDateFormat(deal.start_date);
   document.getElementById("dealLimitEnd").value = convertDateFormat(deal.end_date);
   document.getElementById("dealLimitNote").value = deal.note || '';
-  document.getElementById("dealLimitRequirePallet").checked = deal.require_pallet !== false;
+  const palletEl = document.getElementById("dealLimitRequirePallet");
+  if (palletEl) palletEl.checked = deal.require_pallet !== false;
 
   if (deal.category) document.getElementById("dealLimitCat").value = deal.category;
+
+  // sync หน่วยราคาตามประเภทดีลก่อน restore ค่า
+  const typeEl = document.getElementById("dealLimitType");
+  if (typeEl) {
+    const evt = new Event("change");
+    typeEl.dispatchEvent(evt);
+  }
 
   // restore brand/group/sub checkboxes
   setTimeout(() => {
@@ -440,7 +445,8 @@ function cancelDealLimitEdit() {
   if (subTextEl) { subTextEl.textContent = "ทั้งหมด"; subTextEl.style.color = ""; }
   const discountDisplay = document.getElementById("dealLimitDiscountDisplay");
   if (discountDisplay) discountDisplay.textContent = "-";
-  document.getElementById("dealLimitRequirePallet").checked = true;
+  const palletEl = document.getElementById("dealLimitRequirePallet");
+  if (palletEl) palletEl.checked = true;
   
   editingDealLimitId = null;
   
@@ -476,37 +482,38 @@ function renderDealLimitRegionDropdown() {
 // ============================================================
 document.addEventListener("change", (e) => {
   if (e.target.matches("#dealLimitRegionDropdown input")) {
-    const selectedRegions = [...document.querySelectorAll("#dealLimitRegionDropdown input:checked")].map(i => i.value).filter(v => v && v !== "on");
-    
+    const selectedRegions = [...document.querySelectorAll("#dealLimitRegionDropdown input:checked")]
+      .map(i => i.value).filter(v => v && v !== "on");
+
     let provinces = [];
     selectedRegions.forEach(r => {
-      const filtered = branchData.filter(b => b.region === r);
-      provinces = provinces.concat(filtered.map(b => b.province));
+      provinces = provinces.concat(branchData.filter(b => b.region === r).map(b => b.province));
     });
     provinces = [...new Set(provinces)].filter(Boolean);
 
     renderCheckboxList("dealLimitProvinceDropdown", provinces.map(p => ({ value: p, label: p })));
     renderCheckboxList("dealLimitBranchDropdown", []);
+
+    // reset text
+    updateSelectedText("dealLimitRegionDropdown", "dealLimitRegionText");
+    const provText = document.getElementById("dealLimitProvinceText");
+    if (provText) { provText.textContent = "ทั้งหมด"; provText.style.color = ""; }
+    const branchText = document.getElementById("dealLimitBranchText");
+    if (branchText) { branchText.textContent = "ทั้งหมด"; branchText.style.color = ""; }
+
+    // sync select-all
+    const selectAll = document.querySelector('#dealLimitRegionDropdown .select-all-checkbox');
+    const items = document.querySelectorAll('#dealLimitRegionDropdown .item-checkbox');
+    if (selectAll && items.length > 0) selectAll.checked = [...items].every(cb => cb.checked);
   }
 
-  if (e.target.matches("#dealLimitRegionDropdown .item-checkbox") || 
+  if (e.target.matches("#dealLimitRegionDropdown .item-checkbox") ||
       e.target.matches("#dealLimitProvinceDropdown .item-checkbox") ||
       e.target.matches("#dealLimitBranchDropdown .item-checkbox")) {
     const container = e.target.dataset.container;
     const selectAll = document.querySelector(`#${container} .select-all-checkbox`);
     const itemCheckboxes = document.querySelectorAll(`#${container} .item-checkbox`);
-    if (selectAll) {
-      selectAll.checked = itemCheckboxes.length > 0 && [...itemCheckboxes].every(cb => cb.checked);
-    }
-  }
-
-  if (e.target.matches("#dealLimitRegionDropdown input")) {
-    updateSelectedText("dealLimitRegionDropdown", "dealLimitRegionText");
-    const selectAll = document.querySelector('#dealLimitRegionDropdown .select-all-checkbox');
-    const items = document.querySelectorAll('#dealLimitRegionDropdown .item-checkbox');
-    if (selectAll && items.length > 0) {
-      selectAll.checked = [...items].every(cb => cb.checked);
-    }
+    if (selectAll) selectAll.checked = itemCheckboxes.length > 0 && [...itemCheckboxes].every(cb => cb.checked);
   }
 });
 
@@ -515,36 +522,32 @@ document.addEventListener("change", (e) => {
 // ============================================================
 document.addEventListener("change", (e) => {
   if (e.target.matches("#dealLimitProvinceDropdown input")) {
-    const selectedProvinces = [...document.querySelectorAll("#dealLimitProvinceDropdown input:checked")].map(i => i.value).filter(v => v && v !== "on");
-    
+    const selectedProvinces = [...document.querySelectorAll("#dealLimitProvinceDropdown input:checked")]
+      .map(i => i.value).filter(v => v && v !== "on");
+
     let branches = [];
     selectedProvinces.forEach(p => {
-      const filtered = branchData.filter(b => b.province === p);
-      branches = branches.concat(filtered);
+      branches = branches.concat(branchData.filter(b => b.province === p));
     });
 
     renderCheckboxList("dealLimitBranchDropdown",
       branches.map(b => ({ value: b.branchCode, label: `${b.branchCode} - ${b.branchName}` }))
     );
-  }
 
-  if (e.target.matches("#dealLimitProvinceDropdown input")) {
     updateSelectedText("dealLimitProvinceDropdown", "dealLimitProvinceText");
+    const branchText = document.getElementById("dealLimitBranchText");
+    if (branchText) { branchText.textContent = "ทั้งหมด"; branchText.style.color = ""; }
+
     const selectAll = document.querySelector('#dealLimitProvinceDropdown .select-all-checkbox');
     const items = document.querySelectorAll('#dealLimitProvinceDropdown .item-checkbox');
-    if (selectAll && items.length > 0) {
-      selectAll.checked = [...items].every(cb => cb.checked);
-    }
+    if (selectAll && items.length > 0) selectAll.checked = [...items].every(cb => cb.checked);
   }
 
   if (e.target.matches("#dealLimitBranchDropdown input")) {
     updateSelectedText("dealLimitBranchDropdown", "dealLimitBranchText");
     const selectAll = document.querySelector('#dealLimitBranchDropdown .select-all-checkbox');
     const items = document.querySelectorAll('#dealLimitBranchDropdown .item-checkbox');
-    if (selectAll && items.length > 0) {
-      selectAll.checked = [...items].every(cb => cb.checked);
-    }
-    // reload project no datalist ตาม branch ที่เลือก
+    if (selectAll && items.length > 0) selectAll.checked = [...items].every(cb => cb.checked);
     loadDealLimitProjectOptions();
   }
 });
@@ -769,6 +772,54 @@ document.addEventListener("DOMContentLoaded", async () => {
   loadDealLimitList(supplierNo);
   loadDealLimitProjectOptions();
 
+  // sync หน่วยราคาตามประเภทดีล
+  const dealLimitTypeEl = document.getElementById("dealLimitType");
+  const dealLimitDiscountUnitEl = document.getElementById("dealLimitDiscountUnit");
+
+  function syncDiscountUnitByDealType(dealType) {
+    if (!dealLimitDiscountUnitEl) return;
+    const current = dealLimitDiscountUnitEl.value;
+
+    // เปลี่ยน label
+    const labelEl = document.getElementById("dealLimitDiscountLabel");
+    if (labelEl) {
+      labelEl.innerHTML = dealType === "New Price"
+        ? 'ราคาที่ได้รับ (รวม Vat) <span class="text-red-600">*</span>'
+        : 'ส่วนลดที่ได้รับ <span class="text-red-600">*</span>';
+    }
+
+    if (dealType === "New Price") {
+      dealLimitDiscountUnitEl.innerHTML = `
+        <option value="บาท/ชิ้น">บาท/ชิ้น</option>
+        <option value="บาท/ตัน">บาท/ตัน</option>
+        <option value="บาท/เส้น">บาท/เส้น</option>
+        <option value="บาท/แผ่น">บาท/แผ่น</option>
+        <option value="บาท/ตร.ฟุต">บาท/ตร.ฟุต</option>
+      `;
+    } else {
+      dealLimitDiscountUnitEl.innerHTML = `
+        <option value="%">%</option>
+        <option value="บาท/ชิ้น">บาท/ชิ้น</option>
+        <option value="บาท/ตัน">บาท/ตัน</option>
+        <option value="บาท/เส้น">บาท/เส้น</option>
+        <option value="บาท/แผ่น">บาท/แผ่น</option>
+        <option value="บาท/ตร.ฟุต">บาท/ตร.ฟุต</option>
+      `;
+    }
+    // restore ค่าเดิมถ้ายังมีอยู่
+    if ([...dealLimitDiscountUnitEl.options].some(o => o.value === current)) {
+      dealLimitDiscountUnitEl.value = current;
+    }
+  }
+
+  if (dealLimitTypeEl) {
+    dealLimitTypeEl.addEventListener("change", () => {
+      syncDiscountUnitByDealType(dealLimitTypeEl.value);
+    });
+    // ตั้งค่าเริ่มต้น
+    syncDiscountUnitByDealType(dealLimitTypeEl.value);
+  }
+
   const saveBtn = document.getElementById("submitDealLimitBtn");
   if (saveBtn) {
     saveBtn.addEventListener("click", () => {
@@ -782,7 +833,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const dealType = document.getElementById("dealLimitType")?.value;
       const limitedQty = parseFloat(document.getElementById("dealLimitQty")?.value);
       const limitedUnit = document.getElementById("dealLimitUnit")?.value;
-      const limitedType = document.getElementById("dealLimitDiscountType")?.value;
+      const limitedType = "amount"; // fixed — ลบ field ประเภทจำกัดจำนวนออกแล้ว
       const limitedDiscountValue = parseFloat(document.getElementById("dealLimitDiscount")?.value) || 0;
       const limitedDiscountUnit = document.getElementById("dealLimitDiscountUnit")?.value;
       const dealStart = document.getElementById("dealLimitStart")?.value;
@@ -794,9 +845,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!dealName) { window.showSaveMessage("กรุณากรอกชื่อดีลจำกัดราคา", true); return; }
       if (!category) { window.showSaveMessage("กรุณาเลือกประเภทสินค้า", true); return; }
       if (!brand) { window.showSaveMessage("กรุณาเลือกแบรนด์", true); return; }
-      if (!productGroup || productGroup === "-") { window.showSaveMessage("กรุณาเลือกกลุ่มสินค้า", true); return; }
       if (!dealType) { window.showSaveMessage("กรุณาเลือกประเภทดีล", true); return; }
-      if (!limitedType) { window.showSaveMessage("กรุณาเลือกประเภทจำกัดจำนวน", true); return; }
+      if (!limitedDiscountValue || limitedDiscountValue <= 0) { window.showSaveMessage("กรุณากรอกราคาที่ได้รับ", true); return; }
       if (!limitedQty || limitedQty <= 0) { window.showSaveMessage("กรุณากรอกจำนวนจำกัดที่ถูกต้อง", true); return; }
       if (!dealStart || !dealEnd) { window.showSaveMessage("กรุณาเลือกวันที่", true); return; }
       if (dealStart > dealEnd) { window.showSaveMessage("วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด", true); return; }

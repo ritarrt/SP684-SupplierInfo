@@ -2035,39 +2035,27 @@
                   </select>
                 </div>
 
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">ประเภทจำกัดจำนวน <span class="text-red-600">*</span></label>
-                  <select class="form-select" id="dealLimitDiscountType" onchange="updateDealLimitDiscountDisplay()">
-                    <option value="amount">จำนวน (บาท)</option>
-                    <option value="percent">เปอร์เซ็นต์ (%)</option>
-                  </select>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">จำนวนจำกัด <span class="text-red-600">*</span></label>
-                  <input type="number" class="form-control" id="dealLimitQty" placeholder="0" required>
-                </div>
-
-                <div class="col-span-12 md:col-span-2">
-                  <label class="form-label">หน่วย <span class="text-red-600">*</span></label>
-                  <select class="form-select" id="dealLimitUnit">
-                    <option value="ชิ้น">ชิ้น</option>
-                    <option value="บาท">บาท</option>
-                    <option value="ตัน">ตัน</option>
-                    <option value="เส้น">เส้น</option>
-                    <option value="แผ่น">แผ่น</option>
-                    <option value="ตร.ฟ.">ตร.ฟุต</option>
-                  </select>
-                </div>
-
                 <div class="col-span-12 md:col-span-3">
-                  <label class="form-label">ราคาที่ได้รับ</label>
+                  <label class="form-label" id="dealLimitDiscountLabel">ส่วนลดที่ได้รับ <span class="text-red-600">*</span></label>
                   <div class="flex">
                     <input type="number" class="form-control" id="dealLimitDiscount" placeholder="0.00" oninput="updateDealLimitDiscountDisplay()">
                     <select class="form-select" id="dealLimitDiscountUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;" onchange="updateDealLimitDiscountDisplay()">
-                      <option value="บาท">บาท</option>
                       <option value="%">%</option>
-                      <option value="บาท/ชิ้น">บาท/ชิ้น</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="col-span-12 md:col-span-3">
+                  <label class="form-label">จำนวนจำกัด <span class="text-red-600">*</span></label>
+                  <div class="flex">
+                    <input type="number" class="form-control" id="dealLimitQty" placeholder="0" required style="border-radius:4px 0 0 4px;">
+                    <select class="form-select" id="dealLimitUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:5px; padding-right:5px;">
+                      <option value="ชิ้น">ชิ้น</option>
+                      <option value="บาท">บาท</option>
+                      <option value="ตัน">ตัน</option>
+                      <option value="เส้น">เส้น</option>
+                      <option value="แผ่น">แผ่น</option>
+                      <option value="ตร.ฟ.">ตร.ฟุต</option>
                     </select>
                   </div>
                 </div>
