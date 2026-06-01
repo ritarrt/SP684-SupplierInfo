@@ -15,11 +15,11 @@ function collectSpecialTerms() {
     paymentMethods: Array.from(
       document.querySelectorAll("#paymentMethodContainer .payment-row")
     ).map(row => ({
-      method: row.querySelector(".payment-method-select")?.value || null,
-      bank: row.querySelector(".bank-input")?.value || null,
-      account: row.querySelector(".account-input")?.value || null,
+      method:      row.querySelector(".payment-method-select")?.value || null,
+      swiftCode:   row.querySelector(".swift-code-input")?.value || null,
+      account:     row.querySelector(".account-input")?.value || null,
       accountName: row.querySelector(".account-name-input")?.value || null
-    })),
+    })).filter(pm => pm.swiftCode || pm.account || pm.method),
 
     claim: {
       period: document.getElementById("spClaimPeriod")?.value || null,
@@ -107,16 +107,48 @@ async function loadSpecialTermsCurrent(supplierNo) {
 
   if (!res.ok) {
     console.warn("ไม่พบเงื่อนไขพิเศษ current");
+    prefillBankFromSupplier();
     return;
   }
 
   const data = await res.json();
-  if (!data || !data.length) return;
+  if (!data || !data.length) {
+    prefillBankFromSupplier();
+    return;
+  }
 
   const payload = safeParse(data[0].PayloadJson);
-  if (!payload?.terms) return;
+  if (!payload?.terms) {
+    prefillBankFromSupplier();
+    return;
+  }
 
   applySpecialTermsToForm(payload.terms);
+  // หลัง apply แล้ว ถ้าช่องยังว่างให้ใส่จาก DB
+  prefillBankFromSupplier();
+}
+
+function prefillBankFromSupplier() {
+  const container = document.getElementById("paymentMethodContainer");
+  if (!container) return;
+  const firstRow = container.querySelector(".payment-row");
+  if (!firstRow) return;
+
+  const methodEl = firstRow.querySelector(".payment-method-select");
+  const swiftEl   = firstRow.querySelector(".swift-code-input");
+  const accountEl = firstRow.querySelector(".account-input");
+  const nameEl    = firstRow.querySelector(".account-name-input");
+
+  if (swiftEl   && !swiftEl.value)   swiftEl.value   = window.__supplierSwiftCode   || "";
+  if (accountEl && !accountEl.value) accountEl.value = window.__supplierBankAccount || "";
+  if (nameEl    && !nameEl.value)    nameEl.value    = window.__supplierBankName    || "-";
+
+  // ถ้า method ยังว่าง แต่มีธนาคารและเลขบัญชี → โอนเงิน
+  if (methodEl && !methodEl.value) {
+    const hasBank    = swiftEl?.value;
+    const hasAccount = accountEl?.value;
+    if (hasBank && hasAccount) methodEl.value = "transfer";
+  }
 }
 
 function safeParse(json) {
@@ -184,22 +216,28 @@ Array.from(container.querySelectorAll(".payment-row"))
   .slice(1)
   .forEach(row => row.remove());
 
-// 2. ถ้าไม่มีข้อมูล → เคลียร์ template
+// 2. ถ้าไม่มีข้อมูลใน JSON → pre-fill จาก supplier DB แทน
 if (!paymentMethods.length) {
-  template.querySelector(".payment-method-select").value = "";
-  template.querySelector(".bank-input").value = "";
-  template.querySelector(".account-input").value = "";
-  template.querySelector(".account-name-input").value = "";
+  const swiftEl = template.querySelector(".swift-code-input");
+  if (swiftEl) swiftEl.value = window.__supplierSwiftCode || "";
+  template.querySelector(".account-input").value = window.__supplierBankAccount || "";
+  template.querySelector(".account-name-input").value = window.__supplierBankName || "";
   return;
 }
 
 // 3. ใส่ข้อมูลแถวแรกลง template
 const first = paymentMethods[0];
-template.querySelector(".payment-method-select").value = first.method || "";
-template.querySelector(".bank-input").value = first.bank || "";
+// ถ้า method เป็น null แต่มีธนาคารและเลขบัญชี → นับเป็นโอนเงิน
+const resolvedMethod = first.method || ((first.swiftCode || first.bank) && first.account ? "transfer" : "");
+template.querySelector(".payment-method-select").value = resolvedMethod;
+const swiftEl = template.querySelector(".swift-code-input");
+// รองรับทั้ง swiftCode (ใหม่) และ bank (เก่า)
+if (swiftEl) swiftEl.value = first.swiftCode || first.bank || "";
 template.querySelector(".account-input").value = first.account || "";
-template.querySelector(".account-name-input").value =
-  first.accountName || "";
+const accountNameEl = template.querySelector(".account-name-input");
+if (accountNameEl) {
+  accountNameEl.value = first.accountName || window.__supplierBankName || "";
+}
 
 // 4. แถวถัดไป clone จาก template
 paymentMethods.slice(1).forEach(pm => {
@@ -220,8 +258,12 @@ function addPaymentMethodRow(data = {}) {
   const row = template.cloneNode(true);
 
   // ใส่ค่า
-  row.querySelector(".payment-method-select").value = data.method || "";
-  row.querySelector(".bank-input").value = data.bank || "";
+  // ถ้า method เป็น null แต่มีธนาคารและเลขบัญชี → นับเป็นโอนเงิน
+  const resolvedMethod = data.method || ((data.swiftCode || data.bank) && data.account ? "transfer" : "");
+  row.querySelector(".payment-method-select").value = resolvedMethod;
+  const swiftEl = row.querySelector(".swift-code-input");
+  // รองรับทั้ง swiftCode (ใหม่) และ bank (เก่า)
+  if (swiftEl) swiftEl.value = data.swiftCode || data.bank || "";
   row.querySelector(".account-input").value = data.account || "";
   row.querySelector(".account-name-input").value = data.accountName || "";
 

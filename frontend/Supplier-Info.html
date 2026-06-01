@@ -894,9 +894,18 @@
   <!-- 🔴 container สำคัญมาก -->
   <div id="paymentMethodContainer" class="space-y-2 mt-3">
 
+    <!-- Header labels -->
+    <div class="grid grid-cols-12 gap-2 items-center px-1" style="font-size:12px;font-weight:600;color:#6b7280;">
+      <div class="col-span-12 md:col-span-2">วิธีการชำระเงิน</div>
+      <div class="col-span-12 md:col-span-2">ธนาคาร (Swift Code)</div>
+      <div class="col-span-12 md:col-span-4">เลขบัญชี</div>
+      <div class="col-span-12 md:col-span-3">ชื่อบัญชี</div>
+      <div class="col-span-12 md:col-span-1"></div>
+    </div>
+
     <!-- แถวแรก (template) -->
     <div class="payment-row grid grid-cols-12 gap-2 items-center">
-      <div class="col-span-12 md:col-span-3">
+      <div class="col-span-12 md:col-span-2">
         <select class="form-select payment-method-select">
           <option value="">ทั้งหมด</option>
           <option value="transfer">โอนเงิน</option>
@@ -906,36 +915,36 @@
         </select>
       </div>
 
-      <div class="col-span-12 md:col-span-3">
-        <input
-          type="text"
-          class="form-control bank-input"
-          placeholder="เช่น SCB / KBank"
-        />
-      </div>
-
-      <div class="col-span-12 md:col-span-3">
-        <input
-          type="text"
-          class="form-control account-input"
-          placeholder="xxx-x-xxxxx-x"
-        />
-      </div>
-
       <div class="col-span-12 md:col-span-2">
-        <input
-          type="text"
-          class="form-control account-name-input"
-          placeholder="ชื่อบัญชี"
-        />
+        <select class="form-select swift-code-input">
+          <option value="">- เลือกธนาคาร -</option>
+          <option value="BBL">BBL - กรุงเทพ</option>
+          <option value="KBANK">KBANK - กสิกรไทย</option>
+          <option value="SCB">SCB - ไทยพาณิชย์</option>
+          <option value="KTB">KTB - กรุงไทย</option>
+          <option value="BAY">BAY - กรุงศรีอยุธยา</option>
+          <option value="TTB">TTB - ทหารไทยธนชาต</option>
+          <option value="TISCO">TISCO - ทิสโก้</option>
+          <option value="LHBANK">LHBANK - แลนด์ แอนด์ เฮ้าส์</option>
+          <option value="CIMBT">CIMBT - ซีไอเอ็มบี ไทย</option>
+          <option value="UOBT">UOBT - ยูโอบี</option>
+          <option value="GSB">GSB - ออมสิน</option>
+          <option value="BAAC">BAAC - ธ.ก.ส.</option>
+          <option value="GHB">GHB - อาคารสงเคราะห์</option>
+          <option value="OTHER">อื่นๆ</option>
+        </select>
+      </div>
+
+      <div class="col-span-12 md:col-span-4">
+        <input type="text" class="form-control account-input" placeholder="xxx-x-xxxxx-x" />
+      </div>
+
+      <div class="col-span-12 md:col-span-3">
+        <input type="text" class="form-control account-name-input" placeholder="ชื่อบัญชี" />
       </div>
 
       <div class="col-span-12 md:col-span-1 text-center">
-        <button
-          type="button"
-          class="btn btn-outline-danger btn-sm"
-          onclick="removePaymentRow(this)"
-        >
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removePaymentRow(this)">
           <i class="bi bi-x"></i>
         </button>
       </div>

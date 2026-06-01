@@ -54,8 +54,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // ===============================
   // LOAD MAIN SECTIONS
   // ===============================
-  loadSupplierBasicInfo(supplierNo);
-  loadSpecialTermsCurrent(supplierNo);
+  loadSupplierBasicInfo(supplierNo).then(() => {
+    loadSpecialTermsCurrent(supplierNo);
+  });
 
 
   // ⭐ รอ auth พร้อมก่อนโหลด coverage (ต้องรู้ allowedCategories)
@@ -202,6 +203,27 @@ function renderSupplierName(supplier) {
   // country
   const countryEl = document.getElementById("countryCode");
   if (countryEl) countryEl.value = supplier.countryCode || "";
+
+  // pre-fill bank info ลงใน payment row แรก (ถ้ายังว่างอยู่)
+  // เก็บไว้ใน window เผื่อ special terms โหลดทีหลังแล้วทับ
+  window.__supplierBankName    = supplier.bankName || "";
+  window.__supplierBankAccount = supplier.bankAccountNo || "";
+  window.__supplierSwiftCode   = supplier.swiftCode || "";
+
+  if (supplier.bankAccountNo || supplier.swiftCode || supplier.bankName) {
+    const container = document.getElementById("paymentMethodContainer");
+    if (container) {
+      const firstRow = container.querySelector(".payment-row");
+      if (firstRow) {
+        const accountInput     = firstRow.querySelector(".account-input");
+        const swiftInput       = firstRow.querySelector(".swift-code-input");
+        const accountNameInput = firstRow.querySelector(".account-name-input");
+        if (accountInput     && !accountInput.value)     accountInput.value     = supplier.bankAccountNo || "";
+        if (swiftInput       && !swiftInput.value)       swiftInput.value       = supplier.swiftCode || "";
+        if (accountNameInput && !accountNameInput.value) accountNameInput.value = supplier.bankName || "";
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------
@@ -244,7 +266,7 @@ function addPaymentRow() {
   const wrapper = document.createElement("div");
   wrapper.innerHTML = `
     <div class="payment-row grid grid-cols-12 gap-2 items-center">
-      <div class="col-span-12 md:col-span-3">
+      <div class="col-span-12 md:col-span-2">
         <select class="form-select payment-method-select">
           <option value="">ทั้งหมด</option>
           <option value="transfer">โอนเงิน</option>
@@ -254,36 +276,36 @@ function addPaymentRow() {
         </select>
       </div>
 
-      <div class="col-span-12 md:col-span-3">
-        <input
-          type="text"
-          class="form-control bank-input"
-          placeholder="เช่น SCB / KBank"
-        />
-      </div>
-
-      <div class="col-span-12 md:col-span-3">
-        <input
-          type="text"
-          class="form-control account-input"
-          placeholder="xxx-x-xxxxx-x"
-        />
-      </div>
-
       <div class="col-span-12 md:col-span-2">
-        <input
-          type="text"
-          class="form-control account-name-input"
-          placeholder="ชื่อบัญชี"
-        />
+        <select class="form-select swift-code-input">
+          <option value="">- เลือกธนาคาร -</option>
+          <option value="BBL">BBL - กรุงเทพ</option>
+          <option value="KBANK">KBANK - กสิกรไทย</option>
+          <option value="SCB">SCB - ไทยพาณิชย์</option>
+          <option value="KTB">KTB - กรุงไทย</option>
+          <option value="BAY">BAY - กรุงศรีอยุธยา</option>
+          <option value="TTB">TTB - ทหารไทยธนชาต</option>
+          <option value="TISCO">TISCO - ทิสโก้</option>
+          <option value="LHBANK">LHBANK - แลนด์ แอนด์ เฮ้าส์</option>
+          <option value="CIMBT">CIMBT - ซีไอเอ็มบี ไทย</option>
+          <option value="UOBT">UOBT - ยูโอบี</option>
+          <option value="GSB">GSB - ออมสิน</option>
+          <option value="BAAC">BAAC - ธ.ก.ส.</option>
+          <option value="GHB">GHB - อาคารสงเคราะห์</option>
+          <option value="OTHER">อื่นๆ</option>
+        </select>
+      </div>
+
+      <div class="col-span-12 md:col-span-4">
+        <input type="text" class="form-control account-input" placeholder="xxx-x-xxxxx-x" />
+      </div>
+
+      <div class="col-span-12 md:col-span-3">
+        <input type="text" class="form-control account-name-input" placeholder="ชื่อบัญชี" />
       </div>
 
       <div class="col-span-12 md:col-span-1 text-center">
-        <button
-          type="button"
-          class="btn btn-outline-danger btn-sm"
-          onclick="removePaymentRow(this)"
-        >
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removePaymentRow(this)">
           <i class="bi bi-x"></i>
         </button>
       </div>

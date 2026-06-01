@@ -251,7 +251,7 @@ function renderDealLimitTable() {
         <div class="fw-bold">${r.deal_ref || '-'}</div>
         <div class="small text-muted">${r.deal_name || '-'}</div>
         ${r.project_no ? `<div class="small">Project: ${r.project_no}</div>` : ''}
-        <div class="small text-muted">${r.contact_person || '-'}</div>
+        ${r.contact_person ? `<div class="small text-muted">${r.contact_person}</div>` : ''}
       </td>
       <td class="small">
         <div><strong>${r.region || 'ทั้งหมด'} / ${r.province || 'ทั้งหมด'} / ${getBranchName(r.branch) || 'ทั้งหมด'}</strong></div>
@@ -279,6 +279,13 @@ function renderDealLimitTable() {
         <div>เริ่ม: ${formatThaiDate(r.start_date)}</div>
         <div>สิ้นสุด: ${formatThaiDate(r.end_date)}</div>
         <div class="text-muted">${formatThaiDateTime(r.updated_at || r.created_at)}</div>
+        <div style="margin-top:6px;">
+          <button class="copy-deal-btn"
+            data-deal-id="${r.deal_id}"
+            style="padding:4px 10px;border:1px solid #7c3aed;border-radius:6px;background:#fff;color:#7c3aed;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+            <i class="bi bi-copy"></i> คัดลอก
+          </button>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
@@ -287,7 +294,11 @@ function renderDealLimitTable() {
   tbody.querySelectorAll('button[data-deal-id]').forEach(btn => {
     btn.addEventListener('click', function() {
       const dealId = this.dataset.dealId;
-      openEditDealLimitModal(dealId);
+      if (this.classList.contains('copy-deal-btn')) {
+        openCopyDealLimitModal(dealId);
+      } else {
+        openEditDealLimitModal(dealId);
+      }
     });
   });
 
@@ -585,6 +596,173 @@ async function loadDealLimitProviderOptions(supplierNo) {
   } catch (err) {
     console.error("❌ Load contacts error:", err);
   }
+}
+
+function openCopyDealLimitModal(dealId) {
+  const deal = dealLimitData.find(d => d.deal_id == dealId);
+  if (!deal) { window.showSaveMessage("ไม่พบดีลที่ต้องการ", true); return; }
+
+  // ลบ modal เก่าถ้ามี
+  document.getElementById("copyDealLimitModal")?.remove();
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const modal = document.createElement("div");
+  modal.id = "copyDealLimitModal";
+  modal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);backdrop-filter:blur(2px);";
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);width:100%;max-width:480px;overflow:hidden;">
+
+      <!-- Header -->
+      <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#f8fafc;display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;background:#7c3aed;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="bi bi-copy" style="color:#fff;font-size:16px;"></i>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:15px;">คัดลอกดีลจำกัดราคา</div>
+          <div style="font-size:12px;color:#6b7280;">กำหนดวันที่ใหม่สำหรับดีลที่คัดลอก</div>
+        </div>
+        <button onclick="document.getElementById('copyDealLimitModal').remove()"
+          style="margin-left:auto;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:20px;">✕</button>
+      </div>
+
+      <!-- Body -->
+      <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+
+        <!-- ข้อมูลต้นฉบับ -->
+        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-size:13px;">
+          <div style="font-weight:600;color:#374151;margin-bottom:4px;">ต้นฉบับ: ${deal.deal_ref || '-'}</div>
+          <div style="color:#6b7280;">${deal.deal_name || '-'}</div>
+          <div style="color:#6b7280;margin-top:2px;">
+            จำกัด: <strong style="color:#7c3aed;">${Number(deal.limited_qty || 0).toLocaleString()} ${deal.limited_unit || ''}</strong>
+            &nbsp;|&nbsp; ช่วงเดิม: ${deal.start_date || '-'} – ${deal.end_date || '-'}
+          </div>
+        </div>
+
+        <!-- ชื่อดีลใหม่ -->
+        <div>
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">ชื่อดีล <span style="color:#ef4444;">*</span></label>
+          <input type="text" id="copyDealLimitName" class="form-control"
+            value="${(deal.deal_name || '') + ' (คัดลอก)'}" placeholder="ระบุชื่อดีล">
+        </div>
+
+        <!-- วันที่ -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">วันที่เริ่มต้น <span style="color:#ef4444;">*</span></label>
+            <input type="date" id="copyDealLimitStart" class="form-control" value="${today}" min="2016-01-01" max="2046-12-31">
+          </div>
+          <div>
+            <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">วันที่สิ้นสุด <span style="color:#ef4444;">*</span></label>
+            <input type="date" id="copyDealLimitEnd" class="form-control" min="2016-01-01" max="2046-12-31">
+          </div>
+        </div>
+
+        <!-- จำนวนจำกัด -->
+        <div>
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">จำนวนจำกัด <span style="color:#ef4444;">*</span></label>
+          <div class="flex">
+            <input type="number" id="copyDealLimitQty" class="form-control"
+              value="${deal.limited_qty || ''}" placeholder="0"
+              style="border-radius:4px 0 0 4px;">
+            <span style="display:flex;align-items:center;padding:0 12px;background:#f8f9fa;border:1px solid #ced4da;border-left:0;border-radius:0 4px 4px 0;color:#6b7280;white-space:nowrap;font-size:14px;">
+              ${deal.limited_unit || 'ชิ้น'}
+            </span>
+          </div>
+        </div>
+
+        <p style="font-size:12px;color:#9ca3af;margin:0;">
+          <i class="bi bi-info-circle"></i>
+          ข้อมูลอื่นทั้งหมด (Scope, ราคา, หน่วย ฯลฯ) จะถูกคัดลอกมาจากต้นฉบับ
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:14px 20px;border-top:1px solid #e5e7eb;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="document.getElementById('copyDealLimitModal').remove()"
+          style="padding:8px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:14px;cursor:pointer;font-family:inherit;">
+          ยกเลิก
+        </button>
+        <button id="copyDealLimitConfirmBtn"
+          style="padding:8px 24px;border:none;border-radius:6px;background:#7c3aed;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;">
+          <i class="bi bi-copy"></i> ยืนยันคัดลอก
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // ปิดเมื่อคลิก backdrop
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.remove();
+  });
+
+  // confirm
+  document.getElementById("copyDealLimitConfirmBtn").addEventListener("click", async () => {
+    const newName  = document.getElementById("copyDealLimitName")?.value?.trim();
+    const newStart = document.getElementById("copyDealLimitStart")?.value;
+    const newEnd   = document.getElementById("copyDealLimitEnd")?.value;
+    const newQty   = document.getElementById("copyDealLimitQty")?.value?.trim();
+
+    if (!newName)  { window.showSaveMessage("กรุณากรอกชื่อดีล", true); return; }
+    if (!newStart) { window.showSaveMessage("กรุณาเลือกวันที่เริ่มต้น", true); return; }
+    if (!newEnd)   { window.showSaveMessage("กรุณาเลือกวันที่สิ้นสุด", true); return; }
+    if (!newQty || isNaN(newQty) || Number(newQty) <= 0) { window.showSaveMessage("กรุณากรอกจำนวนจำกัดที่ถูกต้อง", true); return; }
+    if (new Date(newEnd) < new Date(newStart)) { window.showSaveMessage("วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น", true); return; }
+
+    const btn = document.getElementById("copyDealLimitConfirmBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin" style="width:14px;height:14px;display:inline;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> กำลังบันทึก...`;
+
+    const payload = {
+      deal_name:             newName,
+      contact_person:        deal.contact_person || null,
+      project_no:            deal.project_no || null,
+      region:                deal.region || null,
+      province:              deal.province || null,
+      branch:                deal.branch || null,
+      category:              deal.category,
+      brand:                 deal.brand || null,
+      product_group:         deal.product_group || null,
+      sub_group:             deal.sub_group || null,
+      color:                 deal.color || null,
+      thickness:             deal.thickness || null,
+      mold:                  deal.mold || null,
+      sku:                   deal.sku || null,
+      deal_type:             deal.deal_type,
+      condition_mode:        "limited",
+      limited_qty:           Number(newQty),
+      limited_unit:          deal.limited_unit,
+      limited_type:          deal.limited_type || "amount",
+      limited_discount_value: deal.limited_discount_value,
+      limited_discount_unit: deal.limited_discount_unit,
+      start_date:            newStart,
+      end_date:              newEnd,
+      note:                  deal.note || null,
+      require_pallet:        deal.require_pallet !== false
+    };
+
+    try {
+      const res = await fetch(`${window.API_BASE}/api/suppliers/${window.supplierNo}/deals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+      modal.remove();
+      if (result.success || result.deal_id) {
+        window.showSaveMessage("คัดลอกดีลสำเร็จ");
+        loadDealLimitList(window.supplierNo);
+      } else {
+        window.showSaveMessage(result.error || "คัดลอกไม่สำเร็จ", true);
+      }
+    } catch (err) {
+      console.error("Copy deal limit error:", err);
+      modal.remove();
+      window.showSaveMessage("เกิดข้อผิดพลาด กรุณาลองใหม่", true);
+    }
+  });
 }
 
 async function loadDealLimitProjectOptions() {

@@ -80,6 +80,9 @@ export async function getSupplierByNo(req, res) {
     payment_terms_code AS paymentTermsCode,
     purchaser_code AS purchaserCode,
     country_code AS countryCode,
+    bank_name AS bankName,
+    bank_account_no AS bankAccountNo,
+    swift_code AS swiftCode,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM suppliers
