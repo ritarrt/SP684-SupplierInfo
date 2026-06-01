@@ -177,6 +177,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       loadThickness(category, "thickDropdown");
       loadGroups(category, "groupDropdown");
       loadSubGroups(category, "subDropdown");
+      // reload brand ตาม category ที่เลือก
+      if (window.COVERAGE_DATA) {
+        const seen = new Set();
+        const brandItems = window.COVERAGE_DATA
+          .filter(d => d.category === category)
+          .filter(d => {
+            if (!d.brand_no || seen.has(d.brand_no)) return false;
+            seen.add(d.brand_no);
+            return true;
+          })
+          .map(d => ({ value: d.brand_no, label: d.brand_name }));
+        renderCheckboxDropdown("brandDropdown", brandItems, "brandText");
+      }
     });
   }
 

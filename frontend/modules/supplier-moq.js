@@ -92,12 +92,14 @@ function loadBrands(category, selectId) {
 
   select.innerHTML = `<option value="">ทั้งหมด</option>`;
 
+  if (!category) return; // ต้องเลือก category ก่อน
+
   const data = window.COVERAGE_DATA || [];
 
   const seen = new Set();
 
   data
-    .filter(x => !category || x.category === category)
+    .filter(x => x.category === category)
     .forEach(d => {
 
       if (!d.brand_no || !d.brand_name) return;
@@ -254,6 +256,19 @@ async function initProductFilter(prefix, supplierNo) {
     loadSubGroups(catEl.value, `${prefix}SubDropdown`);
     loadColors(catEl.value, `${prefix}ColorDropdown`);
     loadThickness(catEl.value, `${prefix}ThickDropdown`);
+    // reload brand ตาม category ที่เลือก
+    if (window.COVERAGE_DATA) {
+      const seen = new Set();
+      const brandItems = window.COVERAGE_DATA
+        .filter(d => d.category === catEl.value)
+        .filter(d => {
+          if (!d.brand_no || seen.has(d.brand_no)) return false;
+          seen.add(d.brand_no);
+          return true;
+        })
+        .map(d => ({ value: d.brand_no, label: d.brand_name }));
+      renderCheckboxDropdown(`${prefix}BrandDropdown`, brandItems, `${prefix}BrandText`);
+    }
   });
 }
 

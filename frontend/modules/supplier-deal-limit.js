@@ -823,41 +823,60 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("❌ Load coverage error:", err);
     }
 
-    // populate category
+    // populate category — กรองเฉพาะ category ที่ PM/Admin มีสิทธิ์
     const catSelect = document.getElementById("dealLimitCat");
     if (catSelect) {
       catSelect.innerHTML = '<option value="" disabled selected style="color:#9ca3af;">กรุณาเลือกประเภทสินค้า</option>';
       const seenCat = new Set();
+      const allowedCats = window.__allowedCategories ?? [];
       coverageData.forEach(d => {
         if (!d.category || seenCat.has(d.category)) return;
+        // ถ้ามี allowedCats ให้กรองเฉพาะที่มีสิทธิ์
+        if (allowedCats.length > 0) {
+          const itemCat = d.category.toLowerCase().replace(/[-\s]/g, "");
+          const allowed = allowedCats.some(c =>
+            itemCat === c.toLowerCase().replace(/[-\s]/g, "") ||
+            itemCat.includes(c.toLowerCase().replace(/[-\s]/g, "")) ||
+            c.toLowerCase().replace(/[-\s]/g, "").includes(itemCat)
+          );
+          if (!allowed) return;
+        }
         seenCat.add(d.category);
         const opt = document.createElement("option");
         opt.value = d.category;
         opt.textContent = d.category_name || d.category;
         catSelect.appendChild(opt);
       });
+      // ถ้าเหลือ option เดียว ให้ auto-select เลย
+      if (catSelect.options.length === 2) { // 1 placeholder + 1 option
+        catSelect.selectedIndex = 1;
+        catSelect.dispatchEvent(new Event("change"));
+      }
     }
 
     function getBrandItems(cat) {
+      if (!cat) return []; // ต้องเลือก category ก่อนเสมอ
       const seen = new Set();
       return coverageData
-        .filter(d => !cat || d.category === cat)
+        .filter(d => d.category === cat)
         .filter(d => { if (!d.brand_no || seen.has(d.brand_no)) return false; seen.add(d.brand_no); return true; })
         .map(d => ({ value: d.brand_no, label: d.brand_name }));
     }
 
     function getGroupItems(cat) {
+      if (!cat) return []; // ต้องเลือก category ก่อนเสมอ
       const seen = new Set();
       return coverageData
-        .filter(d => !cat || d.category === cat)
+        .filter(d => d.category === cat)
         .filter(d => { if (!d.group_code || seen.has(d.group_code)) return false; seen.add(d.group_code); return true; })
         .map(d => ({ value: d.group_code, label: d.group_name }));
     }
 
     function getSubItems(cat) {
+      if (!cat) return []; // ต้องเลือก category ก่อนเสมอ
       const seen = new Set();
       return coverageData
-        .filter(d => !cat || d.category === cat)
+        .filter(d => d.category === cat)
         .filter(d => { if (!d.subGroup || seen.has(d.subGroup)) return false; seen.add(d.subGroup); return true; })
         .map(d => ({ value: d.subGroup, label: d.sub_group_name }));
     }

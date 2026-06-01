@@ -11,42 +11,52 @@ export async function loadCoverageToForm(supplierNo, mapping) {
 
   populateCategory(mapping.category, COVERAGE_DATA);
 
-  // brand — ถ้า mapping ชี้ไปที่ checkbox dropdown ให้ใช้ renderCheckboxDropdown
+  // ดึง category ที่เลือกอยู่ตอนนี้ (ถ้ามี) เพื่อกรอง brand/group/sub
+  const catEl = mapping.category ? document.getElementById(mapping.category) : null;
+  const selectedCat = catEl?.value || "";
+
+  // brand — กรองตาม category ที่เลือก
   if (mapping.brand) {
     const brandItems = [];
     const seen = new Set();
-    COVERAGE_DATA.forEach(d => {
-      if (!d.brand_no || !d.brand_name) return;
-      if (seen.has(d.brand_no)) return;
-      seen.add(d.brand_no);
-      brandItems.push({ value: d.brand_no, label: d.brand_name });
-    });
+    COVERAGE_DATA
+      .filter(d => !selectedCat || d.category === selectedCat)
+      .forEach(d => {
+        if (!d.brand_no || !d.brand_name) return;
+        if (seen.has(d.brand_no)) return;
+        seen.add(d.brand_no);
+        brandItems.push({ value: d.brand_no, label: d.brand_name });
+      });
     renderCheckboxDropdown(mapping.brand + "Dropdown", brandItems, mapping.brand + "Text");
   }
 
-  // group
+  // group — กรองตาม category ที่เลือก
   if (mapping.group) {
     const groupItems = [];
     const seen = new Set();
-    COVERAGE_DATA.forEach(d => {
-      if (!d.group_code || !d.group_name) return;
-      if (seen.has(d.group_code)) return;
-      seen.add(d.group_code);
-      groupItems.push({ value: d.group_code, label: d.group_name });
-    });
+    COVERAGE_DATA
+      .filter(d => !selectedCat || d.category === selectedCat)
+      .forEach(d => {
+        if (!d.group_code || !d.group_name) return;
+        if (seen.has(d.group_code)) return;
+        seen.add(d.group_code);
+        groupItems.push({ value: d.group_code, label: d.group_name });
+      });
     renderCheckboxDropdown(mapping.group + "Dropdown", groupItems, mapping.group + "Text");
   }
 
-  // sub
+  // sub — กรองตาม category ที่เลือก
   if (mapping.sub) {
     const subItems = [];
     const seen = new Set();
-    COVERAGE_DATA.forEach(d => {
-      if (!d.subGroup || !d.sub_group_name) return;
-      if (seen.has(d.subGroup)) return;
-      seen.add(d.subGroup);
-      subItems.push({ value: d.subGroup, label: d.sub_group_name });
-    });
+    COVERAGE_DATA
+      .filter(d => !selectedCat || d.category === selectedCat)
+      .forEach(d => {
+        if (!d.subGroup || !d.sub_group_name) return;
+        if (seen.has(d.subGroup)) return;
+        seen.add(d.subGroup);
+        subItems.push({ value: d.subGroup, label: d.sub_group_name });
+      });
     renderCheckboxDropdown(mapping.sub + "Dropdown", subItems, mapping.sub + "Text");
   }
 
@@ -158,13 +168,31 @@ function populateCategory(selectId, dataArray) {
     }
   });
 
-  unique.forEach(item => {
+  // กรองเฉพาะ category ที่ PM/Admin มีสิทธิ์ (ถ้า allowedCats ว่าง = ดูได้ทั้งหมด)
+  const allowedCats = window.__allowedCategories ?? [];
+  const filtered = allowedCats.length > 0
+    ? unique.filter(item =>
+        allowedCats.some(c =>
+          item.value.toLowerCase().replace(/[-\s]/g, "") === c.toLowerCase().replace(/[-\s]/g, "") ||
+          item.value.toLowerCase().replace(/[-\s]/g, "").includes(c.toLowerCase().replace(/[-\s]/g, "")) ||
+          c.toLowerCase().replace(/[-\s]/g, "").includes(item.value.toLowerCase().replace(/[-\s]/g, ""))
+        )
+      )
+    : unique;
+
+  filtered.forEach(item => {
     select.innerHTML += `
       <option value="${item.value}">
         ${item.label}
       </option>
     `;
   });
+
+  // ถ้าเหลือ option เดียว ให้ auto-select เลย
+  if (filtered.length === 1) {
+    select.value = filtered[0].value;
+    select.dispatchEvent(new Event("change"));
+  }
 
   // sync สีเมื่อ value เปลี่ยน
   const syncColor = () => {
