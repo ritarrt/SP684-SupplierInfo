@@ -83,6 +83,7 @@ export async function getSupplierByNo(req, res) {
     bank_name AS bankName,
     bank_account_no AS bankAccountNo,
     swift_code AS swiftCode,
+    home_page AS homePage,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM suppliers

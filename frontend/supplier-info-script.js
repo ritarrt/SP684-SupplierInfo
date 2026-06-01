@@ -204,6 +204,10 @@ function renderSupplierName(supplier) {
   const countryEl = document.getElementById("countryCode");
   if (countryEl) countryEl.value = supplier.countryCode || "";
 
+  // home page
+  const homePageEl = document.getElementById("homePage");
+  if (homePageEl) homePageEl.value = supplier.homePage || "-";
+
   // pre-fill bank info ลงใน payment row แรก (ถ้ายังว่างอยู่)
   // เก็บไว้ใน window เผื่อ special terms โหลดทีหลังแล้วทับ
   window.__supplierBankName    = supplier.bankName || "";
