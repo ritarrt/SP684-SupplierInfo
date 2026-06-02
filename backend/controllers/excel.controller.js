@@ -2098,11 +2098,12 @@ export async function getImportData(req, res) {
               SELECT imported_at FROM excel_import_logs WHERE id = d.import_log_id
             )
         ) THEN 1 ELSE 0 END AS [isNew],
-        -- is_stale: SKU+branch นี้ไม่ได้อยู่ใน log ล่าสุดของ branch นั้น
-        -- (มี log ใหม่กว่าสำหรับ branch+product_type นี้ แต่ไม่มี SKU นี้อยู่ใน log นั้น)
+        -- is_stale: SKU+branch นี้ไม่ได้อยู่ใน log ล่าสุดของ branch+sheet เดียวกัน
+        -- เช็ค sheet_name ด้วยเพื่อป้องกัน cross-sheet false positive
         CASE WHEN EXISTS (
           SELECT 1 FROM excel_import_logs newer
           WHERE newer.product_type = d.product_type
+            AND newer.sheet_name   = (SELECT sheet_name FROM excel_import_logs WHERE id = d.import_log_id)
             AND newer.status       = 'published'
             AND newer.imported_rows > 0
             AND newer.imported_at  > (

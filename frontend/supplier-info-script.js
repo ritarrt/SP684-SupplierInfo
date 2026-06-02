@@ -208,6 +208,12 @@ function renderSupplierName(supplier) {
   const homePageEl = document.getElementById("homePage");
   if (homePageEl) homePageEl.value = supplier.homePage || "-";
 
+  // payment terms code — parse และแสดงผลอ่านง่าย
+  const paymentTermsDisplay = document.getElementById("paymentTermsDisplay");
+  if (paymentTermsDisplay) {
+    paymentTermsDisplay.textContent = parsePaymentTermsCode(supplier.paymentTermsCode);
+  }
+
   // pre-fill bank info ลงใน payment row แรก (ถ้ายังว่างอยู่)
   // เก็บไว้ใน window เผื่อ special terms โหลดทีหลังแล้วทับ
   window.__supplierBankName    = supplier.bankName || "";
@@ -228,6 +234,38 @@ function renderSupplierName(supplier) {
       }
     }
   }
+}
+
+// ---------------------------------------------------
+// Parse Payment Terms Code
+// B15 = รวมบิล 15 วัน, C7 = เครดิต 7 วัน, /60 = เครดิต 60 วัน
+// ---------------------------------------------------
+function parsePaymentTermsCode(code) {
+  if (!code) return "-";
+
+  const parts = [];
+  const str = code.toUpperCase().trim();
+
+  // แยก slash เช่น B15C7/60 → ["B15C7", "60"]
+  const segments = str.split("/");
+
+  // parse ส่วนแรก เช่น B15C7
+  const main = segments[0];
+
+  // หา B (รวมบิล)
+  const bMatch = main.match(/B(\d+)/);
+  if (bMatch) parts.push(`รวมบิล ${bMatch[1]} วัน`);
+
+  // หา C (เครดิต)
+  const cMatch = main.match(/C(\d+)/);
+  if (cMatch) parts.push(`เครดิต ${cMatch[1]} วัน`);
+
+  // หา suffix หลัง slash
+  if (segments.length > 1 && segments[1]) {
+    parts.push(`เครดิต ${segments[1]} วัน`);
+  }
+
+  return parts.length > 0 ? parts.join(" | ") : code;
 }
 
 // ---------------------------------------------------

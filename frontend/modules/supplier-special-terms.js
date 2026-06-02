@@ -6,8 +6,6 @@ console.log("supplier-special-terms.js loaded");
 function collectSpecialTerms() {
   return {
     finance: {
-      billingCycle: document.getElementById("spBillingCycle")?.value || null,
-      creditTerm: document.getElementById("spCreditTerm")?.value || null,
       creditLimit: document.getElementById("spCreditLimit")?.value || null,
       creditLimitUnit: document.getElementById("spCreditLimitUnit")?.value || null
     },
@@ -165,18 +163,15 @@ function applySpecialTermsToForm(terms) {
   const paymentMethods = terms.paymentMethods || [];
 
   // ===== finance =====
-  if (finance.billingCycle)
-    document.getElementById("spBillingCycle").value = finance.billingCycle;
+  if (finance.creditLimit) {
+    const el = document.getElementById("spCreditLimit");
+    if (el) el.value = finance.creditLimit;
+  }
 
-  if (finance.creditTerm)
-    document.getElementById("spCreditTerm").value = finance.creditTerm;
-
-  if (finance.creditLimit)
-    document.getElementById("spCreditLimit").value = finance.creditLimit;
-
-  if (finance.creditLimitUnit)
-    document.getElementById("spCreditLimitUnit").value =
-      finance.creditLimitUnit;
+  if (finance.creditLimitUnit) {
+    const el = document.getElementById("spCreditLimitUnit");
+    if (el) el.value = finance.creditLimitUnit;
+  }
 
   // ===== claim =====
   if (claim.period)

@@ -390,7 +390,7 @@
         <a href="http://192.192.0.37:5847/price-list.html" class="hover:underline">Price Import</a>
         <a href="http://192.192.0.37:3004/index.html" class="hover:underline">Purchase Planning</a>
         <a href="http://192.192.0.37:3004/dc-config.html" class="hover:underline">DC Items</a>
-        <a href="http://192.192.0.37:3004/move-config.html" class="hover:underline">Item Transfer</a>
+        <a href="http://192.192.0.37:3004/move-config.html" class="hover:underline">No-Transfer Items</a>
         <a href="http://192.192.0.37:3004/config.html" class="hover:underline">Config</a>
       </nav>
     </div>
@@ -775,110 +775,31 @@
      </div>
 
     <div class="grid grid-cols-12 gap-3">
-  <div class="col-span-12 md:col-span-4">
-  <label class="form-label">รูปแบบการวางบิล</label>
-  <select class="form-select" id="spBillingCycle">
 
-    <!-- 📅 วางบิลตามรอบ -->
-    <option value="bill_10_days">วางบิลทุก 10 วัน</option>
-    <option value="bill_15_days">วางบิลทุก 15 วัน</option>
-    <option value="bill_30_days">วางบิลทุก 30 วัน</option>
-    <option value="bill_25_fixed">ตัดบิลและวางบิลวันที่ 25</option>
-    <option value="bill_end_month">วางบิลสิ้นเดือน</option>
+      <div class="col-span-12 md:col-span-4">
+        <label class="form-label">เงื่อนไขเครดิต (จากระบบ)</label>
+        <div id="paymentTermsDisplay" class="form-control bg-readonly-info" style="height:auto;min-height:38px;color:#374151;">-</div>
+      </div>
 
-    <!-- 📦 รวมบิล -->
-    <option value="summary_7_days">รวมบิล 7 วัน</option>
-    <option value="summary_15_days">รวมบิล 15 วัน</option>
-    <option value="summary_30_days">รวมบิล 30 วัน</option>
+      <div class="col-span-12 md:col-span-4">
+        <label class="form-label">วงเงินเครดิต (ถ้ามี)</label>
+        <div class="flex">
+          <input type="number" class="form-control" id="spCreditLimit" placeholder="0.00" style="border-radius:4px 0 0 4px;">
+          <select class="form-select" id="spCreditLimitUnit" style="border-radius:0 4px 4px 0; width:auto; padding-left:6px; padding-right:6px;">
+            <option value="THB" selected>บาท</option>
+            <option value="USD">USD</option>
+            <option value="CREDIT_PERCENT">% ของยอดซื้อ</option>
+          </select>
+        </div>
+        <div class="form-text">ค่าเริ่มต้นเป็นหน่วย "บาท" หากไม่กำหนด ให้ถือว่าไม่จำกัดวงเงิน</div>
+      </div>
 
-    <!-- 💳 เงื่อนไขพิเศษ -->
-    <option value="deduct_debt">หักหนี้</option>
-    <option value="count_from_bill">นับจากบิล</option>
-    <option value="delivery_collect_check">ส่งของรับเช็ค</option>
-    <option value="delivery_next_trip_check">ส่งของเที่ยวนี้ รับเช็คเที่ยวหน้า</option>
-    <option value="delivery_with_billing">ส่งของวางบิล</option>
+      <div class="col-span-12 md:col-span-4">
+        <label class="form-label">หมายเหตุเงื่อนไขเครดิต (Home Page)</label>
+        <input type="text" class="form-control bg-readonly-info" id="homePage" readonly placeholder="-">
+      </div>
 
-    <!-- 📄 ต่อใบ -->
-    <option value="per_order">วางบิลต่อใบสั่ง</option>
-
-  </select>
-</div>
-
-  <div class="col-span-12 md:col-span-4">
-  <label class="form-label">เงื่อนไขเครดิต</label>
-  <select class="form-select" id="spCreditTerm">
-
-    <!-- 💵 เงินสด -->
-    <option value="cash">เงินสด</option>
-
-    <!-- 📆 เครดิตตรง -->
-    <option value="1">เครดิต 1 วัน</option>
-    <option value="3">เครดิต 3 วัน</option>
-    <option value="7">เครดิต 7 วัน</option>
-    <option value="15">เครดิต 15 วัน</option>
-    <option value="25">เครดิต 25 วัน</option>
-    <option value="30">เครดิต 30 วัน</option>
-    <option value="45">เครดิต 45 วัน</option>
-    <option value="60">เครดิต 60 วัน</option>
-    <option value="75">เครดิต 75 วัน</option>
-    <option value="90">เครดิต 90 วัน</option>
-
-    <!-- 📄 นับจากบิล -->
-    <option value="bill_7">นับจากบิล เครดิต 7 วัน</option>
-    <option value="bill_15">นับจากบิล เครดิต 15 วัน</option>
-    <option value="bill_30">นับจากบิล เครดิต 30 วัน</option>
-    <option value="bill_60">นับจากบิล เครดิต 60 วัน</option>
-    <option value="bill_60_deduct">นับจากบิล เครดิต 60 วัน (หักหนี้)</option>
-    <option value="bill_75">นับจากบิล เครดิต 75 วัน</option>
-    <option value="bill_90">นับจากบิล เครดิต 90 วัน</option>
-    <option value="bill_mix">นับจากบิล เครดิต 1/7/30</option>
-
-    <!-- 🌍 ต่างประเทศ -->
-    <option value="lc">Letter of Credit (L/C)</option>
-
-  </select>
-</div>
-
-  <div class="col-span-12 md:col-span-4">
-  <label class="form-label">
-    วงเงินเครดิต (ถ้ามี)
-  </label>
-
-  <div class="flex">
-    <input
-      type="number"
-      class="form-control"
-      id="spCreditLimit"
-      placeholder="0.00"
-      style="border-radius:4px 0 0 4px;"
-    >
-
-    <select
-      class="form-select"
-      id="spCreditLimitUnit"
-      style="border-radius:0 4px 4px 0; width:auto; padding-left:6px; padding-right:6px;"
-    >
-      <option value="THB" selected>บาท</option>
-      <option value="USD">USD</option>
-      <option value="CREDIT_PERCENT">% ของยอดซื้อ</option>
-    </select>
-  </div>
-
-  <div class="form-text">
-    ค่าเริ่มต้นเป็นหน่วย “บาท” หากไม่กำหนด ให้ถือว่าไม่จำกัดวงเงิน
-  </div>
-</div>
-
-</div>
-
-
-<!-- Home Page (จาก DB) -->
-<div class="grid grid-cols-12 gap-3 mt-3">
-  <div class="col-span-12 md:col-span-6">
-    <label class="form-label">หมายเหตุเงื่อนไขเครดิต (Home Page)</label>
-    <input type="text" class="form-control bg-readonly-info" id="homePage" readonly placeholder="-">
-  </div>
-</div>
+    </div>
 
 <!-- ===============================
      3.2 วิธีการชำระเงิน
@@ -2560,7 +2481,7 @@
     document.querySelectorAll('[onclick="addLeadtimeSkuRow()"]').forEach(el => el.style.display = "none");
     document.querySelectorAll('[onclick="removePaymentRow(this)"]').forEach(el => el.style.display = "none");
     const specialTermsIds = [
-      "spBillingCycle","spCreditTerm","spCreditLimit","spCreditLimitUnit",
+      "spCreditLimit","spCreditLimitUnit",
       "spClaimPeriod","spClaimCondition","spClaimNote","spLeadtimeType","spLeadtimeDays"
     ];
     specialTermsIds.forEach(id => {
