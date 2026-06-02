@@ -904,8 +904,10 @@ async function importGypsumDataFromBuffer(pool, excelBuffer, sheetName, logId = 
  */
 function detectGlassColumns(data) {
   const ZONE_ORDER = ['BKK', 'N', 'NE', 'C', 'E', 'S'];
-  let reColMap = {}, retColMap = {}, w1ColMap = {}, w2ColMap = {}, r1ColMap = {}, r2ColMap = {};
+  let reColMap = {}, retColMap = {}, w1ColMap = {}, w2ColMap = {}, r1ColMap = {}, r2ColMap = {}, sdmColMap = {};
 
+  // ===== Format A: zone header row มี BKK/N/NE/C/E/S หลาย zone (ไฟล์เก่าและใหม่) =====
+  let zoneHeaderRowIdx = -1;
   for (let ri = 0; ri < Math.min(8, data.length); ri++) {
     const row = data[ri];
     if (!row) continue;
@@ -921,12 +923,110 @@ function detectGlassColumns(data) {
 
     if (Object.keys(zoneColsFound).length < 3) continue;
 
+    zoneHeaderRowIdx = ri;
     for (const zone of ZONE_ORDER) {
       const cols = zoneColsFound[zone] || [];
       if (cols.length >= 1) reColMap[zone]  = cols[0];
       if (cols.length >= 2) retColMap[zone] = cols[1];
     }
+
+    // หา sub-header row ใน 3 rows ถัดไป ที่มี SDM/W1/W2/R1/R2
+    // เพื่อ map แต่ละ col กับ price type ที่ถูกต้อง
+    const PRICE_TYPES = { SDM: sdmColMap, W1: w1ColMap, W2: w2ColMap, R1: r1ColMap, R2: r2ColMap };
+    const PRICE_TYPE_KEYS = new Set(Object.keys(PRICE_TYPES));
+    for (let sri = ri + 1; sri < Math.min(ri + 4, data.length); sri++) {
+      const subRow = data[sri];
+      if (!subRow) continue;
+      let found = 0;
+      for (let ci = 0; ci < subRow.length; ci++) {
+        const v = subRow[ci] !== undefined ? String(subRow[ci]).trim().toUpperCase() : '';
+        if (PRICE_TYPE_KEYS.has(v)) found++;
+      }
+      if (found < 2) continue;
+
+      // forward-fill zone จาก zone header row
+      const zoneAtCol = {};
+      let lastZone = null;
+      for (let ci = 0; ci < subRow.length; ci++) {
+        const rv = row[ci] !== undefined && row[ci] !== null ? String(row[ci]).trim().toUpperCase() : '';
+        if (ZONE_ORDER.includes(rv)) lastZone = rv;
+        if (lastZone) zoneAtCol[ci] = lastZone;
+      }
+
+      for (let ci = 0; ci < subRow.length; ci++) {
+        const pt = subRow[ci] !== undefined ? String(subRow[ci]).trim().toUpperCase() : '';
+        if (!PRICE_TYPE_KEYS.has(pt)) continue;
+        const zone = zoneAtCol[ci];
+        if (!zone) continue;
+        PRICE_TYPES[pt][zone] = ci;
+        // SDM เป็น selling price ไม่ใช่ราคาตั้งต้น — ไม่ update reColMap
+      }
+      console.log(`[detectGlassColumns] Format A sub-header found at row ${sri}: sdmColMap=${JSON.stringify(sdmColMap)}, w1ColMap=${JSON.stringify(w1ColMap)}`);
+      break;
+    }
     break;
+  }
+
+  // ===== Format B: zone header row มี BKK ซ้ำหลายครั้ง + sub-header row SDM/W1/W2/R1/R2 =====
+  // รองรับ XLSX merged cell — merged cell ให้ค่าแค่ cell แรก ที่เหลือ undefined
+  // จึงใช้ trigger: มี zone ≥ 1 + sub-header ใน 4 rows ถัดไปมี W1/R1 ≥ 2 ตัว
+  if (Object.keys(reColMap).length < 3) {
+    for (let ri = 0; ri < Math.min(8, data.length); ri++) {
+      const row = data[ri];
+      if (!row) continue;
+
+      // เก็บ zone anchor cols จาก row นี้
+      const zoneAnchorCols = [];
+      for (let ci = 0; ci < row.length; ci++) {
+        const v = row[ci] !== undefined ? String(row[ci]).trim().toUpperCase() : '';
+        if (ZONE_ORDER.includes(v)) {
+          zoneAnchorCols.push({ ci, zone: v });
+        }
+      }
+      if (zoneAnchorCols.length < 1) continue;
+
+      // หา sub-header row ใน 4 rows ถัดไป ที่มี W1/R1 ≥ 2 ตัว (ไม่ต้องมีครบทุก type)
+      const PRICE_TYPES = { SDM: sdmColMap, W1: w1ColMap, W2: w2ColMap, R1: r1ColMap, R2: r2ColMap };
+      const PRICE_TYPE_KEYS = new Set(Object.keys(PRICE_TYPES));
+      for (let sri = ri + 1; sri < Math.min(ri + 5, data.length); sri++) {
+        const subRow = data[sri];
+        if (!subRow) continue;
+
+        let found = 0;
+        for (let ci = 0; ci < subRow.length; ci++) {
+          const v = subRow[ci] !== undefined ? String(subRow[ci]).trim().toUpperCase() : '';
+          if (PRICE_TYPE_KEYS.has(v)) found++;
+        }
+        if (found < 2) continue; // ไม่ใช่ sub-header row
+
+        // expand zone: forward-fill zone จาก anchor col ไปยัง col ว่างถัดๆ ไป (handle XLSX merged cell)
+        const zoneAtCol = {};
+        let lastZone = null;
+        for (let ci = 0; ci < subRow.length; ci++) {
+          const rv = row[ci] !== undefined && row[ci] !== null ? String(row[ci]).trim().toUpperCase() : '';
+          if (ZONE_ORDER.includes(rv)) {
+            lastZone = rv;
+          }
+          // ไม่ override ถ้า col นี้เป็น zone ใหม่จริงๆ
+          if (lastZone) zoneAtCol[ci] = lastZone;
+        }
+
+        // map sub-header col → zone + price type
+        for (let ci = 0; ci < subRow.length; ci++) {
+          const pt = subRow[ci] !== undefined ? String(subRow[ci]).trim().toUpperCase() : '';
+          if (!PRICE_TYPE_KEYS.has(pt)) continue;
+          const zone = zoneAtCol[ci];
+          if (!zone) continue;
+          PRICE_TYPES[pt][zone] = ci;
+          // SDM เป็น selling price ไม่ใช่ราคาตั้งต้น — ไม่ update reColMap
+          console.log(`[detectGlassColumns] Format B: zone=${zone} pt=${pt} col=${ci}`);
+        }
+
+        // ถ้าได้ reColMap ≥ 1 zone ถือว่า detect สำเร็จ
+        if (Object.keys(reColMap).length >= 1) break;
+      }
+      if (Object.keys(reColMap).length >= 1) break;
+    }
   }
 
   // fallback hardcoded ถ้า detect ไม่ได้
@@ -960,7 +1060,7 @@ function detectGlassColumns(data) {
   const nameCol  = skuCol + 1;
   const thickCol = skuCol + 2;
 
-  return { reColMap, retColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, firstReCol, ZONE_ORDER, skuCol, nameCol, thickCol };
+  return { reColMap, retColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, sdmColMap, firstReCol, ZONE_ORDER, skuCol, nameCol, thickCol };
 }
 
 async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
@@ -976,10 +1076,8 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
       return 0;
     }
 
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
     console.log(`[Glass Parser] Raw rows: ${data.length}`);
-
-    // Load brand mapping จาก BRAND_Glass (เหมือน Gypsum)
     const brandResult = await pool.request().query(`
       SELECT BRAND_NO, BRAND_NAME FROM BRAND_Glass
     `);
@@ -999,8 +1097,8 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
     }
 
     // ===== Auto-detect column positions =====
-    const { reColMap, retColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, firstReCol, ZONE_ORDER, skuCol, nameCol, thickCol } = detectGlassColumns(data);
-    console.log('[Glass Parser] reColMap:', reColMap, '| skuCol:', skuCol);
+    const { reColMap, retColMap, w1ColMap, w2ColMap, r1ColMap, r2ColMap, sdmColMap, firstReCol, ZONE_ORDER, skuCol, nameCol, thickCol } = detectGlassColumns(data);
+    console.log('[Glass Parser] reColMap:', reColMap, '| w1ColMap:', w1ColMap, '| sdmColMap:', sdmColMap, '| skuCol:', skuCol);
 
     // สร้าง REGION_COL_MAP
     const REGION_COL_MAP = {};
@@ -1014,6 +1112,7 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
           w2Col:  w2ColMap[zone],
           r1Col:  r1ColMap[zone],
           r2Col:  r2ColMap[zone],
+          sdmCol: sdmColMap[zone],
         };
       }
     }
@@ -1115,16 +1214,17 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
             if (!rc) continue;
             const rePrice = fv(row[rc.reCol]);
             if (rePrice === 0) continue;
-            const w1 = rc.w1Col !== undefined ? fv(row[rc.w1Col]) : rePrice;
-            const w2 = rc.w2Col !== undefined ? fv(row[rc.w2Col]) : rePrice;
-            const r1 = rc.r1Col !== undefined ? fv(row[rc.r1Col]) : rePrice;
-            const r2 = rc.r2Col !== undefined ? fv(row[rc.r2Col]) : rePrice;
+            const w1  = rc.w1Col  !== undefined ? fv(row[rc.w1Col])  : rePrice;
+            const w2  = rc.w2Col  !== undefined ? fv(row[rc.w2Col])  : rePrice;
+            const r1  = rc.r1Col  !== undefined ? fv(row[rc.r1Col])  : rePrice;
+            const r2  = rc.r2Col  !== undefined ? fv(row[rc.r2Col])  : rePrice;
+            const sdm = rc.sdmCol !== undefined ? fv(row[rc.sdmCol]) : 0;
 
             for (const branchCode of branches) {
               insertRows.push({
                 branch: branchCode, sku: excelSku,
                 productName: fullName, brand: brandName,
-                basePrice: rePrice, w1, w2, r1, r2
+                basePrice: rePrice, w1, w2, r1, r2, sdm
               });
             }
           }
@@ -1144,11 +1244,12 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
           // ราคา RE (ex-factory) จาก reCol เสมอ
           const rePrice = fv(row[rc.reCol]);
 
-          // W1/W2/R1/R2 — ถ้ามี col ให้ใช้, ถ้าไม่มีให้ใช้ rePrice แทน
-          const w1 = rc.w1Col !== undefined ? fv(row[rc.w1Col]) : rePrice;
-          const w2 = rc.w2Col !== undefined ? fv(row[rc.w2Col]) : rePrice;
-          const r1 = rc.r1Col !== undefined ? fv(row[rc.r1Col]) : rePrice;
-          const r2 = rc.r2Col !== undefined ? fv(row[rc.r2Col]) : rePrice;
+          // W1/W2/R1/R2/SDM — ถ้ามี col ให้ใช้, ถ้าไม่มีให้ใช้ rePrice แทน
+          const w1  = rc.w1Col  !== undefined ? fv(row[rc.w1Col])  : rePrice;
+          const w2  = rc.w2Col  !== undefined ? fv(row[rc.w2Col])  : rePrice;
+          const r1  = rc.r1Col  !== undefined ? fv(row[rc.r1Col])  : rePrice;
+          const r2  = rc.r2Col  !== undefined ? fv(row[rc.r2Col])  : rePrice;
+          const sdm = rc.sdmCol !== undefined ? fv(row[rc.sdmCol]) : 0;
 
           // ข้าม row ที่ไม่มีราคาเลย
           if (rePrice === 0 && w1 === 0) continue;
@@ -1158,7 +1259,7 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
             sku: useFullSku ? excelSku : fullSku,
             productName: dbName || fullName, brand: brandName,
             basePrice: rePrice,
-            w1, w2, r1, r2
+            w1, w2, r1, r2, sdm
           });
         }
       }
@@ -1166,15 +1267,17 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
 
     console.log(`[Glass Parser] Prepared ${insertRows.length} rows, inserting in batches...`);
 
-    // Batch insert 200 rows ต่อครั้ง
-    // Batch insert — 10 params/row → 200×10=2,000 < 2,100 limit (ปลอดภัย)
-    const BATCH_SIZE = 200;
+    // Batch insert — check selling_price_sdm column
+    const hasSdm = dbCols.includes('selling_price_sdm');
+    // คำนวณ BATCH_SIZE จาก params จริงต่อ row เพื่อไม่เกิน 2,100 limit
+    const PARAMS_PER_ROW = 10 + (hasSdm ? 1 : 0); // branch,sku,productName,brand,basePrice,w1,w2,r1,r2,logId [,sdm]
+    const BATCH_SIZE = Math.floor(2000 / PARAMS_PER_ROW);
     const insertCols = hasSellingPrices
       ? `branch, product_type, sku, product_name, brand, unit,
          base_price, discount_price_1, discount_price_2, discount_price_3,
          project_no, project_discount_1, project_discount_2, project_price,
          carton_price, shipping_cost, free_item,
-         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2, import_log_id`
+         selling_price_w1, selling_price_w2, selling_price_r1, selling_price_r2${hasSdm ? ', selling_price_sdm' : ''}, import_log_id`
       : `branch, product_type, sku, product_name, brand, unit,
          base_price, discount_price_1, discount_price_2, discount_price_3,
          project_no, project_discount_1, project_discount_2, project_price,
@@ -1196,9 +1299,11 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
         req.input(`r1_${idx}`,         sql.Decimal(18,2), r.r1);
         req.input(`r2_${idx}`,         sql.Decimal(18,2), r.r2);
         req.input(`logId${idx}`,       sql.Int,           logId);
+        if (hasSdm) req.input(`sdm_${idx}`, sql.Decimal(18,2), r.sdm || 0);
 
         if (hasSellingPrices) {
-          valueParts.push(`(@branch${idx},'Glass',@sku${idx},@productName${idx},@brand${idx},'',@basePrice${idx},0,0,0,'',0,0,0,0,0,'',@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx},@logId${idx})`);
+          const sdmVal = hasSdm ? `,@sdm_${idx}` : '';
+          valueParts.push(`(@branch${idx},'Glass',@sku${idx},@productName${idx},@brand${idx},'',@basePrice${idx},0,0,0,'',0,0,0,0,0,'',@w1_${idx},@w2_${idx},@r1_${idx},@r2_${idx}${sdmVal},@logId${idx})`);
         } else {
           valueParts.push(`(@branch${idx},'Glass',@sku${idx},@productName${idx},@brand${idx},'',@basePrice${idx},0,0,0,'',0,0,0,0,0,'',@logId${idx})`);
         }
@@ -1213,7 +1318,7 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
         // fallback: insert ทีละ row สำหรับ batch นี้
         for (const r of batch) {
           try {
-            await pool.request()
+            const singleReq = pool.request()
               .input('branch',      sql.NVarChar(100), r.branch)
               .input('sku',         sql.NVarChar(50),  r.sku)
               .input('productName', sql.NVarChar(255), r.productName)
@@ -1223,13 +1328,16 @@ async function importGlassData(pool, excelBuffer, sheetName, logId = null) {
               .input('w2',          sql.Decimal(18,2), r.w2)
               .input('r1',          sql.Decimal(18,2), r.r1)
               .input('r2',          sql.Decimal(18,2), r.r2)
-              .query(hasSellingPrices ? `
-                INSERT INTO excel_import_data (${insertCols})
-                VALUES (@branch,'Glass',@sku,@productName,@brand,'',@basePrice,0,0,0,'',0,0,0,0,0,'',@w1,@w2,@r1,@r2)
-              ` : `
-                INSERT INTO excel_import_data (${insertCols})
-                VALUES (@branch,'Glass',@sku,@productName,@brand,'',@basePrice,0,0,0,'',0,0,0,0,0,'')
-              `);
+              .input('logId',       sql.Int,           logId);
+            if (hasSdm) singleReq.input('sdm', sql.Decimal(18,2), r.sdm || 0);
+            const sdmSingleVal = hasSdm ? ',@sdm' : '';
+            await singleReq.query(hasSellingPrices ? `
+              INSERT INTO excel_import_data (${insertCols})
+              VALUES (@branch,'Glass',@sku,@productName,@brand,'',@basePrice,0,0,0,'',0,0,0,0,0,'',@w1,@w2,@r1,@r2${sdmSingleVal},@logId)
+            ` : `
+              INSERT INTO excel_import_data (${insertCols})
+              VALUES (@branch,'Glass',@sku,@productName,@brand,'',@basePrice,0,0,0,'',0,0,0,0,0,'',@logId)
+            `);
             imported++;
           } catch (e2) {
             console.error(`[Glass Parser] Row insert error (${r.branch}/${r.sku}):`, e2.message);
