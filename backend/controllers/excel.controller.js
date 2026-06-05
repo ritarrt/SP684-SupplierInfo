@@ -3869,10 +3869,10 @@ async function previewSealantData(excelBuffer, sheetName) {
  *   [8]  I = W1 margin %  (ข้าม)
  *   [9]  J = W2 price
  *   [10] K = W2 margin %  (ข้าม)
- *   [11] L = R2 price
- *   [12] M = R2 margin %  (ข้าม)
- *   [13] N = R1 price
- *   [14] O = R1 margin %  (ข้าม)
+ *   [11] L = R1 price
+ *   [12] M = R1 margin %  (ข้าม)
+ *   [13] N = R2 price
+ *   [14] O = R2 margin %  (ข้าม)
  *
  * Row 6 (index 5): label row — F="SDM", H="W1", J="W2", L="R2", N="R1"
  * Row 7 (index 6): sub-header — B="ชื่อสินค้า", C="RE", D="RE inv."
@@ -3914,8 +3914,8 @@ function parseCLineSheet(workbook, sheetName) {
     const sdm = fv(row[5]);
     const w1  = fv(row[7]);
     const w2  = fv(row[9]);
-    const r2  = fv(row[11]); // col L = R2
-    const r1  = fv(row[13]); // col N = R1
+    const r1  = fv(row[11]); // col L = R1
+    const r2  = fv(row[13]); // col N = R2
 
     // ข้ามแถวที่ไม่มีราคาใดเลย
     if (sdm === 0 && w1 === 0 && w2 === 0 && r1 === 0 && r2 === 0) continue;
